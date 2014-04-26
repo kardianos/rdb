@@ -49,8 +49,34 @@ type Value struct {
 	V interface{} // Value for input parameter.
 }
 
-type Field interface {
-	Write(mustCopy bool, bb []byte) (n int, err error)
+type SqlType byte
+type DriverType uint32
+type NativeType byte
+
+type Marshal func(t NativeType) (SqlType, DriverType)
+type Unmarshal func(t DriverType) (SqlType, NativeType)
+
+// TODO: Need type notions.
+// * Generic Sql Type
+// * Specific Driver Type
+// * Native Language Type
+// * Mapping the above three
+// These type mappings should be able to be set in a hierarchical manner.
+// * Config
+// * Database
+// * Command
+// * Parameter
+// Ideal to make these mappings reusable.
+
+type WriteProp struct {
+	ColumnIndex int
+	ColumnCount int
+	MustCopy    bool
+}
+
+type Field struct {
+	N     string // Field Name.
+	Write func(wp *WriteProp, bb []byte) (n int, err error)
 }
 
 // TODO: Should this exist?
