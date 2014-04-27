@@ -22,20 +22,10 @@ import (
 	`fmt`
 )
 
-// TODO: Fill out type information.
-type Type struct {
-	// TODO: Should driver and user flags be separate? (no)
-	// TODO: Should Driver and User flags be encoded into the Code? (yes)
-	// TODO: Encode both standard type and driver type at the same time? (yes)
-	Driver bool
-	User   bool
-	Code   uint64
-}
-
 type Param struct {
-	N string // Parameter Name.
-	T Type   // Parameter Type.
-	L int    // Paremeter Length.
+	N string  // Optional Parameter Name.
+	T SqlType // Parameter Type.
+	L int     // Paremeter Length.
 
 	V interface{} // Value for input parameter.
 
@@ -49,25 +39,6 @@ type Value struct {
 	V interface{} // Value for input parameter.
 }
 
-type SqlType byte
-type DriverType uint32
-type NativeType byte
-
-type Marshal func(t NativeType) (SqlType, DriverType)
-type Unmarshal func(t DriverType) (SqlType, NativeType)
-
-// TODO: Need type notions.
-// * Generic Sql Type
-// * Specific Driver Type
-// * Native Language Type
-// * Mapping the above three
-// These type mappings should be able to be set in a hierarchical manner.
-// * Config
-// * Database
-// * Command
-// * Parameter
-// Ideal to make these mappings reusable.
-
 type WriteProp struct {
 	ColumnIndex int
 	ColumnCount int
@@ -75,8 +46,9 @@ type WriteProp struct {
 }
 
 type Field struct {
-	N     string // Field Name.
-	Write func(wp *WriteProp, bb []byte) (n int, err error)
+	N         string // Optional Field Name.
+	Type      NativeType
+	NullValue interface{}
 }
 
 // TODO: Should this exist?
