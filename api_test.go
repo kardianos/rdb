@@ -24,8 +24,10 @@ func TestApi(t *testing.T) {
 	cmd := &Command{
 		Sql: sql,
 		One: true,
+		// Convert: GoString -> nvarchar Length=300
 		Input: []Param{
 			Param{N: "foo", T: Type{}, V: foo},
+			// input type is a go string, Length=10 (nvarchar mapping from command convert mapping).
 		},
 	}
 	/*

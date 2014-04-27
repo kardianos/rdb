@@ -28,7 +28,7 @@ type DriverOption struct {
 	Name string
 
 	Description  string
-	Type         Type
+	Type         NativeType
 	DefaultValue interface{}
 }
 
