@@ -7,13 +7,8 @@ type Result struct {
 
 // Arrange for (*Command).Scan[...].V to hold fresh pointer each time.
 // Returns io.EOF when last row has been scanned.
-func (res *Result) ScanPrep() error {
-	return nil
-}
-
-// Same as (*Result).Scan, but panics on error and returns false when done.
-func (res *Result) ScanPrepM() bool {
-	return false
+func (res *Result) ScanPrep() (eof bool, err error) {
+	return true, nil
 }
 func (res *Result) Prep(name string, value interface{}) *Result {
 	return res
@@ -24,13 +19,8 @@ func (res *Result) PrepAll(values ...interface{}) *Result {
 
 // Scans the row into a buffer that can be fetched
 // Returns io.EOF when last row has been scanned.
-func (res *Result) ScanBuffer() error {
-	return nil
-}
-
-// Same as (*Result).Scan, but panics on error and returns false when done.
-func (res *Result) ScanBufferM() bool {
-	return false
+func (res *Result) ScanBuffer() (eof bool, err error) {
+	return true, nil
 }
 
 // Use with ScanBuffer[M]().

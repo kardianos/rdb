@@ -5,9 +5,10 @@ import (
 )
 
 func TestApi(t *testing.T) {
-	conn := ParseConfigM(`testmem://u:p@localhost/test`)
+	conf, err := ParseConfig(`testmem://u:p@localhost/test`)
+	// conf.PanicOnError = true
 
-	db, err := Open(conn)
+	db, err := Open(conf)
 	_ = err
 
 	sql := `
@@ -26,7 +27,7 @@ func TestApi(t *testing.T) {
 		One: true,
 		// Convert: GoString -> nvarchar Length=300
 		Input: []Param{
-			Param{N: "foo", T: Type{}, V: foo},
+			Param{N: "foo", T: SqlTypeString, V: foo},
 			// input type is a go string, Length=10 (nvarchar mapping from command convert mapping).
 		},
 	}
@@ -41,5 +42,53 @@ func TestApi(t *testing.T) {
 	var bar, box string
 
 	// err := db.QueryRow(sql, foo).Scan(&bar, &box)
-	db.QueryM(cmd).PrepAll(&bar, &box).ScanPrepM()
+	res, _ := db.Query(cmd)
+	if err != nil {
+		panic(err)
+	}
+	_, err = res.PrepAll(&bar, &box).ScanPrep()
+	if err != nil {
+		panic(err)
+	}
+
+	res2, err := db.Query(cmd)
+	if err != nil {
+		panic(err)
+	}
+	for {
+		var eof bool
+		eof, err = res2.ScanBuffer()
+		if err != nil {
+			panic(err)
+		}
+		if eof {
+			break
+		}
+
+		bar := res2.Get("bar").(string)
+		box := res2.Get("box").(string)
+
+		_, _ = bar, box
+	}
+
+	res3, err := db.Query(cmd)
+	if err != nil {
+		panic(err)
+	}
+	for {
+		var bar, box string
+
+		res2.Prep("bar", &bar)
+		res2.Prep("box", &box)
+
+		var eof bool
+		eof, err = res3.ScanPrep()
+		if err != nil {
+			panic(err)
+		}
+		if eof {
+			break
+		}
+	}
+
 }

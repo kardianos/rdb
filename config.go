@@ -5,12 +5,14 @@ type Config struct {
 
 	Username string
 	Password string
-	Url      string
+	Hostname string
 	Port     int
 	Instance string
 	Database string
 
 	KV map[string]interface{}
+
+	PanicOnError bool
 }
 
 // Provides a standard method to parse configuration options from a text.
@@ -20,9 +22,6 @@ type Config struct {
 //   sqlite:///srv/folder/file.sqlite3?opt1=valA&opt2=valB
 func ParseConfig(url string) (*Config, error) {
 	return nil, nil
-}
-func ParseConfigM(url string) *Config {
-	return nil
 }
 
 type DriverOption struct {
