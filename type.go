@@ -5,65 +5,7 @@ import (
 )
 
 const (
-	SqlTypeDriverThresh = 0x00010000
-)
-
-// Sql Type constants are not represented in all database systems.
-// Names were chosen to afford the best understanding from the go language
-// and not from the sql standard.j
-const (
-	SqlTypeUnknown SqlType = iota // Zero default value.
-
-	SqlTypeNull // A special "type" that can indicate a null value.
-
-	// Driver defaults for text varying lengths.
-	SqlTypeString     // Unicode text. Some drivers call this ntext or nvarchar.
-	SqlTypeAnsiString // Ansi text. Some drivers call this just text or varchar.
-	SqlTypeBinary     // Just a string of bytes.
-
-	// Specific character data types.
-	SqlTypeText        // Unicode text with varying length. Also nvarchar.
-	SqlTypeAnsiText    // Ansi text with varying length. Also varchar.
-	SqlTypeVarChar     // Unicode text with varying length. Also nvarchar.
-	SqlTypeAnsiVarChar // Ansi text with varying length. Also varchar.
-	SqlTypeChar        // Unicode text with fixed length. Also nchar.
-	SqlTypeAnsiChar    // Ansi text with fixed length. Also char.
-
-	SqlTypeBool   // Also bit.
-	SqlTypeUint8  // Also unsigned tiny int.
-	SqlTypeUint16 // Also unsigned small int.
-	SqlTypeUint32 // Also unsigned int.
-	SqlTypeUint64 // Also unsigned big int.
-	SqlTypeInt8   // Also tiny int.
-	SqlTypeInt16  // Also small int.
-	SqlTypeInt32  // Also int.
-	SqlTypeInt64  // Also big int.
-
-	// Auto-increment integer.
-	SqlTypeSerial16
-	SqlTypeSerial32
-	SqlTypeSerial64
-
-	SqlTypeFloat32 // Floating point number.
-	SqlTypeFloat64 // Floating point number, "double" width.
-
-	SqlTypeDecimal // Exact number with specified scale and precision.
-	SqlTypeMoney
-
-	SqlTypeTime         // Contains time, date, and time zone.
-	SqlTypeDuration     // Contains a span of time.
-	SqlTypeOnlyTime     // Only contains time of day.
-	SqlTypeOnlyDate     // Only contains a date.
-	SqlTypeOnlyDateTime // Only contains a date and time, no time zone.
-
-	SqlTypeUUID // Also uniqueidentifier or GUID.
-
-	SqlTypeEnum
-	SqlTypeRange
-	SqlTypeArray
-	SqlTypeJson
-	SqlTypeXml
-	SqlTypeTable
+	TypeDriverThresh = 0x00010000
 )
 
 // Each driver should define its own SqlType over value SqlTypeDriverThresh (65536).
@@ -79,6 +21,64 @@ func (t SqlType) Driver() bool {
 func (t SqlType) String() string {
 	return ""
 }
+
+// Sql Type constants are not represented in all database systems.
+// Names were chosen to afford the best understanding from the go language
+// and not from the sql standard.j
+const (
+	TypeUnknown SqlType = iota // Zero default value.
+
+	TypeNull // A special "type" that can indicate a null value.
+
+	// Driver defaults for text varying lengths.
+	TypeString     // Unicode text. Some drivers call this ntext or nvarchar.
+	TypeAnsiString // Ansi text. Some drivers call this just text or varchar.
+	TypeBinary     // Just a string of bytes.
+
+	// Specific character data types.
+	TypeText        // Unicode text with varying length. Also nvarchar.
+	TypeAnsiText    // Ansi text with varying length. Also varchar.
+	TypeVarChar     // Unicode text with varying length. Also nvarchar.
+	TypeAnsiVarChar // Ansi text with varying length. Also varchar.
+	TypeChar        // Unicode text with fixed length. Also nchar.
+	TypeAnsiChar    // Ansi text with fixed length. Also char.
+
+	TypeBool   // Also bit.
+	TypeUint8  // Also unsigned tiny int.
+	TypeUint16 // Also unsigned small int.
+	TypeUint32 // Also unsigned int.
+	TypeUint64 // Also unsigned big int.
+	TypeInt8   // Also tiny int.
+	TypeInt16  // Also small int.
+	TypeInt32  // Also int.
+	TypeInt64  // Also big int.
+
+	// Auto-increment integer.
+	TypeSerial16
+	TypeSerial32
+	TypeSerial64
+
+	TypeFloat32 // Floating point number.
+	TypeFloat64 // Floating point number, "double" width.
+
+	TypeDecimal // Exact number with specified scale and precision.
+	TypeMoney
+
+	TypeTime         // Contains time, date, and time zone.
+	TypeDuration     // Contains a span of time.
+	TypeOnlyTime     // Only contains time of day.
+	TypeOnlyDate     // Only contains a date.
+	TypeOnlyDateTime // Only contains a date and time, no time zone.
+
+	TypeUUID // Also uniqueidentifier or GUID.
+
+	TypeEnum
+	TypeRange
+	TypeArray
+	TypeJson
+	TypeXml
+	TypeTable
+)
 
 type NativeType uint32
 

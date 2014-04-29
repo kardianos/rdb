@@ -38,12 +38,9 @@ package rdb
 	Set active collation.
 
 */
-import (
-	`fmt`
-)
 
 // If the N (Name) field is not specified is not specified, then the order
-// of the parameter is used.
+// of the parameter should be used if the driver supports it.
 type Param struct {
 	N string  // Optional Parameter Name.
 	T SqlType // Parameter Type.
@@ -63,7 +60,7 @@ type Param struct {
 // If the input parameter value isn't populated in the command,
 // the value can be filled in at the time of query.
 // If the N (Name) field is not specified, then the order of the
-// parameters or values are used.
+// parameters or values are used if the driver supports it.
 type Value struct {
 	N string // Parameter Name.
 
@@ -74,10 +71,18 @@ type Value struct {
 	Param *Param
 }
 
+type SqlColumn struct {
+	Name    string
+	Index   int
+	SqlType uint8
+	Length  uint32
+	Max     bool
+}
+
 // TODO: Should this exist?
 // Should return a pointer to a value.
 type Filler interface {
-	Fill(p *Param) (interface{}, error)
+	Fill(column *SqlColumn) (interface{}, error)
 }
 
 // Passed with a field value to indicate where it is from and how it should
@@ -96,17 +101,11 @@ type Field struct {
 	NullValue interface{}
 }
 
-type ErrorList []Error
-
-func (err ErrorList) Error() string {
-	return fmt.Sprintf("%v", err)
-}
-
-// Type panic'ed with after calling a *M() method.
-type Error struct {
+// Type panic'ed with after calling a Must method.
+type MustError struct {
 	Err error
 }
 
-func (err *Error) Error() string {
+func (err MustError) Error() string {
 	return err.Err.Error()
 }
