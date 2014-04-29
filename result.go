@@ -1,21 +1,26 @@
 package rdb
 
+import (
+	"bitbucket.org/kardianos/rdb/driver"
+)
+
 type Result struct {
-	Code int
 }
 
-// Arrange for (*Command).Scan[...].V to hold fresh pointer each time.
-// Returns io.EOF when last row has been scanned.
+// For each needed field, call Prep() or PrepAll() to prepare
+// value pointers for scanning. To scan prepared fields call ScanPrep().
 func (res *Result) ScanPrep() (eof bool, err error) {
 	return true, nil
 }
 
-// Use with ScanPrep().
+// Prepare pointers to values to be populated by name using Prep. After
+// preparing call ScanPrep().
 func (res *Result) Prep(name string, value interface{}) error {
 	return nil
 }
 
-// Use with ScanPrep().
+// Prepare pointers to values to be populated by index using Prep. After
+// preparing call ScanPrep().
 func (res *Result) PrepAll(values ...interface{}) error {
 	return nil
 }
@@ -36,12 +41,7 @@ func (res *Result) Getx(index int) (interface{}, error) {
 	return nil, nil
 }
 
-// Get the result schema.
-func (res *Result) Schema() (*Schema, error) {
+// Fetch the table schema.
+func (res *Result) Schema() (*driver.Schema, error) {
 	return nil, nil
-}
-
-// TODO: Fill out schema.
-type Schema struct {
-	Columns []SqlColumn
 }
