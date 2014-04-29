@@ -1,4 +1,4 @@
-package driver
+package rdb
 
 import (
 	"reflect"

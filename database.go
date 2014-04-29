@@ -1,47 +1,27 @@
 package rdb
 
 import (
-	"bitbucket.org/kardianos/rdb/driver"
+	"fmt"
 )
 
-type Database struct {
+var drivers = map[string]Driver{}
+
+// Panics if called twice with the same name.
+// Make the driver instance available clients.
+func Register(name string, dr Driver) {
+	_, found := drivers[name]
+	if found {
+		panic(fmt.Sprintf("Driver already present: %s", name))
+	}
+	drivers[name] = dr
 }
 
-func Open(c *driver.Config) (*Database, error) {
-	return nil, nil
-}
-
-func (db *Database) Close() error {
-	return nil
-}
-
-// Input parameter values can either be specified in the paremeter definition
-// or on each query. If the value is not put in the parameter definition
-// then the command instance may be reused for every query.
-func (db *Database) Query(cmd *driver.Command, vv ...driver.Value) (*Result, error) {
-	return nil, nil
-}
-
-// Same as Query but will panic on an error.
-func (db *Database) Transaction(iso driver.IsolationLevel) (*Transaction, error) {
-	return nil, nil
-}
-
-type Transaction struct {
-}
-
-// Input parameter values can either be specified in the paremeter definition
-// or on each query. If the value is not put in the parameter definition
-// then the command instance may be reused for every query.
-func (db *Transaction) Query(cmd *driver.Command, vv ...driver.Value) (*Result, error) {
-	return nil, nil
-}
-
-func (db *Transaction) Commit() error {
-	return nil
-}
-func (db *Transaction) Rollback() error {
-	return nil
+func Open(config *Config) (Database, error) {
+	dr, found := drivers[config.DriverName]
+	if !found {
+		return nil, fmt.Errorf("Driver name not found: %s", config.DriverName)
+	}
+	return dr.Open(config)
 }
 
 /*
