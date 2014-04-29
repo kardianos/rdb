@@ -35,7 +35,7 @@ package rdb
 		Line number
 		Error text
 		Can have multiple SqlErrors for a given query.
-
+	Set active collation.
 
 */
 import (
@@ -70,6 +70,8 @@ type Value struct {
 	// Value for input parameter.
 	// If the value is an io.Reader it will read the value directly to the wire.
 	V interface{}
+
+	Param *Param
 }
 
 // TODO: Should this exist?
