@@ -1,4 +1,4 @@
-package driver
+package rdb
 
 // If the N (Name) field is not specified is not specified, then the order
 // of the parameter should be used if the driver supports it.
@@ -86,7 +86,7 @@ type Command struct {
 	//   If Arity is Zero or ZeroOnly, no rows are returned.
 	//   If Arity is ZeroOnnly, if any results are returned an error is returned.
 	Arity Arity
-	Input []Param
+	Input []*Param
 
 	// Optional fields to specify output marshal.
 	Output []*Field
@@ -101,5 +101,5 @@ type Command struct {
 
 // The table schema and properties.
 type Schema struct {
-	Columns []SqlColumn
+	Columns []*SqlColumn
 }
