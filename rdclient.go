@@ -1,8 +1,6 @@
 // By Daniel Theophanes
 
 // SQL Relational Database Client.
-package rdb
-
 /*
 	Named Parameters
 	Inspect driver support
@@ -38,6 +36,7 @@ package rdb
 	Set active collation.
 
 */
+package rdb
 
 // If the N (Name) field is not specified is not specified, then the order
 // of the parameter should be used if the driver supports it.
@@ -72,32 +71,19 @@ type Value struct {
 }
 
 type SqlColumn struct {
-	Name    string
-	Index   int
-	SqlType uint8
-	Length  uint32
-	Max     bool
-}
-
-// TODO: Should this exist?
-// Should return a pointer to a value.
-type Filler interface {
-	Fill(column *SqlColumn) (interface{}, error)
-}
-
-// Passed with a field value to indicate where it is from and how it should
-// be handled.
-type WriteProp struct {
-	ColumnIndex int
-	ColumnCount int
-	MustCopy    bool
+	Name     string
+	Index    int
+	SqlType  uint8
+	Length   uint32
+	Unlimit  bool // Provides near unlimited length.
+	Nullable bool
 }
 
 // If the command output fields are specified, the Field output can help manage
 // how the result rows are copied to.
 type Field struct {
-	N         string // Optional Field Name.
-	Type      NativeType
+	N         string     // Optional Field Name.
+	Type      NativeType // TODO: Should this stay or go?
 	NullValue interface{}
 }
 
