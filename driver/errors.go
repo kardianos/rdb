@@ -1,4 +1,4 @@
-package rdb
+package driver
 
 import (
 	"fmt"
@@ -14,4 +14,13 @@ func (err ErrorColumnNotFound) Error() string {
 		return fmt.Sprintf("Column index not valid: %d", err.Index)
 	}
 	return fmt.Sprintf("Column name not valid: %s", err.Name)
+}
+
+// Type panic'ed with after calling a Must method.
+type MustError struct {
+	Err error
+}
+
+func (err MustError) Error() string {
+	return err.Err.Error()
 }

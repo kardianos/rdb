@@ -1,8 +1,11 @@
-package rdb
+package driver
 
 import (
-	"bitbucket.org/kardianos/rdb/driver"
 	"reflect"
+)
+
+const (
+	TypeDriverThresh = 0x00010000
 )
 
 // Each driver should define its own SqlType over value SqlTypeDriverThresh (65536).
@@ -13,7 +16,7 @@ type SqlType uint32
 
 // Returns true if this is a driver specific type.
 func (t SqlType) Driver() bool {
-	return t >= driver.TypeDriverThresh
+	return t >= TypeDriverThresh
 }
 func (t SqlType) String() string {
 	return ""
