@@ -11,8 +11,6 @@ type Config struct {
 	Database string
 
 	KV map[string]interface{}
-
-	PanicOnError bool
 }
 
 // Provides a standard method to parse configuration options from a text.

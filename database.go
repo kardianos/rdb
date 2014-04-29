@@ -14,6 +14,7 @@ const (
 
 type Arity byte
 
+// The number of rows to expect from a command.
 const (
 	Many Arity = iota
 	One
@@ -22,6 +23,10 @@ const (
 	ZeroOnly
 )
 
+// Command represents a SQL command and can be used from many different
+// queries at the same time, so long as the input parameter values
+// "Input[N].V (Value)" are not set in the Param struct but passed in with
+// the actual query as Value.
 type Command struct {
 	// The SQL to be used in the command.
 	Sql string
@@ -31,9 +36,18 @@ type Command struct {
 	//   If Arity is OneOnly, if more results are returned an error is returned.
 	//   If Arity is Zero or ZeroOnly, no rows are returned.
 	//   If Arity is ZeroOnnly, if any results are returned an error is returned.
-	Arity  Arity
-	Input  []Param
+	Arity Arity
+	Input []Param
+
+	// Optional fields to specify output marshal.
 	Output []*Field
+
+	// If set to true silently truncates text longer then the field.
+	// If this is set to false text truncation will result in an error.
+	TruncLongText bool
+
+	// Optional name of the command. May be used if logging.
+	Name string
 }
 
 type Database struct {
@@ -47,17 +61,6 @@ func (db *Database) Close() error {
 	return nil
 }
 
-type DatabaseMust struct {
-}
-
-func OpenMust(c *Config) *DatabaseMust {
-	return nil
-}
-
-func (db *DatabaseMust) Close() {
-	return
-}
-
 // Input parameter values can either be specified in the paremeter definition
 // or on each query. If the value is not put in the parameter definition
 // then the command instance may be reused for every query.
@@ -66,25 +69,11 @@ func (db *Database) Query(cmd *Command, vv ...Value) (*Result, error) {
 }
 
 // Same as Query but will panic on an error.
-func (db *Database) Transaction(iso IsolationLevel) *Transaction {
-	return nil
-}
-
-// Input parameter values can either be specified in the paremeter definition
-// or on each query. If the value is not put in the parameter definition
-// then the command instance may be reused for every query.
-func (db *DatabaseMust) Query(cmd *Command, vv ...Value) *ResultMust {
-	return nil
-}
-
-// Same as Query but will panic on an error.
-func (db *DatabaseMust) Transaction(iso IsolationLevel) *Transaction {
-	return nil
+func (db *Database) Transaction(iso IsolationLevel) (*Transaction, error) {
+	return nil, nil
 }
 
 type Transaction struct {
-}
-type TransactionMust struct {
 }
 
 // Input parameter values can either be specified in the paremeter definition
@@ -99,20 +88,6 @@ func (db *Transaction) Commit() error {
 }
 func (db *Transaction) Rollback() error {
 	return nil
-}
-
-// Input parameter values can either be specified in the paremeter definition
-// or on each query. If the value is not put in the parameter definition
-// then the command instance may be reused for every query.
-func (db *TransactionMust) Query(cmd *Command, vv ...Value) *ResultMust {
-	return nil
-}
-
-func (db *TransactionMust) Commit() {
-	return
-}
-func (db *TransactionMust) Rollback() {
-	return
 }
 
 /*

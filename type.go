@@ -1,11 +1,8 @@
 package rdb
 
 import (
+	"bitbucket.org/kardianos/rdb/driver"
 	"reflect"
-)
-
-const (
-	TypeDriverThresh = 0x00010000
 )
 
 // Each driver should define its own SqlType over value SqlTypeDriverThresh (65536).
@@ -16,7 +13,7 @@ type SqlType uint32
 
 // Returns true if this is a driver specific type.
 func (t SqlType) Driver() bool {
-	return t >= 0x00010000
+	return t >= driver.TypeDriverThresh
 }
 func (t SqlType) String() string {
 	return ""
@@ -24,13 +21,15 @@ func (t SqlType) String() string {
 
 // Sql Type constants are not represented in all database systems.
 // Names were chosen to afford the best understanding from the go language
-// and not from the sql standard.j
+// and not from the sql standard.
 const (
 	TypeUnknown SqlType = iota // Zero default value.
 
 	TypeNull // A special "type" that can indicate a null value.
 
 	// Driver defaults for text varying lengths.
+	// PostgreSQL will use "text", Tds will use "nvarchar", Oracle will use "nvarchar2".
+	// In greenfield development it is suggested to use this type text rather then another type.
 	TypeString     // Unicode text. Some drivers call this ntext or nvarchar.
 	TypeAnsiString // Ansi text. Some drivers call this just text or varchar.
 	TypeBinary     // Just a string of bytes.
@@ -53,12 +52,12 @@ const (
 	TypeInt32  // Also int.
 	TypeInt64  // Also big int.
 
-	// Auto-increment integer.
+	// Auto-incrementing integer.
 	TypeSerial16
 	TypeSerial32
 	TypeSerial64
 
-	TypeFloat32 // Floating point number.
+	TypeFloat32 // Floating point number, also real.
 	TypeFloat64 // Floating point number, "double" width.
 
 	TypeDecimal // Exact number with specified scale and precision.
@@ -103,11 +102,17 @@ func RegisterNativeType(value interface{}) NativeType {
 	return nt
 }
 
-type TypeMarshal struct {
+// TODO: Determine if this should be included.
+// Specify or regiester list of DefaultParam so that all ints or strings
+// use the same parameter type.
+type ZDefaultParam struct {
 	From NativeType
-	To   SqlType
+	To   Param
 }
-type TypeUnmarshal struct {
+
+// TODO: Is there a way to map a custom native type to a sql type?
+// Is this even useful?
+type ZTypeUnmarshal struct {
 	From SqlType
 	To   NativeType
 }
