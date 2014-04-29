@@ -6,10 +6,22 @@ import (
 
 func TestApi(t *testing.T) {
 	conf, err := ParseConfig(`testmem://u:p@localhost/test`)
-	// conf.PanicOnError = true
+	if err != nil {
+		t.Errorf("Could not parse configuration string: %v", err)
+		return
+	}
 
-	db, err := Open(conf)
-	_ = err
+	defer func() {
+		if re := recover(); re != nil {
+			if localError, is := re.(MustError); is {
+				t.Errorf("SQL Error: %v", localError)
+				return
+			}
+			panic(re)
+		}
+	}()
+
+	db := OpenMust(conf)
 
 	sql := `
 		select
@@ -23,44 +35,26 @@ func TestApi(t *testing.T) {
 
 	// This could be static and read-only, shared between all queries.
 	cmd := &Command{
-		Sql: sql,
-		One: true,
+		Sql:   sql,
+		Arity: One,
+
 		// Convert: GoString -> nvarchar Length=300
 		Input: []Param{
-			Param{N: "foo", T: SqlTypeString, V: foo},
+			Param{N: "foo", T: TypeString, V: foo},
 			// input type is a go string, Length=10 (nvarchar mapping from command convert mapping).
 		},
 	}
-	/*
-		The output params need to be different:
-			Don't need specific type information.
-			Do need method to convert and how to handle null.
-			Input needs server side typing and possible conversion helper.
-			Output needs client side typing and possible conversion helper.
-	*/
 
 	var bar, box string
 
 	// err := db.QueryRow(sql, foo).Scan(&bar, &box)
-	res, _ := db.Query(cmd)
-	if err != nil {
-		panic(err)
-	}
-	_, err = res.PrepAll(&bar, &box).ScanPrep()
-	if err != nil {
-		panic(err)
-	}
+	db.Query(cmd).PrepAll(&bar, &box).ScanPrep()
+	// Result is closed after one scan due to the arity set to "One".
 
-	res2, err := db.Query(cmd)
-	if err != nil {
-		panic(err)
-	}
+	res2 := db.Query(cmd)
 	for {
 		var eof bool
-		eof, err = res2.ScanBuffer()
-		if err != nil {
-			panic(err)
-		}
+		eof = res2.ScanBuffer()
 		if eof {
 			break
 		}
@@ -71,22 +65,14 @@ func TestApi(t *testing.T) {
 		_, _ = bar, box
 	}
 
-	res3, err := db.Query(cmd)
-	if err != nil {
-		panic(err)
-	}
+	res3 := db.Query(cmd)
 	for {
 		var bar, box string
 
 		res2.Prep("bar", &bar)
 		res2.Prep("box", &box)
 
-		var eof bool
-		eof, err = res3.ScanPrep()
-		if err != nil {
-			panic(err)
-		}
-		if eof {
+		if res3.ScanPrep() {
 			break
 		}
 	}
