@@ -74,7 +74,6 @@ type DriverOption struct {
 	Name string
 
 	Description  string
-	Type         NativeType
 	DefaultValue interface{}
 }
 

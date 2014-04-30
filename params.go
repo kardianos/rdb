@@ -44,8 +44,7 @@ type SqlColumn struct {
 // If the command output fields are specified, the Field output can help manage
 // how the result rows are copied to.
 type Field struct {
-	N         string     // Optional Field Name.
-	Type      NativeType // TODO: Should this stay or go?
+	N         string // Optional Field Name.
 	NullValue interface{}
 }
 
@@ -86,10 +85,10 @@ type Command struct {
 	//   If Arity is Zero or ZeroOnly, no rows are returned.
 	//   If Arity is ZeroOnnly, if any results are returned an error is returned.
 	Arity Arity
-	Input []*Param
+	Input []Param
 
 	// Optional fields to specify output marshal.
-	Output []*Field
+	Output []Field
 
 	// If set to true silently truncates text longer then the field.
 	// If this is set to false text truncation will result in an error.

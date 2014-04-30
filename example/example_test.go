@@ -23,8 +23,8 @@ func TestExample(t *testing.T) {
 			select cast('fox' as varchar(7)) as dock, box = cast(@animal as nvarchar(max));
 		`,
 		Arity: rdb.OneOnly,
-		Input: []*rdb.Param{
-			&rdb.Param{
+		Input: []rdb.Param{
+			rdb.Param{
 				N: "animal",
 				T: rdb.TypeString,
 			},
