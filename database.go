@@ -23,22 +23,3 @@ func Open(config *Config) (Database, error) {
 	}
 	return dr.Open(config)
 }
-
-/*
-// Map columns to (*Command).Input, for each row map values.
-func (db *Database) BulkInsert(cmd *Command) *BulkInsert {
-	return nil
-}
-
-type BulkInsert struct {
-	BatchSize int
-}
-
-func (bi *BulkInsert) NextRow() error {
-	return nil
-}
-
-func (bi *BulkInsert) Done() error {
-	return nil
-}
-*/

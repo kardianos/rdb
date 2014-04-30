@@ -48,13 +48,13 @@ func TestApi(t *testing.T) {
 	var bar, box string
 
 	// err := db.QueryRow(sql, foo).Scan(&bar, &box)
-	db.Query(cmd).PrepAll(&bar, &box).ScanPrep()
+	db.Query(cmd).PrepAll(&bar, &box).Scan()
 	// Result is closed after one scan due to the arity set to "One".
 
 	res2 := db.Query(cmd)
 	for {
 		var eof bool
-		eof = res2.ScanBuffer()
+		eof = res2.Scan()
 		if eof {
 			break
 		}
@@ -72,7 +72,7 @@ func TestApi(t *testing.T) {
 		res2.Prep("bar", &bar)
 		res2.Prep("box", &box)
 
-		if res3.ScanPrep() {
+		if res3.Scan() {
 			break
 		}
 	}
