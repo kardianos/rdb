@@ -33,12 +33,14 @@ type Value struct {
 }
 
 type SqlColumn struct {
-	Name     string
-	Index    int
-	SqlType  uint8
-	Length   uint32
-	Unlimit  bool // Provides near unlimited length.
-	Nullable bool
+	Name      string
+	Index     int
+	SqlType   SqlType
+	Length    uint32
+	Unlimit   bool // Provides near unlimited length.
+	Nullable  bool
+	Precision byte
+	Scale     byte
 }
 
 // If the command output fields are specified, the Field output can help manage
