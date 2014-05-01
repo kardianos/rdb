@@ -7,6 +7,8 @@ type Driver interface {
 
 type Database interface {
 	Close() error
+	Ping() error
+	ConnectionInfo() (*ConnectionInfo, error)
 	Query(cmd *Command, vv ...Value) (Result, error)
 	Transaction(iso IsolationLevel) (Transaction, error)
 }

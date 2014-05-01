@@ -42,7 +42,6 @@ func TestNumber(t *testing.T) {
 			rdb.Param{N: "fl64", T: rdb.TypeFloat64, V: float64(89.1011)},
 		},
 	}
-	_ = big.Int{}
 
 	db := rdb.OpenMust(config)
 	defer db.Close()
