@@ -1,6 +1,7 @@
 package rdb
 
 import (
+	"bitbucket.org/kardianos/rdb/semver"
 	"net/url"
 	"strconv"
 	"strings"
@@ -92,6 +93,6 @@ type DriverMeta struct {
 	DriverSupport
 }
 
-func DriverMetaInfo(driverName string) *DriverMeta {
-	return nil
+type ConnectionInfo struct {
+	Server, Protocol *semver.Version
 }

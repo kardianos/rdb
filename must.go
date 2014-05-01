@@ -39,6 +39,20 @@ func (must DatabaseMust) Close() {
 	}
 }
 
+func (must DatabaseMust) Ping() {
+	err := must.db.Ping()
+	if err != nil {
+		panic(MustError{Err: err})
+	}
+}
+func (must DatabaseMust) ConnectionInfo() *ConnectionInfo {
+	ci, err := must.db.ConnectionInfo()
+	if err != nil {
+		panic(MustError{Err: err})
+	}
+	return ci
+}
+
 // Input parameter values can either be specified in the paremeter definition
 // or on each query. If the value is not put in the parameter definition
 // then the command instance may be reused for every query.
