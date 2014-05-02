@@ -19,6 +19,11 @@ type Transaction interface {
 	Rollback() error
 }
 
+type Get struct {
+	Null bool
+	V    interface{}
+}
+
 type Result interface {
 	Close() error
 
@@ -42,8 +47,8 @@ type Result interface {
 	Scan() (eof bool, err error)
 
 	// Use with ScanBuffer().
-	Get(name string) (interface{}, error)
+	Get(name string) (Get, error)
 
 	// Use with ScanBuffer().
-	Getx(index int) (interface{}, error)
+	Getx(index int) (Get, error)
 }

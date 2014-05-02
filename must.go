@@ -144,7 +144,7 @@ func (must ResultMust) PrepAll(values ...interface{}) ResultMust {
 
 // Use after Scan(). Can only pull fields which have not already been sent
 // into a prepared value.
-func (must ResultMust) Get(name string) interface{} {
+func (must ResultMust) Get(name string) Get {
 	value, err := must.res.Get(name)
 	if err != nil {
 		panic(MustError{Err: err})
@@ -154,7 +154,7 @@ func (must ResultMust) Get(name string) interface{} {
 
 // Use after Scan(). Can only pull fields which have not already been sent
 // into a prepared value.
-func (must ResultMust) Getx(index int) interface{} {
+func (must ResultMust) Getx(index int) Get {
 	value, err := must.res.Getx(index)
 	if err != nil {
 		panic(MustError{Err: err})
