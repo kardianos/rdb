@@ -5,10 +5,11 @@
 package rdb
 
 import (
-	"bitbucket.org/kardianos/rdb/semver"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"bitbucket.org/kardianos/rdb/semver"
 )
 
 // Database configuration.

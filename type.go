@@ -63,11 +63,11 @@ const (
 	TypeDecimal // Exact number with specified scale and precision.
 	TypeMoney
 
-	TypeTime         // Contains time, date, and time zone.
-	TypeDuration     // Contains a span of time.
-	TypeOnlyTime     // Only contains time of day.
-	TypeOnlyDate     // Only contains a date.
-	TypeOnlyDateTime // Only contains a date and time, no time zone.
+	TypeTDZ      // Contains time, date, and time zone.
+	TypeDuration // Contains a span of time.
+	TypeTime     // Only contains time of day.
+	TypeDate     // Only contains a date.
+	TypeTD       // Only contains a time and, no time zone.
 
 	TypeUUID // Also uniqueidentifier or GUID.
 

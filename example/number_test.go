@@ -5,11 +5,12 @@
 package example
 
 import (
-	"bitbucket.org/kardianos/rdb"
-	_ "bitbucket.org/kardianos/tds"
 	"math/big"
 	"reflect"
 	"testing"
+
+	"bitbucket.org/kardianos/rdb"
+	_ "bitbucket.org/kardianos/tds"
 )
 
 func TestNumber(t *testing.T) {
