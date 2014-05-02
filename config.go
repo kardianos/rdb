@@ -1,3 +1,7 @@
+// Copyright 2014 Daniel Theophanes.
+// Use of this source code is governed by a zlib-style
+// license that can be found in the LICENSE file.
+
 package rdb
 
 import (
@@ -7,6 +11,9 @@ import (
 	"strings"
 )
 
+// Database configuration.
+// Drivers may have additional properties held in KV.
+// If a driver is file based, the file name should be in the "Instance" field.
 type Config struct {
 	DriverName string
 
@@ -25,6 +32,7 @@ type Config struct {
 //   driver://[username:password@][url[:port]]/[Instance]?db=mydatabase&opt1=valA&opt2=valB
 //   sqlite:///C:/folder/file.sqlite3?opt1=valA&opt2=valB
 //   sqlite:///srv/folder/file.sqlite3?opt1=valA&opt2=valB
+// This will attempt to find the driver to load additional parameters.
 func ParseConfig(connectionString string) (*Config, error) {
 	u, err := url.Parse(connectionString)
 	if err != nil {
@@ -57,10 +65,7 @@ func ParseConfig(connectionString string) (*Config, error) {
 	if len(u.Path) > 0 {
 		instance = u.Path[1:]
 	}
-
-	// TODO: Now attempt to call specific driver and parse Key-Value options.
-
-	return &Config{
+	conf := &Config{
 		DriverName: u.Scheme,
 		Username:   user,
 		Password:   pass,
@@ -68,7 +73,16 @@ func ParseConfig(connectionString string) (*Config, error) {
 		Port:       port,
 		Instance:   instance,
 		Database:   db,
-	}, nil
+	}
+
+	// Now attempt to call specific driver and parse Key-Value options.
+	dr, err := getDriver(conf.DriverName)
+	if err != nil {
+		return conf, err
+	}
+	dr.ParseOptions(conf.KV, val)
+
+	return conf, nil
 }
 
 type DriverOption struct {

@@ -1,3 +1,7 @@
+// Copyright 2014 Daniel Theophanes.
+// Use of this source code is governed by a zlib-style
+// license that can be found in the LICENSE file.
+
 package example
 
 import (
@@ -20,9 +24,12 @@ func TestSimpleQuery(t *testing.T) {
 
 	cmd := &rdb.Command{
 		Sql: `
-			select cast('fox' as varchar(7)) as dock, box = cast(@animal as nvarchar(max));
+			select
+				cast('fox' as varchar(7)) as dock,
+				box = cast(@animal as nvarchar(max))
+			;
 		`,
-		Arity: rdb.OneOnly,
+		Arity: rdb.OneMust,
 		Input: []rdb.Param{
 			rdb.Param{
 				N: "animal",
@@ -43,7 +50,7 @@ func TestSimpleQuery(t *testing.T) {
 	res.PrepAll(&dock)
 	res.Scan()
 	// The other values in the row are buffered until the next call to Scan().
-	box := string(res.Get("box").V.([]byte))
+	box := string(res.Get("box").([]byte))
 
 	_ = box
 

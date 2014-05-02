@@ -1,3 +1,7 @@
+// Copyright 2014 Daniel Theophanes.
+// Use of this source code is governed by a zlib-style
+// license that can be found in the LICENSE file.
+
 package rdb
 
 import (
@@ -66,7 +70,9 @@ func TestConfig(t *testing.T) {
 	for url, confExpect := range configTestPass {
 		conf, err := ParseConfig(url)
 		if err != nil {
-			t.Errorf("Invalid connection string: %v", err)
+			if _, is := err.(DriverNotFound); !is {
+				t.Errorf("Invalid connection string: %v", err)
+			}
 		}
 		if reflect.DeepEqual(confExpect, conf) == false {
 			t.Errorf("Not as expected:\nurl: %s\ngot: %#v", url, conf)

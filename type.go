@@ -1,3 +1,7 @@
+// Copyright 2014 Daniel Theophanes.
+// Use of this source code is governed by a zlib-style
+// license that can be found in the LICENSE file.
+
 package rdb
 
 const (
@@ -13,9 +17,6 @@ type SqlType uint32
 // Returns true if this is a driver specific type.
 func (t SqlType) Driver() bool {
 	return t >= TypeDriverThresh
-}
-func (t SqlType) String() string {
-	return ""
 }
 
 // Sql Type constants are not represented in all database systems.

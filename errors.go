@@ -1,3 +1,7 @@
+// Copyright 2014 Daniel Theophanes.
+// Use of this source code is governed by a zlib-style
+// license that can be found in the LICENSE file.
+
 package rdb
 
 import (
@@ -5,6 +9,7 @@ import (
 	"fmt"
 )
 
+// Used when a column lookup fails, either with a name or index.
 type ErrorColumnNotFound struct {
 	At    string
 	Name  string
@@ -27,6 +32,7 @@ func (err MustError) Error() string {
 	return err.Err.Error()
 }
 
+// List of SQL errors returned by the server.
 type SqlErrors []*SqlError
 
 func (errs SqlErrors) Error() string {
@@ -43,6 +49,9 @@ func (errs SqlErrors) Error() string {
 	return bb.String()
 }
 
+// SQL errors reported by the server.
+// Must always be wrapped by SqlErrors.
+// This is why it doesn't satisfy the error interface.
 type SqlError struct {
 	Message    string
 	ServerName string
@@ -52,6 +61,15 @@ type SqlError struct {
 	Number     int32
 }
 
-func (err *SqlError) Error() string {
+func (err *SqlError) String() string {
 	return fmt.Sprintf("(%s %s: %d) L%d: %s)", err.ServerName, err.ProcName, err.Number, err.LineNumber, err.Message)
+}
+
+// Exposed to help isolate error paths when starting a client.
+type DriverNotFound struct {
+	name string
+}
+
+func (dr DriverNotFound) Error() string {
+	return fmt.Sprintf("Driver name not found: %s", dr.name)
 }

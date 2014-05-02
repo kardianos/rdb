@@ -1,3 +1,7 @@
+// Copyright 2014 Daniel Theophanes.
+// Use of this source code is governed by a zlib-style
+// license that can be found in the LICENSE file.
+
 package example
 
 import (
@@ -44,7 +48,7 @@ func TestDateTime(t *testing.T) {
 				dt2 = @dt2,
 				dto = @dto
 		`,
-		Arity: rdb.OneOnly,
+		Arity: rdb.OneMust,
 		Input: []rdb.Param{
 			rdb.Param{N: "dt", T: tds.TypeOldOnlyDateTime, V: dt},
 			rdb.Param{N: "d", T: rdb.TypeOnlyDate, V: d},
@@ -69,7 +73,7 @@ func TestDateTime(t *testing.T) {
 
 	res.Scan()
 
-	dto = res.Get("dto").V.(time.Time)
+	dto = res.Get("dto").(time.Time)
 
 	dt = dt.Round(truncTo)
 
@@ -77,11 +81,11 @@ func TestDateTime(t *testing.T) {
 	t.Logf("DT2: %v", dt2)
 	t.Logf("DTO: %v", dto)
 
-	t.Logf("DTV: %v", res.Get("dtV").V.(time.Time))
-	t.Logf("DTS: %s", res.Get("dtS").V.([]byte))
-	t.Logf("DT2V: %v", res.Get("dt2V").V.(time.Time))
-	t.Logf("DT2S: %s", res.Get("dt2S").V.([]byte))
-	t.Logf("dtoS: %s", res.Get("dtoS").V.([]byte))
+	t.Logf("DTV: %v", res.Get("dtV").(time.Time))
+	t.Logf("DTS: %s", res.Get("dtS").([]byte))
+	t.Logf("DT2V: %v", res.Get("dt2V").(time.Time))
+	t.Logf("DT2S: %s", res.Get("dt2S").([]byte))
+	t.Logf("dtoS: %s", res.Get("dtoS").([]byte))
 
 	compare := []interface{}{dt, d, tm, dt2, dto}
 

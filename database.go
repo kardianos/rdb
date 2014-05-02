@@ -1,3 +1,7 @@
+// Copyright 2014 Daniel Theophanes.
+// Use of this source code is governed by a zlib-style
+// license that can be found in the LICENSE file.
+
 package rdb
 
 import (
@@ -16,10 +20,18 @@ func Register(name string, dr Driver) {
 	drivers[name] = dr
 }
 
-func Open(config *Config) (Database, error) {
-	dr, found := drivers[config.DriverName]
+func getDriver(name string) (Driver, error) {
+	dr, found := drivers[name]
 	if !found {
-		return nil, fmt.Errorf("Driver name not found: %s", config.DriverName)
+		return nil, DriverNotFound{name: name}
+	}
+	return dr, nil
+}
+
+func Open(config *Config) (Database, error) {
+	dr, err := getDriver(config.DriverName)
+	if err != nil {
+		return nil, err
 	}
 	return dr.Open(config)
 }
