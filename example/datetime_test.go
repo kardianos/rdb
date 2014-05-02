@@ -5,11 +5,12 @@
 package example
 
 import (
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/tds"
 	"reflect"
 	"testing"
 	"time"
+
+	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/tds"
 )
 
 func TestDateTime(t *testing.T) {
@@ -50,13 +51,13 @@ func TestDateTime(t *testing.T) {
 		`,
 		Arity: rdb.OneMust,
 		Input: []rdb.Param{
-			rdb.Param{N: "dt", T: tds.TypeOldOnlyDateTime, V: dt},
-			rdb.Param{N: "d", T: rdb.TypeOnlyDate, V: d},
-			rdb.Param{N: "t", T: rdb.TypeOnlyTime, V: tm},
-			rdb.Param{N: "dt2", T: rdb.TypeOnlyDateTime, V: dt2},
-			rdb.Param{N: "dto", T: rdb.TypeTime, V: dto},
-			rdb.Param{N: "dtS", T: tds.TypeOldOnlyDateTime, V: dtS},
-			rdb.Param{N: "dt2S", T: rdb.TypeOnlyDateTime, V: dtS},
+			rdb.Param{N: "dt", T: tds.TypeOldTD, V: dt},
+			rdb.Param{N: "d", T: rdb.TypeDate, V: d},
+			rdb.Param{N: "t", T: rdb.TypeTime, V: tm},
+			rdb.Param{N: "dt2", T: rdb.TypeTD, V: dt2},
+			rdb.Param{N: "dto", T: rdb.TypeTDZ, V: dto},
+			rdb.Param{N: "dtS", T: tds.TypeOldTD, V: dtS},
+			rdb.Param{N: "dt2S", T: rdb.TypeTD, V: dtS},
 		},
 	}
 

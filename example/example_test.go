@@ -5,9 +5,10 @@
 package example
 
 import (
+	"testing"
+
 	"bitbucket.org/kardianos/rdb"
 	_ "bitbucket.org/kardianos/tds"
-	"testing"
 )
 
 func TestSimpleQuery(t *testing.T) {
