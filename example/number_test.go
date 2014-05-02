@@ -1,3 +1,7 @@
+// Copyright 2014 Daniel Theophanes.
+// Use of this source code is governed by a zlib-style
+// license that can be found in the LICENSE file.
+
 package example
 
 import (
@@ -30,7 +34,7 @@ func TestNumber(t *testing.T) {
 				fl32 = @fl32,
 				fl64 = @fl64
 		`,
-		Arity: rdb.OneOnly,
+		Arity: rdb.OneMust,
 		Input: []rdb.Param{
 			rdb.Param{N: "bt", T: rdb.TypeBool, V: true},
 			rdb.Param{N: "bf", T: rdb.TypeBool, V: false},

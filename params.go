@@ -1,11 +1,20 @@
+// Copyright 2014 Daniel Theophanes.
+// Use of this source code is governed by a zlib-style
+// license that can be found in the LICENSE file.
+
 package rdb
 
 // If the N (Name) field is not specified is not specified, then the order
 // of the parameter should be used if the driver supports it.
 type Param struct {
-	N string  // Optional Parameter Name.
-	T SqlType // Parameter Type.
-	L int     // Paremeter Length.
+	N string // Optional Parameter Name.
+
+	// Parameter Type. Drivers may be able to infer this type.
+	// Check the driver documentation used for more information.
+	T SqlType
+
+	// Paremeter Length. Useful for variable length types that may check truncation.
+	L int
 
 	// Value for input parameter.
 	// If the value is an io.Reader it will read the value directly to the wire.
@@ -13,6 +22,7 @@ type Param struct {
 	// that interface.
 	V interface{}
 
+	// The following fields may go away.
 	Null      bool
 	Scale     int
 	Precision int
@@ -29,24 +39,29 @@ type Value struct {
 	// If the value is an io.Reader it will read the value directly to the wire.
 	V interface{}
 
+	// Param is typically only set by the driver.
+	// Users should set the name parameter or just rely on the Value index.
 	Param *Param
 }
 
+// Information about the column as reported by the database.
 type SqlColumn struct {
-	Name      string
-	Index     int
-	SqlType   SqlType
-	Length    uint32
-	Unlimit   bool // Provides near unlimited length.
-	Nullable  bool
-	Precision byte
-	Scale     byte
+	Name      string  // Columnn name.
+	Index     int     // Column zero based index as appearing in result.
+	SqlType   SqlType // The data type as reported from the driver.
+	Length    int     // The length of the column as it makes sense per type.
+	Unlimit   bool    // Provides near unlimited length.
+	Nullable  bool    // True if the column type can be null.
+	Precision int     // For decimal types, the precision.
+	Scale     int     // For types with scale, including decimal.
 }
 
 // If the command output fields are specified, the Field output can help manage
 // how the result rows are copied to.
 type Field struct {
-	N         string // Optional Field Name.
+	N string // Optional Field Name.
+
+	// Value to report if the driver reports a null value.
 	NullValue interface{}
 }
 
@@ -66,11 +81,18 @@ type Arity byte
 
 // The number of rows to expect from a command.
 const (
-	Many Arity = iota
-	One
-	Zero
-	OneOnly
-	ZeroOnly
+	Any Arity = iota
+
+	One  // Close the result after one row.
+	Zero // Close the result after the query executes.
+
+	// Close the result after one row,
+	// return an error if more or less then one row is returned.
+	OneMust
+
+	// Close the result after the query executes,
+	// return an error if any rows are returned.
+	ZeroMust
 )
 
 // Command represents a SQL command and can be used from many different
