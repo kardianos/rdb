@@ -1,6 +1,7 @@
 package rdb
 
 import (
+	"bytes"
 	"fmt"
 )
 
@@ -24,4 +25,33 @@ type MustError struct {
 
 func (err MustError) Error() string {
 	return err.Err.Error()
+}
+
+type SqlErrors []*SqlError
+
+func (errs SqlErrors) Error() string {
+	bb := &bytes.Buffer{}
+	if errs == nil {
+		return ""
+	}
+	for i, err := range errs {
+		if i != 0 {
+			bb.WriteString("\n")
+		}
+		bb.WriteString(fmt.Sprintf("%v", err))
+	}
+	return bb.String()
+}
+
+type SqlError struct {
+	Message    string
+	ServerName string
+	ProcName   string
+	LineNumber int32
+	SqlState   string
+	Number     int32
+}
+
+func (err *SqlError) Error() string {
+	return fmt.Sprintf("(%s %s: %d) L%d: %s)", err.ServerName, err.ProcName, err.Number, err.LineNumber, err.Message)
 }

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestExample(t *testing.T) {
+func TestSimpleQuery(t *testing.T) {
 	defer func() {
 		if re := recover(); re != nil {
 			if localError, is := re.(rdb.MustError); is {
@@ -34,13 +34,17 @@ func TestExample(t *testing.T) {
 	db := rdb.OpenMust(config)
 	defer db.Close()
 
-	var dock, box string
+	var dock string
 
 	res := db.Query(cmd, rdb.Value{V: "Fish"})
 	defer res.Close()
 
-	res.PrepAll(&dock, &box)
+	// Prep all or some of the values.
+	res.PrepAll(&dock)
 	res.Scan()
+	// The other values in the row are buffered until the next call to Scan().
+	box := string(res.Get("box").V.([]byte))
 
-	t.Logf("Dock: %s, Box: %s", dock, box)
+	_ = box
+
 }

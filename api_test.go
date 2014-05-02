@@ -40,7 +40,7 @@ func TestApi(t *testing.T) {
 
 		// Convert: GoString -> nvarchar Length=300
 		Input: []Param{
-			Param{N: "foo", T: TypeString, V: foo},
+			Param{N: "foo", T: TypeInt32, V: foo},
 			// input type is a go string, Length=10 (nvarchar mapping from command convert mapping).
 		},
 	}
@@ -59,8 +59,8 @@ func TestApi(t *testing.T) {
 			break
 		}
 
-		bar := res2.Get("bar").(string)
-		box := res2.Get("box").(string)
+		bar := res2.Get("bar").V.([]byte)
+		box := res2.Get("box").V.([]byte)
 
 		_, _ = bar, box
 	}
