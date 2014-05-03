@@ -52,6 +52,8 @@ type SqlColumn struct {
 	Length    int     // The length of the column as it makes sense per type.
 	Unlimit   bool    // Provides near unlimited length.
 	Nullable  bool    // True if the column type can be null.
+	Key       bool    // True if the column is part of the key.
+	Serial    bool    // True if the column is auto-incrementing.
 	Precision int     // For decimal types, the precision.
 	Scale     int     // For types with scale, including decimal.
 }
@@ -81,18 +83,20 @@ type Arity byte
 
 // The number of rows to expect from a command.
 const (
-	Any Arity = iota
+	Any Arity = 0
 
-	One  // Close the result after one row.
-	Zero // Close the result after the query executes.
+	ArityMust Arity = 16
 
-	// Close the result after one row,
-	// return an error if more or less then one row is returned.
-	OneMust
+	Zero Arity = 1 // Close the result after the query executes.
+	One  Arity = 2 // Close the result after one row.
 
 	// Close the result after the query executes,
 	// return an error if any rows are returned.
-	ZeroMust
+	ZeroMust Arity = Zero | ArityMust
+
+	// Close the result after one row,
+	// return an error if more or less then one row is returned.
+	OneMust Arity = One | ArityMust
 )
 
 // Command represents a SQL command and can be used from many different

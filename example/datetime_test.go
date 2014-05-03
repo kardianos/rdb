@@ -23,7 +23,7 @@ func TestDateTime(t *testing.T) {
 			panic(re)
 		}
 	}()
-	config := rdb.ParseConfigMust("tds://TESTU@localhost/SqlExpress?db=master")
+	config := rdb.ParseConfigMust(testConnectionString)
 
 	// Truncate as the round trip for DateTimeN is slightly lossy.
 	truncTo := 200 * time.Millisecond

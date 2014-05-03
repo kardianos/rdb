@@ -68,6 +68,7 @@ type Nullable struct {
 // The result must automaticly Close() if the command Arity is Zero after
 // execution or after the first Scan() if Arity is One.
 type Result interface {
+	// Results should automatically close when all rows have been read.
 	Close() error
 
 	// Fetch the table schema.
@@ -88,6 +89,7 @@ type Result interface {
 	// Scans the row into a buffer that can be fetched with Get and scans
 	// directly into any prepared values.
 	// Return value "more" is false if no more rows.
+	// Results should automatically close when all rows have been read.
 	Scan() (more bool, err error)
 
 	// Use after Scan(). Can only pull fields which have not already been sent

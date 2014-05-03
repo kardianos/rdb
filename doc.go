@@ -74,9 +74,20 @@ Usage Example:
 	import (
 		"bitbucket.org/kardianos/rdb"
 		_ "bitbucket.org/kardianos/tds"
+
+		"fmt"
 	)
 
-	func SimpleQuery() (ferr error) {
+	const testConnectionString = "tds://TESTU@localhost/SqlExpress?db=master"
+
+	func TestSimpleQuery() {
+		err := QueryTest()
+		if err != nil {
+			t.Error(err)
+		}
+	}
+
+	func QueryTest() (ferr error) {
 		defer func() {
 			if re := recover(); re != nil {
 				if localError, is := re.(rdb.MustError); is {
@@ -86,16 +97,72 @@ Usage Example:
 				panic(re)
 			}
 		}()
-		config := rdb.ParseConfigMust("tds://TESTU@localhost/SqlExpress?db=master")
+		config := rdb.ParseConfigMust(testConnectionString)
 
+		db := rdb.OpenMust(config)
+		defer db.Close()
+
+		SimpleQuery(db)
+		RowsQuery(db)
+		LargerQuery(db)
+		return nil
+	}
+
+	func SimpleQuery(db rdb.DatabaseMust) {
+		var myFav string
+		db.Query(&rdb.Command{
+			Sql: `
+				select @animal as 'MyAnimal';`,
+			Arity: rdb.OneMust,
+			Input: []rdb.Param{
+				rdb.Param{
+					N: "animal",
+					T: rdb.TypeString,
+					L: 8,
+					V: "DogIsFriend",
+				},
+			},
+			TruncLongText: true,
+		}).Prep("MyAnimal", &myFav).Scan()
+	}
+	func RowsQuery(db rdb.DatabaseMust) {
+		var myFav string
+		res := db.Query(&rdb.Command{
+			Sql: `
+				select @animal as 'MyAnimal'
+				union all
+				select N'Hello again!'
+			;`,
+			Arity: rdb.Any,
+			Input: []rdb.Param{
+				rdb.Param{
+					N: "animal",
+					T: rdb.TypeString,
+					V: "Dreaming boats.",
+				},
+			},
+			TruncLongText: true,
+		})
+		defer res.Close()
+		for {
+			res.Prep("MyAnimal", &myFav)
+			if !res.Scan() {
+				break
+			}
+			fmt.Printf("Animal: %s\n", myFav)
+		}
+	}
+	func LargerQuery(db rdb.DatabaseMust) {
 		cmd := &rdb.Command{
 			Sql: `
 				select
+					432 as ID,
+					987.654 as Val,
 					cast('fox' as varchar(7)) as dock,
 					box = cast(@animal as nvarchar(max))
 				;
-			`,
-			Arity: rdb.OneOnly,
+				`,
+			Arity: rdb.OneMust,
 			Input: []rdb.Param{
 				rdb.Param{
 					N: "animal",
@@ -104,24 +171,23 @@ Usage Example:
 			},
 		}
 
-		db := rdb.OpenMust(config)
-		defer db.Close()
-
 		var dock string
+		var id int
+		var val float64
 
 		res := db.Query(cmd, rdb.Value{V: "Fish"})
 		defer res.Close()
 
-		// Prep all or some of the values.
-		// Can also prep by name:
-		// res.Prep("dock", &dock)
-		res.PrepAll(&dock)
+		res.PrepAll(&id, &val, &dock)
 
 		res.Scan()
 
 		// The other values in the row are buffered until the next call to Scan().
 		box := string(res.Get("box").([]byte))
 		_ = box
+		fmt.Printf("ID: %d\n", id)
+		fmt.Printf("Val: %f\n", val)
 	}
+
 */
 package rdb
