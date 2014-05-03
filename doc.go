@@ -16,7 +16,7 @@ Features:
 		(Done) Column Names
 		(TODO) Mapped data types
 		(Done) Driver data types
-		(TODO) Column attributes (nullable, length, precision)
+		(Done) Column attributes (nullable, length, precision)
 	(TODO) Bulk Insert
 	(TODO) Handle cases where idle DB connection is reset and must be reconneted to.
 		(TODO) Automatically re-preparing any prepared statements.
