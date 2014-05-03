@@ -23,7 +23,7 @@ func TestNumber(t *testing.T) {
 			panic(re)
 		}
 	}()
-	config := rdb.ParseConfigMust("tds://TESTU@localhost/SqlExpress?db=master")
+	config := rdb.ParseConfigMust(testConnectionString)
 
 	cmd := &rdb.Command{
 		Sql: `
