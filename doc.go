@@ -43,11 +43,10 @@ Features:
 	(TODO) Should be able to set default for data type outputs.
 	(TODO) Custom marshal hooks.
 
-	TODO: Complete before release.
+	TODO:
 		hook up custom field output converters:
 			AddOutputConvert(fieldType rdb.SqlType, func(SqlColumn, interface{}) (interface{}, error))
 			Add convert callback to Field members
-			tds: Hook up above.
 		hook up Custom types for input parameters:
 			AddInputConvert(func(in interface{}) (handled bool, tp SqlType, out interface{})
 */
@@ -68,6 +67,9 @@ Some drivers will support io.Writer for some data types.
 If a value is not prep'ed, the value will be stored in a row buffer until
 the next Result.Scan(). Until then, they may be accessed with
 Result.{Get, Getx, GetN, GetxN}
+
+The API is not yet final.
+
 */
 /*
 Usage Example:
