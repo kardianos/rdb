@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
-	_ "bitbucket.org/kardianos/tds"
+	_ "bitbucket.org/kardianos/rdb/ms"
 )
 
-const testConnectionString = "tds://TESTU@localhost/SqlExpress?db=master"
+const testConnectionString = "ms://TESTU@localhost/SqlExpress?db=master"
 
 func TestSimpleQuery(t *testing.T) {
 	err := QueryTest(t)

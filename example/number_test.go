@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
-	_ "bitbucket.org/kardianos/tds"
+	_ "bitbucket.org/kardianos/rdb/ms"
 )
 
 func TestNumber(t *testing.T) {

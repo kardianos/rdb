@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/tds"
+	"bitbucket.org/kardianos/rdb/ms"
 )
 
 func TestDateTime(t *testing.T) {
@@ -51,12 +51,12 @@ func TestDateTime(t *testing.T) {
 		`,
 		Arity: rdb.OneMust,
 		Input: []rdb.Param{
-			rdb.Param{N: "dt", T: tds.TypeOldTD, V: dt},
+			rdb.Param{N: "dt", T: ms.TypeOldTD, V: dt},
 			rdb.Param{N: "d", T: rdb.TypeDate, V: d},
 			rdb.Param{N: "t", T: rdb.TypeTime, V: tm},
 			rdb.Param{N: "dt2", T: rdb.TypeTD, V: dt2},
 			rdb.Param{N: "dto", T: rdb.TypeTDZ, V: dto},
-			rdb.Param{N: "dtS", T: tds.TypeOldTD, V: dtS},
+			rdb.Param{N: "dtS", T: ms.TypeOldTD, V: dtS},
 			rdb.Param{N: "dt2S", T: rdb.TypeTD, V: dtS},
 		},
 	}
