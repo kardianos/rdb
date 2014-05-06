@@ -1,0 +1,390 @@
+// Copyright 2014 Daniel Theophanes.
+// Use of this source code is governed by a zlib-style
+// license that can be found in the LICENSE file.
+
+package ms
+
+import (
+	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/ms/uconv"
+	"encoding/binary"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"time"
+)
+
+const (
+	preloginVersion    = 0x00
+	preloginEncryption = 0x01
+	preloginInstance   = 0x02
+	preloginMars       = 0x04
+	preloginTerminator = 0xff
+)
+
+const (
+	tokenLoginAck = 0xAD
+	tokenError    = 0xAA
+	tokenDone     = 0xFD
+
+	tokenReturnStatus   = 0x79
+	tokenDoneProc       = 0xFE
+	tokenDoneInProc     = 0xFF
+	tokenColumnMetaData = 0x81
+	tokenRow            = 0xD1
+)
+
+// Document the highest version this driver can handle.
+const protoVersionMax = version73A
+
+// Pre-Login
+func (tds *PacketWriter) PreLogin(instance string) error {
+	var err error
+	type option struct {
+		t byte
+		d []byte
+	}
+
+	opts := make([]option, 0)
+
+	addToken := func(tokenType byte, data []byte) {
+		opts = append(opts, option{
+			t: tokenType,
+			d: data,
+		})
+	}
+
+	version := make([]byte, 6)
+	binary.BigEndian.PutUint32(version, protoVersionMax)
+
+	addToken(preloginVersion, version)
+	addToken(preloginMars, []byte{0x00})       // MARS OFF (0x01 is ON).
+	addToken(preloginEncryption, []byte{0x02}) // Encription not available. Pg 65.
+	addToken(preloginInstance, uconv.Encode.FromString(instance))
+
+	tds.BeginMessage(packetPreLogin)
+
+	tokenListLen := uint16((5 * len(opts)) + 1)
+	payload := make([]byte, 0, 20)
+
+	token := make([]byte, 5)
+	for _, option := range opts {
+		token[0] = option.t                                                      // Type.
+		binary.BigEndian.PutUint16(token[1:], tokenListLen+uint16(len(payload))) // Offset.
+		binary.BigEndian.PutUint16(token[3:], uint16(len(option.d)))             // Length.
+		payload = append(payload, option.d...)
+		_, err = tds.Write(token)
+		if err != nil {
+			return err
+		}
+	}
+	_, err = tds.Write([]byte{0xff})
+	if err != nil {
+		return err
+	}
+
+	_, err = tds.Write(payload)
+	if err != nil {
+		return err
+	}
+
+	err = tds.EndMessage()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Rturned from Pre-Login.
+type ServerConnection struct {
+	Version    [6]byte
+	Encryption byte
+	Instance   string
+	MARS       bool
+}
+
+// Returned from Login.
+type ServerInfo struct {
+	AcceptTSql  bool
+	TdsVersion  [4]byte
+	ProgramName string
+
+	MajorVersion byte
+	MinorVersion byte
+	BuildNumber  uint16
+}
+
+func (si *ServerInfo) String() string {
+	return fmt.Sprintf("%s %d.%d.%d", si.ProgramName, si.MajorVersion, si.MinorVersion, si.BuildNumber)
+}
+
+func (tds *PacketReader) Prelogin() (*ServerConnection, error) {
+	read := tds.BeginMessage(packetTabularResult)
+
+	bb, err := read.Next()
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	defer read.Close()
+
+	type option struct {
+		t      byte
+		offset uint16
+		length uint16
+		d      []byte
+	}
+	var ops = make([]*option, 0, 2)
+
+	at := 0
+
+	for {
+		if at >= len(bb) {
+			break
+		}
+		t := bb[at]
+		if t == preloginTerminator {
+			break
+		}
+		if at+4 >= len(bb) {
+			break
+		}
+		ops = append(ops, &option{
+			t:      bb[at],
+			offset: binary.BigEndian.Uint16(bb[at+1:]),
+			length: binary.BigEndian.Uint16(bb[at+3:]),
+		})
+		at += 5
+	}
+	si := &ServerConnection{}
+	for _, o := range ops {
+		o.d = make([]byte, o.length)
+		copy(o.d, bb[o.offset:])
+		switch o.t {
+		case 0x00:
+			copy(si.Version[:], o.d[:6])
+		case 0x01:
+			si.Encryption = o.d[0]
+		case 0x02:
+			si.Instance = uconv.Decode.ToString(o.d)
+		case 0x03:
+			// Thread ID.
+		case 0x04:
+			if o.d[0] != 0 {
+				si.MARS = true
+			}
+		default:
+			// Ignore.
+		}
+	}
+
+	return si, nil
+}
+
+// Write LOGIN7. Page 53.
+func (tds *PacketWriter) Login(config *rdb.Config) error {
+	var err error
+	/*
+		Versions:
+		Length uint32
+		TDSVersion uint32
+		PacketSize uint32
+		ClientProgVer uint32
+		ClientPID uint32
+		ConnectionID uint32
+
+		OptionFlags1 byte
+		OptionFlags2 byte
+		TypeFlags byte
+		(FRESERVEDBYTE / OptionFlags3) byte
+		ClientTimZone int32
+		ClientLCID [4]byte
+		OffsetLength
+		Data
+		[FeatureExt]
+
+		OffsetLength is a list of [{MessageOffset, ValueLength uint16}] with a few exceptions.
+			0 HostName
+			1 UserName
+			2 Password
+			3 AppName
+			4 ServerName
+			5 Unused
+			6 Extension
+			7 CltIntName - Interface Library Name
+			8 Language
+			9 Database
+			10 ClientID : [6]byte
+			11 SSPI
+			12 AtchDBFile
+			13 ChangePassword
+			14 SSPILong : uint32, will replace SSPI Length if SSPI == 0xffff.
+	*/
+
+	SSPI := []byte{}
+	ClientID := [6]byte{}
+
+	iface, err := net.Interfaces()
+	if err != nil && len(iface) > 0 {
+		copy(ClientID[:], []byte(iface[0].HardwareAddr))
+	}
+
+	partALen := 9 * 4        // Message length up to OffsetLength section.
+	partBLen := 12*4 + 4 + 6 // OffsetLength section.
+
+	at := partALen + partBLen
+
+	type token struct {
+		raw    bool
+		offset uint16
+		length uint16
+		data   []byte
+	}
+
+	tt := make([]token, 14)
+
+	writeToken := func(index int, data []byte, str bool) {
+		l := uint16(len(data))
+		if str {
+			l = l / 2
+		}
+		tt[index].offset = uint16(at)
+		tt[index].length = l
+		tt[index].data = data
+		at += len(data)
+	}
+
+	// TODO: Check max lengths, truncate if too long.
+	writeToken(0, uconv.Encode.FromString(config.Hostname), true)
+	writeToken(1, uconv.Encode.FromString(config.Username), true)
+
+	passwordBytes := uconv.Encode.FromString(config.Password)
+	for i, b := range passwordBytes {
+		passwordBytes[i] = ((b << 4) | (b >> 4)) ^ 0xA5
+	}
+	writeToken(2, passwordBytes, true) // The password is obfuscated here.
+
+	writeToken(3, uconv.Encode.FromString(""), true) // AppName - Name of the client application.
+	writeToken(4, uconv.Encode.FromString(config.Instance), true)
+	// 5 - Unused.
+	// 6 - Library Name.
+	// 7 - Language.
+	writeToken(8, uconv.Encode.FromString(config.Database), true)
+
+	tt[9].raw = true
+	tt[9].data = ClientID[:]
+
+	// Make sure SSPI tokens are encoded last.
+	if len(SSPI) > 0 {
+		tt[10].length = 0xffff
+		tt[10].offset = uint16(at)
+		tt[10].data = SSPI
+	}
+	// 11 - Attach DB.
+	// 12 - Change Password.
+
+	tt[13].raw = true
+	tt[13].data = make([]byte, 4)
+	binary.LittleEndian.PutUint32(tt[13].data, uint32(len(SSPI)))
+	at += len(SSPI)
+
+	buf := make([]byte, at)
+
+	binary.LittleEndian.PutUint32(buf[0:], uint32(at))           // Total length.
+	binary.BigEndian.PutUint32(buf[4:], protoVersionMax)         // TDSVersion.
+	binary.LittleEndian.PutUint32(buf[8:], maxPacketSize)        // PacketSize.
+	binary.LittleEndian.PutUint32(buf[12:], 4176642822)          // ClientProgVer.
+	binary.LittleEndian.PutUint32(buf[16:], uint32(os.Getpid())) // ClientPID.
+	binary.LittleEndian.PutUint32(buf[20:], 0)                   // ConnectionID.
+
+	buf[24] = 0 // OptionFlags1.
+	buf[25] = 0 // OptionFlags2.
+	buf[26] = 1 // TypeFlags. Flip first bit to use TSQL.
+	buf[27] = 0 // OptionFlags3.
+
+	_, zone := time.Now().Zone()
+	binary.LittleEndian.PutUint32(buf[28:], uint32(zone/3600)) // ClientTimZone.
+	binary.LittleEndian.PutUint32(buf[32:], 1033)              // ClientLCID - Language code identifier.
+
+	at = partALen
+
+	prevOffset := tt[0].offset
+	for _, t := range tt {
+		if t.raw {
+			copy(buf[at:], t.data)
+			at += len(t.data)
+			continue
+		}
+		if t.offset == 0 {
+			t.offset = prevOffset
+		}
+		binary.LittleEndian.PutUint16(buf[at:], t.offset)
+		at += 2
+		binary.LittleEndian.PutUint16(buf[at:], t.length)
+		at += 2
+		if t.length > 0 {
+			copy(buf[t.offset:], t.data)
+		}
+
+		prevOffset = t.offset
+	}
+
+	tds.BeginMessage(packetTds7Login)
+
+	tds.Write(buf)
+
+	err = tds.EndMessage()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (tds *PacketReader) LoginAck() (*ServerInfo, error) {
+	// Page 95.
+	read := tds.BeginMessage(packetTabularResult)
+
+	bb, err := read.Next()
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	defer read.Close()
+
+	at := 0
+	if bb[at] != tokenLoginAck {
+		return nil, fmt.Errorf("Expected type %X but got %X", tokenLoginAck, bb[at])
+	}
+	at += 1
+
+	si := &ServerInfo{}
+
+	// The little endian uint16 length of the following fields. Ignore.
+	at += 2
+
+	si.AcceptTSql = false
+	if bb[at] == 1 {
+		si.AcceptTSql = true
+	}
+	at += 1
+
+	copy(si.TdsVersion[:], bb[at:])
+	at += 4
+
+	// Byte length prefix string.
+	programNameLen := int(bb[at]) * 2
+	at += 1
+	si.ProgramName = uconv.Decode.ToString(bb[at : at+programNameLen])
+	at += programNameLen
+
+	si.MajorVersion = bb[at]
+	at += 1
+
+	si.MinorVersion = bb[at]
+	at += 1
+
+	si.BuildNumber = binary.BigEndian.Uint16(bb[at:])
+
+	return si, nil
+}
