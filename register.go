@@ -28,7 +28,7 @@ func getDriver(name string) (Driver, error) {
 	return dr, nil
 }
 
-func Open(config *Config) (Database, error) {
+func Open(config *Config) (ConnPool, error) {
 	dr, err := getDriver(config.DriverName)
 	if err != nil {
 		return nil, err

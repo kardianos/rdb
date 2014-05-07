@@ -19,7 +19,7 @@ func init() {
 
 type Driver struct{}
 
-func (dr *Driver) Open(c *rdb.Config) (rdb.Database, error) {
+func (dr *Driver) Open(c *rdb.Config) (rdb.ConnPool, error) {
 
 	return &Database{
 		conf: c,
@@ -157,8 +157,8 @@ func (db *Database) Transaction(iso rdb.IsolationLevel) (rdb.Transaction, error)
 	panic("Transactions Unsupported")
 }
 
-func (db *Database) Must() rdb.DatabaseMust {
-	return rdb.DatabaseMust{NormalDatabase: db}
+func (db *Database) Must() rdb.ConnPoolMust {
+	return rdb.ConnPoolMust{NormalConnPool: db}
 }
 
 func (r *Result) Prep(name string, value interface{}) error {
