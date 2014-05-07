@@ -229,15 +229,13 @@ func (r *Result) GetxN(index int) (rdb.Nullable, error) {
 }
 
 // Fetch the table schema.
-func (res *Result) Schema() (*rdb.Schema, error) {
+func (res *Result) Schema() ([]*rdb.SqlColumn, error) {
 	if res.Columns == nil {
 		return nil, fmt.Errorf("Must call schema after running query.")
 	}
-	sch := &rdb.Schema{
-		Columns: make([]*rdb.SqlColumn, len(res.Columns)),
-	}
+	sch := make([]*rdb.SqlColumn, len(res.Columns))
 	for i, drCol := range res.Columns {
-		sch.Columns[i] = &drCol.SqlColumn
+		sch[i] = &drCol.SqlColumn
 	}
 	return sch, nil
 }

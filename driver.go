@@ -72,7 +72,7 @@ type Result interface {
 	Close() error
 
 	// Fetch the table schema.
-	Schema() (*Schema, error)
+	Schema() ([]*SqlColumn, error)
 
 	// Prepare pointers to values to be populated by name using Prep. After
 	// preparing call Scan().

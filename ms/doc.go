@@ -55,6 +55,8 @@ input parameters:
 
 Transactions are not yet supported.
 
+Out parameters are not yet supported.
+
 Parameter names are not optional. They must be supplied.
 */
 package ms

@@ -17,10 +17,15 @@ type Param struct {
 	L int
 
 	// Value for input parameter.
+	// Do not use if reusing *Command, use Value.V instead.
 	// If the value is an io.Reader it will read the value directly to the wire.
 	// If this satisfies the Filler interface the value will be fetched from
 	// that interface.
 	V interface{}
+
+	// Set to true if the parameter is an output parameter.
+	// If true, the value member should be provided through a pointer.
+	Out bool
 
 	// The following fields may go away.
 	Null      bool
@@ -103,6 +108,7 @@ const (
 // queries at the same time, so long as the input parameter values
 // "Input[N].V (Value)" are not set in the Param struct but passed in with
 // the actual query as Value.
+// The Command MUST be reused if the Prepare field is true.
 type Command struct {
 	// The SQL to be used in the command.
 	Sql string
@@ -122,11 +128,13 @@ type Command struct {
 	// If this is set to false text truncation will result in an error.
 	TruncLongText bool
 
+	// If true the connection will attempt to lookup any cached prepared
+	// identifier. If the cached identifier is not found or if it is found
+	// to be invalid, it is renewed.
+	// When the connection or connection pool is closed any prepared statements
+	// are un-prepared.
+	Prepare bool
+
 	// Optional name of the command. May be used if logging.
 	Name string
-}
-
-// The table schema and properties.
-type Schema struct {
-	Columns []*SqlColumn
 }
