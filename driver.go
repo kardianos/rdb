@@ -12,7 +12,7 @@ import (
 type Driver interface {
 	// Open a database. An actual connection does not need to be established
 	// at this time.
-	Open(c *Config) (Database, error)
+	Open(c *Config) (ConnPool, error)
 
 	// Return information about the database drivers capabilities.
 	// Should not reflect any actual server any connections to it.
@@ -22,7 +22,7 @@ type Driver interface {
 }
 
 // Represents a connection or connection configuration to a database.
-type Database interface {
+type ConnPool interface {
 	Close() error
 
 	// Will attempt to connect to the database and disconnect.
@@ -43,7 +43,7 @@ type Database interface {
 	Transaction(iso IsolationLevel) (Transaction, error)
 
 	// Get the panic'ing version that doesn't return errors.
-	Must() DatabaseMust
+	Must() ConnPoolMust
 }
 
 // The Transaction API is unstable.

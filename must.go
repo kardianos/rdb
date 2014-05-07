@@ -8,8 +8,8 @@ type ResultMust struct {
 	NormalResult Result
 }
 
-type DatabaseMust struct {
-	NormalDatabase Database
+type ConnPoolMust struct {
+	NormalConnPool ConnPool
 }
 
 type TransactionMust struct {
@@ -22,8 +22,8 @@ func (must ResultMust) Normal() Result {
 }
 
 // Get the non-panic'ing version of Database.
-func (must DatabaseMust) Normal() Database {
-	return must.NormalDatabase
+func (must ConnPoolMust) Normal() ConnPool {
+	return must.NormalConnPool
 }
 
 // Get the non-panic'ing version of Transaction.
@@ -41,31 +41,31 @@ func ParseConfigMust(connectionString string) *Config {
 }
 
 // Same as Open() but all errors are returned as a panic(MustError{}).
-func OpenMust(c *Config) DatabaseMust {
+func OpenMust(c *Config) ConnPoolMust {
 	db, err := Open(c)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
-	return DatabaseMust{
-		NormalDatabase: db,
+	return ConnPoolMust{
+		NormalConnPool: db,
 	}
 }
 
-func (must DatabaseMust) Close() {
-	err := must.NormalDatabase.Close()
+func (must ConnPoolMust) Close() {
+	err := must.NormalConnPool.Close()
 	if err != nil {
 		panic(MustError{Err: err})
 	}
 }
 
-func (must DatabaseMust) Ping() {
-	err := must.NormalDatabase.Ping()
+func (must ConnPoolMust) Ping() {
+	err := must.NormalConnPool.Ping()
 	if err != nil {
 		panic(MustError{Err: err})
 	}
 }
-func (must DatabaseMust) ConnectionInfo() *ConnectionInfo {
-	ci, err := must.NormalDatabase.ConnectionInfo()
+func (must ConnPoolMust) ConnectionInfo() *ConnectionInfo {
+	ci, err := must.NormalConnPool.ConnectionInfo()
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -75,8 +75,8 @@ func (must DatabaseMust) ConnectionInfo() *ConnectionInfo {
 // Input parameter values can either be specified in the paremeter definition
 // or on each query. If the value is not put in the parameter definition
 // then the command instance may be reused for every query.
-func (must DatabaseMust) Query(cmd *Command, vv ...Value) ResultMust {
-	res, err := must.NormalDatabase.Query(cmd, vv...)
+func (must ConnPoolMust) Query(cmd *Command, vv ...Value) ResultMust {
+	res, err := must.NormalConnPool.Query(cmd, vv...)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -86,8 +86,8 @@ func (must DatabaseMust) Query(cmd *Command, vv ...Value) ResultMust {
 }
 
 // Same as Query but will panic on an error.
-func (must DatabaseMust) Transaction(iso IsolationLevel) TransactionMust {
-	tran, err := must.NormalDatabase.Transaction(iso)
+func (must ConnPoolMust) Transaction(iso IsolationLevel) TransactionMust {
+	tran, err := must.NormalConnPool.Transaction(iso)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
