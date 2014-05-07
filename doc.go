@@ -7,6 +7,8 @@
 Features:
 	(Done) Named Parameters
 	(Done) Inspect driver support
+	(Done) Support OUT parameters
+	(TODO) Handle drivers with multiple result sets
 	(TODO) Driver callbacks - events
 	(TODO) Manage data type mapping
 		(TODO) Handle custom data types
@@ -43,12 +45,6 @@ Features:
 	(TODO) Should be able to set default for data type outputs.
 	(TODO) Custom marshal hooks.
 
-	TODO:
-		hook up custom field output converters:
-			AddOutputConvert(fieldType rdb.SqlType, func(SqlColumn, interface{}) (interface{}, error))
-			Add convert callback to Field members
-		hook up Custom types for input parameters:
-			AddInputConvert(func(in interface{}) (handled bool, tp SqlType, out interface{})
 */
 /*
 A query is defined through a *Command. If the input values are constant or if

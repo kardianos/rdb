@@ -213,7 +213,7 @@ func (must ResultMust) GetxN(index int) Nullable {
 }
 
 // Fetch the table schema.
-func (must ResultMust) Schema() *Schema {
+func (must ResultMust) Schema() []*SqlColumn {
 	schema, err := must.NormalResult.Schema()
 	if err != nil {
 		panic(MustError{Err: err})

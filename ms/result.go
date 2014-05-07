@@ -270,7 +270,7 @@ func (r *Result) WriteField(c *SqlColumn, f *rdb.Field, value *FieldValue) {
 			errorTypeNotSupported(nil, out, c)
 		}
 	default:
-		panic(fmt.Errorf("Unsupported column type: %s - %v", c.Name, value.Value))
+		panic(recoverError{err: fmt.Errorf("Unsupported column type: %s - %v", c.Name, value.Value)})
 	}
 	return
 }
