@@ -15,7 +15,7 @@ type Valuer interface {
 	Columns(cc []*SqlColumn) error
 	WriteField(c *SqlColumn, value *DriverValue) error
 	SqlMessage(err *SqlMessage)
-	RowScanned() error
+	RowScanned()
 	Done() error
 }
 
@@ -77,7 +77,7 @@ func (v *valuer) SqlMessage(msg *SqlMessage) {
 		v.errors = append(v.errors, msg)
 	}
 }
-func (v *valuer) RowScanned() error {
+func (v *valuer) RowScanned() {
 	v.rowCount += 1
 	for i := range v.prep {
 		v.prep[i] = nil
@@ -94,11 +94,14 @@ func (v *valuer) RowScanned() error {
 			}
 		}
 	*/
-	return nil
+	return
 }
 
 func (v *valuer) Done() error {
 	v.eof = true
+	for i := range v.prep {
+		v.prep[i] = nil
+	}
 	if len(v.errors) != 0 {
 		return v.errors
 	}
