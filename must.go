@@ -83,8 +83,8 @@ func (must ConnPoolMust) Query(cmd *Command, vv ...Value) ResultMust {
 }
 
 // Same as Query but will panic on an error.
-func (must ConnPoolMust) Transaction(iso IsolationLevel) TransactionMust {
-	tran, err := must.norm.Transaction(iso)
+func (must ConnPoolMust) Begin(iso IsolationLevel) TransactionMust {
+	tran, err := must.norm.Begin(iso)
 	if err != nil {
 		panic(MustError{Err: err})
 	}

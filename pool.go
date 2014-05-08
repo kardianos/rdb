@@ -127,7 +127,7 @@ func (cp *ConnPool) Query(cmd *Command, vv ...Value) (*Result, error) {
 }
 
 // API for tranactions are preliminary. Not a stable API call.
-func (cp *ConnPool) Transaction(iso IsolationLevel) (*Transaction, error) {
+func (cp *ConnPool) Begin(iso IsolationLevel) (*Transaction, error) {
 	panic("Not implemented")
 	return nil, nil
 }
