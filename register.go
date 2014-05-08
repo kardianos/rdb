@@ -28,10 +28,13 @@ func getDriver(name string) (Driver, error) {
 	return dr, nil
 }
 
-func Open(config *Config) (ConnPool, error) {
+func Open(config *Config) (*ConnPool, error) {
 	dr, err := getDriver(config.DriverName)
 	if err != nil {
 		return nil, err
 	}
-	return dr.Open(config)
+	return &ConnPool{
+		dr:   dr,
+		conf: config,
+	}, nil
 }

@@ -13,8 +13,6 @@ var connectionOpenError = errors.New("Connection already open")
 var connectionNotOpenError = errors.New("Connection not open")
 var connectionInUseError = errors.New("Connection already in use")
 
-var arityError = errors.New("Arity: too many results")
-
 type UnexpectedMessage struct {
 	Expected PacketType
 	Recieved PacketType

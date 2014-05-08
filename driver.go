@@ -8,11 +8,28 @@ import (
 	"net/url"
 )
 
+type QueryType byte
+
+const (
+	QueryImplicit QueryType = iota
+	QueryPrepare            // Create a prepared transaction.
+	QueryBegin              // Transaction
+)
+
+type ConnStatus byte
+
+const (
+	StatusDisconnected ConnStatus = iota
+	StatusReady
+	StatusQuery
+	StatusBulkCopy
+)
+
 // Type the database driver must implement.
 type Driver interface {
 	// Open a database. An actual connection does not need to be established
 	// at this time.
-	Open(c *Config) (ConnPool, error)
+	Open(c *Config) (Conn, error)
 
 	// Return information about the database drivers capabilities.
 	// Should not reflect any actual server any connections to it.
@@ -21,40 +38,107 @@ type Driver interface {
 	ParseOptions(KV map[string]interface{}, configOptions url.Values) error
 }
 
-// Represents a connection or connection configuration to a database.
-type ConnPool interface {
+type FieldValue struct {
+	Value    interface{}
+	Null     bool
+	MustCopy bool
+	More     bool // true if more data is expected for the field.
+	Chunked  bool // true if data is sent in chunks.
+}
+
+type Conn interface {
 	Close() error
-
-	// Will attempt to connect to the database and disconnect.
-	// Must not impact any existing connections.
-	Ping() error
-
-	// Returns the information specific to the connection.
-	// May call Ping() if there has not yet been a connection.
 	ConnectionInfo() (*ConnectionInfo, error)
+	Scan() error
+	Query(*Command, []Value, QueryType, IsolationLevel, Valuer) error
+	// Rollback(savepoint string) error
+	// Commit() error
+	// SavePoint(name string) error
+	Status() ConnStatus
+}
 
-	// Perform a query against the database.
-	// If values are not specified in the Command.Input[...].V, then they
-	// may be specified in the Value. Order may be used to match the
-	// existing parameters if the Value.N name is omitted.
-	Query(cmd *Command, vv ...Value) (Result, error)
+// Represents a connection or connection configuration to a database.
+type ConnPool struct {
+	dr   Driver
+	conf *Config
+}
 
-	// API for tranactions are preliminary. Not a stable API call.
-	Transaction(iso IsolationLevel) (Transaction, error)
+func (cp *ConnPool) Close() error {
+	// Close all active connections.
+	return nil
+}
 
-	// Get the panic'ing version that doesn't return errors.
-	Must() ConnPoolMust
+// Will attempt to connect to the database and disconnect.
+// Must not impact any existing connections.
+func (cp *ConnPool) Ping() error {
+	return nil
+}
+
+// Returns the information specific to the connection.
+// May call Ping() if there has not yet been a connection.
+func (cp *ConnPool) ConnectionInfo() (*ConnectionInfo, error) {
+	// Cache on first connection, then pull from that cache.
+	return nil, nil
+}
+
+// Perform a query against the database.
+// If values are not specified in the Command.Input[...].V, then they
+// may be specified in the Value. Order may be used to match the
+// existing parameters if the Value.N name is omitted.
+func (cp *ConnPool) Query(cmd *Command, vv ...Value) (*Result, error) {
+	// TODO: Use actual pool.
+	// For now, ignore any pooling option.
+	conn, err := cp.dr.Open(cp.conf)
+	if err != nil {
+		return nil, err
+	}
+	res := &Result{
+		conn: conn,
+	}
+	err = conn.Query(cmd, vv, QueryImplicit, IsoLevelDefault, &res.val)
+	if err != nil {
+		return res, err
+	}
+
+	fields := make([]*Field, len(cmd.Output))
+	for i := range cmd.Output {
+		fields[i] = &cmd.Output[i]
+	}
+
+	res.val.initFields = fields
+
+	return res, nil
+}
+
+// API for tranactions are preliminary. Not a stable API call.
+func (cp *ConnPool) Transaction(iso IsolationLevel) (*Transaction, error) {
+	panic("Not implemented")
+	return nil, nil
+}
+
+// Get the panic'ing version that doesn't return errors.
+func (cp *ConnPool) Must() ConnPoolMust {
+	return ConnPoolMust{norm: cp}
 }
 
 // The Transaction API is unstable.
 // Represents a transaction in progress.
-type Transaction interface {
-	Query(cmd *Command, vv ...Value) (Result, error)
-	Commit() error
-	Rollback() error
+type Transaction struct {
+}
 
-	// Get the panic'ing version that doesn't return errors.
-	Must() TransactionMust
+func (tran *Transaction) Query(cmd *Command, vv ...Value) (*Result, error) {
+	return nil, nil
+}
+func (tran *Transaction) Commit() error {
+	return nil
+}
+func (tran *Transaction) Rollback() error {
+	return nil
+}
+
+// Get the panic'ing version that doesn't return errors.
+func (tran *Transaction) Must() TransactionMust {
+	return TransactionMust{}
 }
 
 // Returned from GetN and GetxN.
@@ -62,52 +146,4 @@ type Transaction interface {
 type Nullable struct {
 	Null bool        // True if value is null.
 	V    interface{} // Value, if any present.
-}
-
-// Manages the life cycle of a query.
-// The result must automaticly Close() if the command Arity is Zero after
-// execution or after the first Scan() if Arity is One.
-type Result interface {
-	// Results should automatically close when all rows have been read.
-	Close() error
-
-	// Fetch the table schema.
-	Schema() ([]*SqlColumn, error)
-
-	// Prepare pointers to values to be populated by name using Prep. After
-	// preparing call Scan().
-	Prep(name string, value interface{}) error
-
-	// Prepare pointers to values to be populated by index using Prep. After
-	// preparing call Scan().
-	Prepx(index int, value interface{}) error
-
-	// Prepare pointers to values to be populated by index using Prep. After
-	// preparing call Scan().
-	PrepAll(values ...interface{}) error
-
-	// Scans the row into a buffer that can be fetched with Get and scans
-	// directly into any prepared values.
-	// Return value "more" is false if no more rows.
-	// Results should automatically close when all rows have been read.
-	Scan() (more bool, err error)
-
-	// Use after Scan(). Can only pull fields which have not already been sent
-	// into a prepared value.
-	Get(name string) (interface{}, error)
-
-	// Use after Scan(). Can only pull fields which have not already been sent
-	// into a prepared value.
-	Getx(index int) (interface{}, error)
-
-	// Use after Scan(). Can only pull fields which have not already been sent
-	// into a prepared value.
-	GetN(name string) (Nullable, error)
-
-	// Use after Scan(). Can only pull fields which have not already been sent
-	// into a prepared value.
-	GetxN(index int) (Nullable, error)
-
-	// Get the panic'ing version that doesn't return errors.
-	Must() ResultMust
 }
