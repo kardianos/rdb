@@ -48,7 +48,7 @@ func SimpleQuery(db rdb.ConnPoolMust, t *testing.T) {
 			select @animal as 'MyAnimal';`,
 		Arity: rdb.OneMust,
 		Input: []rdb.Param{
-			rdb.Param{
+			{
 				N: "animal",
 				T: rdb.TypeString,
 				L: 8,
@@ -71,7 +71,7 @@ func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
 		;`,
 		Arity: rdb.Any,
 		Input: []rdb.Param{
-			rdb.Param{
+			{
 				N: "animal",
 				T: rdb.TypeString,
 				V: "Dreaming boats.",
@@ -100,7 +100,7 @@ func LargerQuery(db rdb.ConnPoolMust, t *testing.T) {
 			`,
 		Arity: rdb.OneMust,
 		Input: []rdb.Param{
-			rdb.Param{
+			{
 				N: "animal",
 				T: rdb.TypeString,
 			},

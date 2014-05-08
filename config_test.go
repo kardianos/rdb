@@ -10,7 +10,7 @@ import (
 )
 
 var configTestPass = map[string]*Config{
-	"driver://username:password@localUrl:1234/ServerInstance?db=mydatabase&opt1=valA&opt2=valB": &Config{
+	"driver://username:password@localUrl:1234/ServerInstance?db=mydatabase&opt1=valA&opt2=valB": {
 		DriverName: "driver",
 		Username:   "username",
 		Password:   "password",
@@ -19,7 +19,7 @@ var configTestPass = map[string]*Config{
 		Instance:   "ServerInstance",
 		Database:   "mydatabase",
 	},
-	"driver://username:password@localUrl:1234?db=mydatabase": &Config{
+	"driver://username:password@localUrl:1234?db=mydatabase": {
 		DriverName: "driver",
 		Username:   "username",
 		Password:   "password",
@@ -28,7 +28,7 @@ var configTestPass = map[string]*Config{
 		Instance:   "",
 		Database:   "mydatabase",
 	},
-	"driver://username@localUrl?db=mydatabase": &Config{
+	"driver://username@localUrl?db=mydatabase": {
 		DriverName: "driver",
 		Username:   "username",
 		Password:   "",
@@ -37,7 +37,7 @@ var configTestPass = map[string]*Config{
 		Instance:   "",
 		Database:   "mydatabase",
 	},
-	"driver://localUrl?db=mydatabase": &Config{
+	"driver://localUrl?db=mydatabase": {
 		DriverName: "driver",
 		Username:   "",
 		Password:   "",
@@ -46,7 +46,7 @@ var configTestPass = map[string]*Config{
 		Instance:   "",
 		Database:   "mydatabase",
 	},
-	"sqlite:///C:/folder/file.sqlite3?opt1=valA&opt2=valB": &Config{
+	"sqlite:///C:/folder/file.sqlite3?opt1=valA&opt2=valB": {
 		DriverName: "sqlite",
 		Username:   "",
 		Password:   "",
@@ -55,7 +55,7 @@ var configTestPass = map[string]*Config{
 		Instance:   "C:/folder/file.sqlite3",
 		Database:   "",
 	},
-	"sqlite:///srv/folder/file.sqlite3": &Config{
+	"sqlite:///srv/folder/file.sqlite3": {
 		DriverName: "sqlite",
 		Username:   "",
 		Password:   "",
