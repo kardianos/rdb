@@ -5,6 +5,8 @@ import (
 	"github.com/youtube/vitess/go/pools"
 )
 
+const debugConnectionReuse = false
+
 // Represents a connection or connection configuration to a database.
 type ConnPool struct {
 	dr   Driver
@@ -23,10 +25,21 @@ func Open(config *Config) (*ConnPool, error) {
 		}
 		return dr.Open(config)
 	}
+
+	initSize := config.PoolInitCapacity
+	maxSize := config.PoolMaxCapacity
+
+	if initSize <= 0 {
+		initSize = 2
+	}
+	if maxSize <= 0 {
+		maxSize = 100
+	}
+
 	return &ConnPool{
 		dr:   dr,
 		conf: config,
-		pool: pools.NewResourcePool(factory, config.PoolInitCapacity, config.PoolMaxCapacity, config.PoolIdleTimeout),
+		pool: pools.NewResourcePool(factory, initSize, maxSize, config.PoolIdleTimeout),
 	}, nil
 }
 
@@ -58,11 +71,20 @@ func (cp *ConnPool) ConnectionInfo() (*ConnectionInfo, error) {
 
 func (cp *ConnPool) releaseConn(conn Conn, kill bool) error {
 	if kill {
+		if debugConnectionReuse {
+			fmt.Println("Result.Close() CLOSE")
+		}
 		conn.Close()
 		cp.pool.Put(nil)
 		return nil
 	}
+	if debugConnectionReuse {
+		fmt.Println("Result.Close() REUSE")
+	}
 	cp.pool.Put(conn)
+	if debugConnectionReuse {
+		fmt.Println(cp.pool.StatsJSON())
+	}
 	return nil
 }
 func (cp *ConnPool) getConn() (Conn, error) {
@@ -96,11 +118,12 @@ func (cp *ConnPool) Query(cmd *Command, vv ...Value) (*Result, error) {
 
 	res.val.initFields = fields
 	err = conn.Query(cmd, vv, QueryImplicit, IsoLevelDefault, &res.val)
-	if err != nil {
-		return res, err
+
+	if err == nil && len(res.val.errors) != 0 {
+		err = res.val.errors
 	}
 
-	return res, nil
+	return res, err
 }
 
 // API for tranactions are preliminary. Not a stable API call.

@@ -89,9 +89,6 @@ func ParseConfig(connectionString string) (*Config, error) {
 		Password:   pass,
 		Hostname:   host,
 		Port:       port,
-
-		PoolInitCapacity: 2,
-		PoolMaxCapacity:  100,
 	}
 
 	val := u.Query()

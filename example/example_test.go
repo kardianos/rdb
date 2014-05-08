@@ -37,10 +37,35 @@ func QueryTest(t *testing.T) (ferr error) {
 		db = rdb.OpenMust(config)
 	}
 
+	ErrorQuery(db, t)
 	SimpleQuery(db, t)
 	RowsQuery(db, t)
 	LargerQuery(db, t)
 	return nil
+}
+
+func ErrorQuery(db rdb.ConnPoolMust, t *testing.T) {
+	res, err := db.Normal().Query(&rdb.Command{
+		Sql: `
+			s3l3c1 @animal as 'MyAnimal';`,
+		Arity: rdb.OneMust,
+		Input: []rdb.Param{
+			{
+				N: "animal",
+				T: rdb.TypeString,
+				L: 8,
+				V: "DogIsFriend",
+			},
+		},
+		TruncLongText: true,
+	})
+	if err == nil {
+		t.Errorf("Expecting an error.")
+	}
+	if _, is := err.(rdb.SqlErrors); !is {
+		t.Errorf("Expecting SqlErrors type.")
+	}
+	res.Close()
 }
 
 func SimpleQuery(db rdb.ConnPoolMust, t *testing.T) {
