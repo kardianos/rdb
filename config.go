@@ -23,13 +23,23 @@ type Config struct {
 	Hostname string
 	Port     int
 	Instance string
-	Database string
+	Database string // Initial database to connect to.
 
+	// Timeout time for connection dial.
+	// Zero for no timeout.
 	DialTimeout time.Duration
 
-	PoolIdleTimeout  time.Duration
+	// Time for an idle connection to be closed.
+	// Zero if there should be no timeout.
+	PoolIdleTimeout time.Duration
+
+	// How many connection should be created at startup.
+	// Valid range is (0 < init, init <= max).
 	PoolInitCapacity int
-	PoolMaxCapacity  int
+
+	// Max number of connections to create.
+	// Valid range is (0 < max).
+	PoolMaxCapacity int
 
 	KV map[string]interface{}
 }
@@ -39,13 +49,14 @@ type Config struct {
 //   driver://[username:password@][url[:port]]/[Instance]?db=mydatabase&opt1=valA&opt2=valB
 //   sqlite:///C:/folder/file.sqlite3?opt1=valA&opt2=valB
 //   sqlite:///srv/folder/file.sqlite3?opt1=valA&opt2=valB
+//   ms://TESTU@localhost/SqlExpress?db=master&dial_timeout=3s
 // This will attempt to find the driver to load additional parameters.
-//   Additional database options:
-//      db=<string>: initial database to connect to.
-//      dial_timeout=<time.Duration>: timeout time for connection dial.
-//      init_cap=<int>(0 < init, init <= max): how many connection should be created at startup.
-//      max_cap=<int>(0 < max): max number of connections to create.
-//      idle_timeout=<time.Duration>: time for an idle connection to be closed.
+//   Additional field options:
+//      db=<string>:                  Database
+//      dial_timeout=<time.Duration>: DialTimeout
+//      init_cap=<int>:               PoolInitCapacity
+//      max_cap=<int>:                PoolMaxCapacity
+//      idle_timeout=<time.Duration>: PoolIdleTimeout
 // If PoolIdleTimeout is zero, there is no timeout.
 func ParseConfig(connectionString string) (*Config, error) {
 	u, err := url.Parse(connectionString)

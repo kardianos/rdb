@@ -65,6 +65,8 @@ the next Result.Scan(). Until then, they may be accessed with
 Result.{Get, Getx, GetN, GetxN}
 
 The API is not yet final.
+A feature is done when there is at least one driver using it.
+A section of the API is stable when at least two drivers implement it.
 
 */
 /*
