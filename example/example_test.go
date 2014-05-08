@@ -43,7 +43,7 @@ func QueryTest(t *testing.T) (ferr error) {
 
 func SimpleQuery(db rdb.ConnPoolMust, t *testing.T) {
 	var myFav string
-	db.Query(&rdb.Command{
+	res := db.Query(&rdb.Command{
 		Sql: `
 			select @animal as 'MyAnimal';`,
 		Arity: rdb.OneMust,
@@ -56,8 +56,10 @@ func SimpleQuery(db rdb.ConnPoolMust, t *testing.T) {
 			},
 		},
 		TruncLongText: true,
-	}).Prep("MyAnimal", &myFav).Scan()
-	t.Logf("Animal: %s\n", myFav)
+	})
+	res.Prep("MyAnimal", &myFav).Scan()
+	res.Close()
+	t.Logf("Animal_1: %s\n", myFav)
 }
 func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
 	var myFav string
@@ -83,7 +85,7 @@ func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
 		if !res.Scan() {
 			break
 		}
-		t.Logf("Animal: %s\n", myFav)
+		t.Logf("Animal_2: %s\n", myFav)
 	}
 }
 func LargerQuery(db rdb.ConnPoolMust, t *testing.T) {

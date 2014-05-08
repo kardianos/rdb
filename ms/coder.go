@@ -544,14 +544,14 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 	return column
 }
 
-func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *Result) {
-	field := result.Fields[column.Index]
+func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valuer) {
+	sc := &column.SqlColumn
 	if column.Unlimit {
 		totalSize := binary.LittleEndian.Uint64(read(8))
 		sizeUnknown := false
 
 		if totalSize == 0xFFFFFFFFFFFFFFFF {
-			result.WriteField(column, field, &FieldValue{
+			result.WriteField(sc, &rdb.FieldValue{
 				Null: true,
 			})
 			return
@@ -560,24 +560,21 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *Result)
 			sizeUnknown = true
 		}
 		useChunks := false
-		ck := chunkNone
 		first := true
 		for {
 			chunkSize := int(binary.LittleEndian.Uint32(read(4)))
 			if chunkSize == 0 {
-				if ck != chunkNone {
-					result.WriteField(column, field, &FieldValue{
-						Chunked: chunkDone,
-						Value:   nil,
+				if useChunks {
+					result.WriteField(sc, &rdb.FieldValue{
+						More:    false,
+						Chunked: true,
+						Value:   []byte{},
 					})
 				}
 				break
 			}
 			if first {
 				useChunks = sizeUnknown || totalSize != uint64(chunkSize)
-				if useChunks {
-					ck = chunked
-				}
 			}
 
 			var value []byte
@@ -587,8 +584,9 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *Result)
 				value = make([]byte, chunkSize)
 				copy(value, read(chunkSize))
 			}
-			result.WriteField(column, field, &FieldValue{
-				Chunked: ck,
+			result.WriteField(sc, &rdb.FieldValue{
+				More:    useChunks,
+				Chunked: useChunks,
 				Value:   value,
 			})
 			first = false
@@ -618,7 +616,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *Result)
 
 	if column.info.Bytes {
 		if dataLen == nullValue {
-			result.WriteField(column, field, &FieldValue{
+			result.WriteField(sc, &rdb.FieldValue{
 				Null: true,
 			})
 			return
@@ -630,14 +628,14 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *Result)
 			value = make([]byte, dataLen)
 			copy(value, read(dataLen))
 		}
-		result.WriteField(column, field, &FieldValue{
+		result.WriteField(sc, &rdb.FieldValue{
 			Value: value,
 		})
 		return
 	}
 
 	if dataLen == 0 || column.code == typeNull {
-		result.WriteField(column, field, &FieldValue{
+		result.WriteField(sc, &rdb.FieldValue{
 			Null: true,
 		})
 		return
@@ -665,7 +663,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *Result)
 		default:
 			panic("unhandled fixed type")
 		}
-		result.WriteField(column, field, &FieldValue{
+		result.WriteField(sc, &rdb.FieldValue{
 			Value: v,
 		})
 		return
@@ -674,19 +672,19 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *Result)
 	if column.code == typeIntN {
 		switch dataLen {
 		case 1:
-			result.WriteField(column, field, &FieldValue{
+			result.WriteField(sc, &rdb.FieldValue{
 				Value: read(1)[0],
 			})
 		case 2:
-			result.WriteField(column, field, &FieldValue{
+			result.WriteField(sc, &rdb.FieldValue{
 				Value: binary.LittleEndian.Uint16(read(2)),
 			})
 		case 4:
-			result.WriteField(column, field, &FieldValue{
+			result.WriteField(sc, &rdb.FieldValue{
 				Value: binary.LittleEndian.Uint32(read(4)),
 			})
 		case 8:
-			result.WriteField(column, field, &FieldValue{
+			result.WriteField(sc, &rdb.FieldValue{
 				Value: binary.LittleEndian.Uint64(read(8)),
 			})
 		default:
@@ -703,7 +701,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *Result)
 			if v != 0 {
 				writeValue = true
 			}
-			result.WriteField(column, field, &FieldValue{
+			result.WriteField(sc, &rdb.FieldValue{
 				Value: writeValue,
 			})
 		default:
@@ -730,7 +728,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *Result)
 		}
 		v.Quo(v, (&big.Rat{}).SetInt64(mult))
 
-		result.WriteField(column, field, &FieldValue{
+		result.WriteField(sc, &rdb.FieldValue{
 			Value: v,
 		})
 		return
@@ -739,12 +737,12 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *Result)
 	if column.code == typeFloatN {
 		switch dataLen {
 		case 4:
-			result.WriteField(column, field, &FieldValue{
+			result.WriteField(sc, &rdb.FieldValue{
 				Value: math.Float32frombits(binary.LittleEndian.Uint32(read(4))),
 			})
 			return
 		case 8:
-			result.WriteField(column, field, &FieldValue{
+			result.WriteField(sc, &rdb.FieldValue{
 				Value: math.Float64frombits(binary.LittleEndian.Uint64(read(8))),
 			})
 			return
@@ -762,7 +760,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *Result)
 			tm := time.Duration(int64(tmf / 300 * 1000000000))
 
 			v := zeroDateTime.Add(dt).Add(tm).Local()
-			result.WriteField(column, field, &FieldValue{
+			result.WriteField(sc, &rdb.FieldValue{
 				Value: v,
 			})
 			return
@@ -796,7 +794,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *Result)
 
 			tm = time.Duration(1000000000 / scale * value)
 			if column.info.Dt == dtTime {
-				result.WriteField(column, field, &FieldValue{
+				result.WriteField(sc, &rdb.FieldValue{
 					Value: tm,
 				})
 				return
@@ -832,7 +830,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *Result)
 			loc = time.FixedZone(fmt.Sprintf("UTC %d:%02d", hrs, mins), int(offset)*60)
 		}
 		dt = time.Date(dt.Year(), dt.Month(), dt.Day(), dt.Hour(), dt.Minute(), dt.Second(), dt.Nanosecond(), loc)
-		result.WriteField(column, field, &FieldValue{
+		result.WriteField(sc, &rdb.FieldValue{
 			Value: dt,
 		})
 		return

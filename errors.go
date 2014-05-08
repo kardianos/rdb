@@ -6,6 +6,7 @@ package rdb
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 )
 
@@ -73,3 +74,5 @@ type DriverNotFound struct {
 func (dr DriverNotFound) Error() string {
 	return fmt.Sprintf("Driver name not found: %s", dr.name)
 }
+
+var arityError = errors.New("Arity: too many results")

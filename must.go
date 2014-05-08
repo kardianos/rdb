@@ -5,30 +5,30 @@
 package rdb
 
 type ResultMust struct {
-	NormalResult Result
+	norm *Result
 }
 
 type ConnPoolMust struct {
-	NormalConnPool ConnPool
+	norm *ConnPool
 }
 
 type TransactionMust struct {
-	NormalTransaction Transaction
+	norm *Transaction
 }
 
 // Get the non-panic'ing version of Result.
-func (must ResultMust) Normal() Result {
-	return must.NormalResult
+func (must ResultMust) Normal() *Result {
+	return must.norm
 }
 
 // Get the non-panic'ing version of Database.
-func (must ConnPoolMust) Normal() ConnPool {
-	return must.NormalConnPool
+func (must ConnPoolMust) Normal() *ConnPool {
+	return must.norm
 }
 
 // Get the non-panic'ing version of Transaction.
-func (must TransactionMust) Normal() Transaction {
-	return must.NormalTransaction
+func (must TransactionMust) Normal() *Transaction {
+	return must.norm
 }
 
 // Same as ParseConfig() but all errors are returned as a panic(MustError{}).
@@ -47,25 +47,25 @@ func OpenMust(c *Config) ConnPoolMust {
 		panic(MustError{Err: err})
 	}
 	return ConnPoolMust{
-		NormalConnPool: db,
+		norm: db,
 	}
 }
 
 func (must ConnPoolMust) Close() {
-	err := must.NormalConnPool.Close()
+	err := must.norm.Close()
 	if err != nil {
 		panic(MustError{Err: err})
 	}
 }
 
 func (must ConnPoolMust) Ping() {
-	err := must.NormalConnPool.Ping()
+	err := must.norm.Ping()
 	if err != nil {
 		panic(MustError{Err: err})
 	}
 }
 func (must ConnPoolMust) ConnectionInfo() *ConnectionInfo {
-	ci, err := must.NormalConnPool.ConnectionInfo()
+	ci, err := must.norm.ConnectionInfo()
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -76,23 +76,23 @@ func (must ConnPoolMust) ConnectionInfo() *ConnectionInfo {
 // or on each query. If the value is not put in the parameter definition
 // then the command instance may be reused for every query.
 func (must ConnPoolMust) Query(cmd *Command, vv ...Value) ResultMust {
-	res, err := must.NormalConnPool.Query(cmd, vv...)
+	res, err := must.norm.Query(cmd, vv...)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
 	return ResultMust{
-		NormalResult: res,
+		norm: res,
 	}
 }
 
 // Same as Query but will panic on an error.
 func (must ConnPoolMust) Transaction(iso IsolationLevel) TransactionMust {
-	tran, err := must.NormalConnPool.Transaction(iso)
+	tran, err := must.norm.Transaction(iso)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
 	return TransactionMust{
-		NormalTransaction: tran,
+		norm: tran,
 	}
 }
 
@@ -100,23 +100,23 @@ func (must ConnPoolMust) Transaction(iso IsolationLevel) TransactionMust {
 // or on each query. If the value is not put in the parameter definition
 // then the command instance may be reused for every query.
 func (must TransactionMust) Query(cmd *Command, vv ...Value) ResultMust {
-	res, err := must.NormalTransaction.Query(cmd, vv...)
+	res, err := must.norm.Query(cmd, vv...)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
 	return ResultMust{
-		NormalResult: res,
+		norm: res,
 	}
 }
 
 func (must TransactionMust) Commit() {
-	err := must.NormalTransaction.Commit()
+	err := must.norm.Commit()
 	if err != nil {
 		panic(MustError{Err: err})
 	}
 }
 func (must TransactionMust) Rollback() {
-	err := must.NormalTransaction.Rollback()
+	err := must.norm.Rollback()
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -124,7 +124,7 @@ func (must TransactionMust) Rollback() {
 
 // Make sure the result is closed.
 func (must ResultMust) Close() {
-	err := must.NormalResult.Close()
+	err := must.norm.Close()
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -135,7 +135,7 @@ func (must ResultMust) Close() {
 // Call Scan() before using Get() or Getx().
 // Returns false if no more rows.
 func (must ResultMust) Scan() (more bool) {
-	eof, err := must.NormalResult.Scan()
+	eof, err := must.norm.Scan()
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -145,7 +145,7 @@ func (must ResultMust) Scan() (more bool) {
 // Prepare pointers to values to be populated by name using Prep. After
 // preparing call Scan().
 func (must ResultMust) Prep(name string, value interface{}) ResultMust {
-	err := must.NormalResult.Prep(name, value)
+	err := must.norm.Prep(name, value)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -155,7 +155,7 @@ func (must ResultMust) Prep(name string, value interface{}) ResultMust {
 // Prepare pointers to values to be populated by index using Prep. After
 // preparing call Scan().
 func (must ResultMust) Prepx(index int, value interface{}) ResultMust {
-	err := must.NormalResult.Prepx(index, value)
+	err := must.norm.Prepx(index, value)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -165,7 +165,7 @@ func (must ResultMust) Prepx(index int, value interface{}) ResultMust {
 // Prepare pointers to values to be populated by index using Prep. After
 // preparing call Scan().
 func (must ResultMust) PrepAll(values ...interface{}) ResultMust {
-	err := must.NormalResult.PrepAll(values...)
+	err := must.norm.PrepAll(values...)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -175,7 +175,7 @@ func (must ResultMust) PrepAll(values ...interface{}) ResultMust {
 // Use after Scan(). Can only pull fields which have not already been sent
 // into a prepared value.
 func (must ResultMust) Get(name string) interface{} {
-	value, err := must.NormalResult.Get(name)
+	value, err := must.norm.Get(name)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -185,7 +185,7 @@ func (must ResultMust) Get(name string) interface{} {
 // Use after Scan(). Can only pull fields which have not already been sent
 // into a prepared value.
 func (must ResultMust) Getx(index int) interface{} {
-	value, err := must.NormalResult.Getx(index)
+	value, err := must.norm.Getx(index)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -195,7 +195,7 @@ func (must ResultMust) Getx(index int) interface{} {
 // Use after Scan(). Can only pull fields which have not already been sent
 // into a prepared value.
 func (must ResultMust) GetN(name string) Nullable {
-	value, err := must.NormalResult.GetN(name)
+	value, err := must.norm.GetN(name)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -205,7 +205,7 @@ func (must ResultMust) GetN(name string) Nullable {
 // Use after Scan(). Can only pull fields which have not already been sent
 // into a prepared value.
 func (must ResultMust) GetxN(index int) Nullable {
-	value, err := must.NormalResult.GetxN(index)
+	value, err := must.norm.GetxN(index)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -214,9 +214,5 @@ func (must ResultMust) GetxN(index int) Nullable {
 
 // Fetch the table schema.
 func (must ResultMust) Schema() []*SqlColumn {
-	schema, err := must.NormalResult.Schema()
-	if err != nil {
-		panic(MustError{Err: err})
-	}
-	return schema
+	return must.norm.Schema()
 }

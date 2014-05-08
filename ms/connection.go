@@ -25,6 +25,10 @@ type Connection struct {
 
 	ProductVersion  *semver.Version
 	ProtocolVersion *semver.Version
+
+	mr  *MessageReader
+	val rdb.Valuer
+	col []*SqlColumn
 }
 
 func NewConnection(c io.ReadWriteCloser) *Connection {
@@ -80,18 +84,109 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 	return si, err
 }
 
+func (tds *Connection) ConnectionInfo() (*rdb.ConnectionInfo, error) {
+	return &rdb.ConnectionInfo{
+		Server:   tds.ProductVersion,
+		Protocol: tds.ProtocolVersion,
+	}, nil
+}
+
 func (tds *Connection) Close() error {
+	if !tds.open {
+		return nil
+	}
+	tds.done()
 	err := tds.wc.Close()
+	tds.val = nil
+	tds.mr = nil
 	tds.open = false
 	return err
 }
 
-func (tds *Connection) Execute(sql string, truncValue bool, arity rdb.Arity, params []*rdb.Param, values []rdb.Value, fields []*rdb.Field) (*Result, error) {
+func (tds *Connection) Status() rdb.ConnStatus {
+	if tds.open == false {
+		return rdb.StatusDisconnected
+	}
+	if tds.inUse == false {
+		return rdb.StatusReady
+	}
+	return rdb.StatusQuery
+}
+
+func (tds *Connection) Query(cmd *rdb.Command, vv []rdb.Value, qt rdb.QueryType, iso rdb.IsolationLevel, valuer rdb.Valuer) error {
+	param := make([]*rdb.Param, len(cmd.Input))
+	for i := range cmd.Input {
+		param[i] = &cmd.Input[i]
+	}
+	tds.val = valuer
+
+	err := tds.execute(cmd.Sql, cmd.TruncLongText, cmd.Arity, param, vv)
+	if err != nil {
+		return err
+	}
+	/* TODO: Check Arity.
+	if res.arity&rdb.Zero != 0 {
+		defer res.Close()
+
+		err = res.Process(false)
+		if !res.EOF && res.arity&rdb.ArityMust != 0 && err == nil {
+			err = arityError
+		}
+	}
+	*/
+	return nil
+}
+
+func (tds *Connection) done() error {
+	err := tds.mr.Close()
+	tds.inUse = false
+	return err
+}
+
+func (tds *Connection) Scan() error {
+	m := tds.mr
+	for {
+		res, err := tds.getSingleResponse(m)
+		if err != nil {
+			tds.val.Done()
+			return err
+		}
+		if res == nil {
+			// TODO: Determine why io.EOF is being returned (see getSingleResponse recover()).
+			return tds.val.Done()
+		}
+		switch v := res.(type) {
+		case *rdb.SqlError:
+			tds.val.SqlError(v)
+		case []*SqlColumn:
+			tds.col = v
+			cc := make([]*rdb.SqlColumn, len(v))
+			for i, dsc := range v {
+				cc[i] = &dsc.SqlColumn
+			}
+			tds.val.Columns(cc)
+			return nil
+		case *SqlRow:
+			// Sent after the row is scanned.
+			// Prep values must be cleared after the initial fill.
+			// The prior prep values are no longer valid as they are filled
+			// during the row scan.
+			return tds.val.RowScanned()
+		case SqlRpcResult:
+		case *SqlDone:
+			return tds.val.Done()
+		default:
+			panic(fmt.Sprintf("Unknown response: %v", res))
+		}
+	}
+}
+
+func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, params []*rdb.Param, values []rdb.Value) error {
 	if !tds.open {
-		return nil, connectionNotOpenError
+		return connectionNotOpenError
 	}
 	if tds.inUse {
-		return nil, connectionInUseError
+		return connectionInUseError
 	}
 	tds.inUse = true
 
@@ -105,13 +200,13 @@ func (tds *Connection) Execute(sql string, truncValue bool, arity rdb.Arity, par
 			var ok bool
 			if len(value.N) == 0 {
 				if i >= len(params) {
-					return nil, rdb.ErrorColumnNotFound{At: "Map values to parameters", Index: i}
+					return rdb.ErrorColumnNotFound{At: "Map values to parameters", Index: i}
 				}
 				value.Param = params[i]
 			} else {
 				value.Param, ok = pm[value.N]
 				if !ok {
-					return nil, rdb.ErrorColumnNotFound{At: "Map values to parameters", Name: value.N}
+					return rdb.ErrorColumnNotFound{At: "Map values to parameters", Name: value.N}
 				}
 			}
 		}
@@ -119,18 +214,11 @@ func (tds *Connection) Execute(sql string, truncValue bool, arity rdb.Arity, par
 
 	err := tds.sendRpc(sql, truncValue, params, values)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	result := &Result{
-		initFields: fields,
-		arity:      arity,
-	}
+	tds.mr = tds.pr.BeginMessage(packetTabularResult)
 
-	r := tds.pr
-	result.tds = tds
-	result.mr = r.BeginMessage(packetTabularResult)
-
-	return result, result.Process(false)
+	return tds.Scan()
 }
 
 const (
@@ -259,7 +347,7 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []*rdb.Param,
 	return nil
 }
 
-func (tds *Connection) getSingleResponse(m *MessageReader, result *Result) (response interface{}, err error) {
+func (tds *Connection) getSingleResponse(m *MessageReader) (response interface{}, err error) {
 	var bb []byte
 
 	defer func() {
@@ -327,8 +415,8 @@ func (tds *Connection) getSingleResponse(m *MessageReader, result *Result) (resp
 			Rows:       binary.LittleEndian.Uint64(read(8)),
 		}, nil
 	case tokenRow:
-		for _, column := range result.Columns {
-			decodeFieldValue(read, column, result)
+		for _, column := range tds.col {
+			decodeFieldValue(read, column, tds.val)
 		}
 
 		return &SqlRow{}, nil
