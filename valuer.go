@@ -13,7 +13,7 @@ import (
 
 type Valuer interface {
 	Columns(cc []*SqlColumn) error
-	WriteField(c *SqlColumn, value *FieldValue) error
+	WriteField(c *SqlColumn, value *DriverValue) error
 	SqlError(err *SqlError)
 	RowScanned() error
 	Done() error
@@ -27,7 +27,7 @@ type valuer struct {
 
 	columns      []*SqlColumn
 	columnLookup map[string]*SqlColumn
-	buffer       []*FieldValue
+	buffer       []*DriverValue
 	prep         []interface{}
 
 	initFields []*Field
@@ -47,7 +47,7 @@ func (v *valuer) Columns(cc []*SqlColumn) error {
 	for _, col := range cc {
 		v.columnLookup[col.Name] = col
 	}
-	v.buffer = make([]*FieldValue, len(cc))
+	v.buffer = make([]*DriverValue, len(cc))
 	v.prep = make([]interface{}, len(cc))
 
 	v.fields = make([]*Field, len(cc))
@@ -99,7 +99,7 @@ func (v *valuer) Done() error {
 	return nil
 }
 
-func (v *valuer) WriteField(c *SqlColumn, value *FieldValue) error {
+func (v *valuer) WriteField(c *SqlColumn, value *DriverValue) error {
 	prep := v.prep[c.Index]
 	f := v.fields[c.Index]
 	if value.Null {
