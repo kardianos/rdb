@@ -37,11 +37,9 @@ func (res *Result) Close() error {
 				fmt.Println("Result.Close() REUSE")
 			}
 			// Don't close the connection, just return to pool.
-			res.cp.pool.Put(res.conn)
+			res.cp.releaseConn(res.conn, false)
 			res.cp = nil
 			res.conn = nil
-			res = nil
-			return nil
 		default:
 			break
 		}
@@ -51,7 +49,8 @@ func (res *Result) Close() error {
 		fmt.Println("Result.Close() CLOSE")
 	}
 	// Not sure what the state is, close the entire connection.
-	return res.conn.Close()
+
+	return res.cp.releaseConn(res.conn, true)
 }
 
 // Fetch the table schema.

@@ -94,17 +94,16 @@ func (tds *Connection) ConnectionInfo() (*rdb.ConnectionInfo, error) {
 	}, nil
 }
 
-func (tds *Connection) Close() error {
+func (tds *Connection) Close() {
 	if !tds.open {
-		return nil
+		return
 	}
-	// TODO: Catch error from done().
 	tds.done()
-	err := tds.wc.Close()
+	tds.wc.Close()
 	tds.val = nil
 	tds.mr = nil
 	tds.open = false
-	return err
+	return
 }
 
 func (tds *Connection) Status() rdb.ConnStatus {

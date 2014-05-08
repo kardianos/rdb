@@ -6,7 +6,6 @@ package rdb
 
 import (
 	"fmt"
-	"sync"
 )
 
 var drivers = map[string]Driver{}
@@ -27,16 +26,4 @@ func getDriver(name string) (Driver, error) {
 		return nil, DriverNotFound{name: name}
 	}
 	return dr, nil
-}
-
-func Open(config *Config) (*ConnPool, error) {
-	dr, err := getDriver(config.DriverName)
-	if err != nil {
-		return nil, err
-	}
-	return &ConnPool{
-		dr:   dr,
-		conf: config,
-		pool: &sync.Pool{},
-	}, nil
 }

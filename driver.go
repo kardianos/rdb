@@ -56,7 +56,7 @@ type DriverValue struct {
 }
 
 type Conn interface {
-	Close() error
+	Close()
 	ConnectionInfo() (*ConnectionInfo, error)
 	Scan() error
 	Query(*Command, []Value, QueryType, IsolationLevel, Valuer) error
