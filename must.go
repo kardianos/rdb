@@ -52,10 +52,7 @@ func OpenMust(c *Config) ConnPoolMust {
 }
 
 func (must ConnPoolMust) Close() {
-	err := must.norm.Close()
-	if err != nil {
-		panic(MustError{Err: err})
-	}
+	must.norm.Close()
 }
 
 func (must ConnPoolMust) Ping() {

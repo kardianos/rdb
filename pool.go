@@ -2,21 +2,36 @@ package rdb
 
 import (
 	"fmt"
-	"runtime"
-	"sync"
+	"github.com/youtube/vitess/go/pools"
 )
 
 // Represents a connection or connection configuration to a database.
 type ConnPool struct {
 	dr   Driver
 	conf *Config
-
-	pool *sync.Pool
+	pool *pools.ResourcePool
 }
 
-func (cp *ConnPool) Close() error {
-	// TODO: Close all active connections.
-	return nil
+func Open(config *Config) (*ConnPool, error) {
+	dr, err := getDriver(config.DriverName)
+	if err != nil {
+		return nil, err
+	}
+	factory := func() (pools.Resource, error) {
+		if debugConnectionReuse {
+			fmt.Println("Conn.Open() NEW")
+		}
+		return dr.Open(config)
+	}
+	return &ConnPool{
+		dr:   dr,
+		conf: config,
+		pool: pools.NewResourcePool(factory, config.PoolInitCapacity, config.PoolMaxCapacity, config.PoolIdleTimeout),
+	}, nil
+}
+
+func (cp *ConnPool) Close() {
+	cp.pool.Close()
 }
 
 // Will attempt to connect to the database and disconnect.
@@ -41,32 +56,32 @@ func (cp *ConnPool) ConnectionInfo() (*ConnectionInfo, error) {
 	return res.conn.ConnectionInfo()
 }
 
+func (cp *ConnPool) releaseConn(conn Conn, kill bool) error {
+	if kill {
+		conn.Close()
+		cp.pool.Put(nil)
+		return nil
+	}
+	cp.pool.Put(conn)
+	return nil
+}
+func (cp *ConnPool) getConn() (Conn, error) {
+	var conn Conn
+	connObj, err := cp.pool.Get()
+	if connObj != nil {
+		conn = connObj.(Conn)
+	}
+	return conn, err
+}
+
 // Perform a query against the database.
 // If values are not specified in the Command.Input[...].V, then they
 // may be specified in the Value. Order may be used to match the
 // existing parameters if the Value.N name is omitted.
 func (cp *ConnPool) Query(cmd *Command, vv ...Value) (*Result, error) {
-	// TODO: Use a better pool.
-	connObj := cp.pool.Get()
-	var conn Conn
-	var err error
-	if connObj == nil {
-		if debugConnectionReuse {
-			fmt.Println("Conn.Open() NEW")
-		}
-		conn, err = cp.dr.Open(cp.conf)
-		if err != nil {
-			return nil, err
-		}
-		runtime.SetFinalizer(conn, (Conn).Close)
-	} else {
-		if debugConnectionReuse {
-			fmt.Println("Conn.Open() REUSE")
-		}
-		conn = connObj.(Conn)
-		if conn == nil {
-			panic("nil conn")
-		}
+	conn, err := cp.getConn()
+	if err != nil {
+		return nil, err
 	}
 
 	res := &Result{

@@ -5,11 +5,11 @@
 package rdb
 
 import (
+	"bitbucket.org/kardianos/rdb/semver"
 	"net/url"
 	"strconv"
 	"strings"
-
-	"bitbucket.org/kardianos/rdb/semver"
+	"time"
 )
 
 // Database configuration.
@@ -25,6 +25,12 @@ type Config struct {
 	Instance string
 	Database string
 
+	DialTimeout time.Duration
+
+	PoolIdleTimeout  time.Duration
+	PoolInitCapacity int
+	PoolMaxCapacity  int
+
 	KV map[string]interface{}
 }
 
@@ -34,6 +40,13 @@ type Config struct {
 //   sqlite:///C:/folder/file.sqlite3?opt1=valA&opt2=valB
 //   sqlite:///srv/folder/file.sqlite3?opt1=valA&opt2=valB
 // This will attempt to find the driver to load additional parameters.
+//   Additional database options:
+//      db=<string>: initial database to connect to.
+//      dial_timeout=<time.Duration>: timeout time for connection dial.
+//      init_cap=<int>(0 < init, init <= max): how many connection should be created at startup.
+//      max_cap=<int>(0 < max): max number of connections to create.
+//      idle_timeout=<time.Duration>: time for an idle connection to be closed.
+// If PoolIdleTimeout is zero, there is no timeout.
 func ParseConfig(connectionString string) (*Config, error) {
 	u, err := url.Parse(connectionString)
 	if err != nil {
@@ -59,21 +72,48 @@ func ParseConfig(connectionString string) (*Config, error) {
 		}
 	}
 
-	val := u.Query()
-	db := val.Get("db")
-	val.Del("db")
-	instance := ""
-	if len(u.Path) > 0 {
-		instance = u.Path[1:]
-	}
 	conf := &Config{
 		DriverName: u.Scheme,
 		Username:   user,
 		Password:   pass,
 		Hostname:   host,
 		Port:       port,
-		Instance:   instance,
-		Database:   db,
+
+		PoolInitCapacity: 2,
+		PoolMaxCapacity:  100,
+	}
+
+	val := u.Query()
+
+	conf.Database = val.Get("db")
+
+	if st := val.Get("dial_timeout"); len(st) != 0 {
+		conf.DialTimeout, err = time.ParseDuration(st)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if st := val.Get("idle_timeout"); len(st) != 0 {
+		conf.PoolIdleTimeout, err = time.ParseDuration(st)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if st := val.Get("init_cap"); len(st) != 0 {
+		conf.PoolInitCapacity, err = strconv.Atoi(st)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if st := val.Get("max_cap"); len(st) != 0 {
+		conf.PoolMaxCapacity, err = strconv.Atoi(st)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if len(u.Path) > 0 {
+		conf.Instance = u.Path[1:]
 	}
 
 	// Now attempt to call specific driver and parse Key-Value options.

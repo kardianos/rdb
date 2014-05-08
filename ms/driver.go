@@ -26,7 +26,16 @@ func (dr *Driver) Open(c *rdb.Config) (rdb.Conn, error) {
 	if len(c.Hostname) != 0 && c.Hostname != "." {
 		hostname = c.Hostname
 	}
-	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", hostname, port))
+
+	var conn net.Conn
+	var err error
+
+	addr := fmt.Sprintf("%s:%d", hostname, port)
+	if c.DialTimeout == 0 {
+		conn, err = net.Dial("tcp", addr)
+	} else {
+		conn, err = net.DialTimeout("tcp", addr, c.DialTimeout)
+	}
 	if err != nil {
 		return nil, err
 	}

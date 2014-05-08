@@ -11,7 +11,7 @@ import (
 	_ "bitbucket.org/kardianos/rdb/ms"
 )
 
-const testConnectionString = "ms://TESTU@localhost/SqlExpress?db=master"
+const testConnectionString = "ms://TESTU@localhost/SqlExpress?db=master&dial_timeout=3s"
 
 var config = rdb.ParseConfigMust(testConnectionString)
 var db rdb.ConnPoolMust
