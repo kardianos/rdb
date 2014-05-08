@@ -4,10 +4,6 @@
 
 package rdb
 
-import "fmt"
-
-const debugConnectionReuse = false
-
 // Manages the life cycle of a query.
 // The result must automaticly Close() if the command Arity is Zero after
 // execution or after the first Scan() if Arity is One.
@@ -19,9 +15,7 @@ type Result struct {
 
 // Results should automatically close when all rows have been read.
 func (res *Result) Close() error {
-	if debugConnectionReuse {
-		fmt.Println("Result.Close() start")
-	}
+	var err error
 	for {
 		if res.conn == nil {
 			return nil
@@ -33,24 +27,21 @@ func (res *Result) Close() error {
 				return err
 			}
 		case StatusReady:
-			if debugConnectionReuse {
-				fmt.Println("Result.Close() REUSE")
-			}
 			// Don't close the connection, just return to pool.
-			res.cp.releaseConn(res.conn, false)
+			err = res.cp.releaseConn(res.conn, false)
 			res.cp = nil
 			res.conn = nil
+			break
 		default:
+			// Not sure what the state is, close the entire connection.
+			err = res.cp.releaseConn(res.conn, true)
 			break
 		}
 	}
-
-	if debugConnectionReuse {
-		fmt.Println("Result.Close() CLOSE")
+	if err == nil && len(res.val.errors) != 0 {
+		err = res.val.errors
 	}
-	// Not sure what the state is, close the entire connection.
-
-	return res.cp.releaseConn(res.conn, true)
+	return err
 }
 
 // Fetch the table schema.
@@ -152,14 +143,18 @@ func (r *Result) GetxN(index int) (Nullable, error) {
 func (res *Result) Scan() (more bool, err error) {
 	res.val.clearBuffer()
 	err = res.conn.Scan()
+	eof := true
 	if res.val.eof {
 		cerr := res.Close()
 		if err == nil {
 			err = cerr
 		}
-		return false, err
+		eof = false
 	}
-	return true, err
+	if err == nil && len(res.val.errors) != 0 {
+		err = res.val.errors
+	}
+	return eof, err
 }
 
 // Get the panic'ing version that doesn't return errors.

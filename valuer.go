@@ -68,8 +68,14 @@ func (v *valuer) Columns(cc []*SqlColumn) error {
 	v.initFields = nil
 	return nil
 }
-func (v *valuer) SqlMessage(err *SqlMessage) {
-	v.errors = append(v.errors, err)
+func (v *valuer) SqlMessage(msg *SqlMessage) {
+	switch msg.Type {
+	case SqlInfo:
+		// TODO: Where should info messages go?
+
+	case SqlError:
+		v.errors = append(v.errors, msg)
+	}
 }
 func (v *valuer) RowScanned() error {
 	v.rowCount += 1

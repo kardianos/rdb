@@ -134,15 +134,6 @@ func (tds *Connection) Query(cmd *rdb.Command, vv []rdb.Value, qt rdb.QueryType,
 	if err != nil {
 		return err
 	}
-	if !tds.inTokenStream {
-		tds.mr = tds.pr.BeginMessage(packetTabularResult)
-		tds.inTokenStream = true
-		tds.inUse = true
-		err := tds.Scan()
-		if err != nil {
-			panic(err)
-		}
-	}
 
 	/* TODO: Check Arity.
 	if res.arity&rdb.Zero != 0 {
