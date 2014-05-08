@@ -35,6 +35,10 @@ type Driver interface {
 	// Should not reflect any actual server any connections to it.
 	DriverMetaInfo() *DriverMeta
 
+	// Return the command to send a NOOP to the server.
+	PingCommand() *Command
+
+	// Parse driver specific options into the configuration.
 	ParseOptions(KV map[string]interface{}, configOptions url.Values) error
 }
 
@@ -60,70 +64,6 @@ type Conn interface {
 	// Commit() error
 	// SavePoint(name string) error
 	Status() ConnStatus
-}
-
-// Represents a connection or connection configuration to a database.
-type ConnPool struct {
-	dr   Driver
-	conf *Config
-}
-
-func (cp *ConnPool) Close() error {
-	// Close all active connections.
-	return nil
-}
-
-// Will attempt to connect to the database and disconnect.
-// Must not impact any existing connections.
-func (cp *ConnPool) Ping() error {
-	return nil
-}
-
-// Returns the information specific to the connection.
-// May call Ping() if there has not yet been a connection.
-func (cp *ConnPool) ConnectionInfo() (*ConnectionInfo, error) {
-	// Cache on first connection, then pull from that cache.
-	return nil, nil
-}
-
-// Perform a query against the database.
-// If values are not specified in the Command.Input[...].V, then they
-// may be specified in the Value. Order may be used to match the
-// existing parameters if the Value.N name is omitted.
-func (cp *ConnPool) Query(cmd *Command, vv ...Value) (*Result, error) {
-	// TODO: Use actual pool.
-	// For now, ignore any pooling option.
-	conn, err := cp.dr.Open(cp.conf)
-	if err != nil {
-		return nil, err
-	}
-	res := &Result{
-		conn: conn,
-	}
-	err = conn.Query(cmd, vv, QueryImplicit, IsoLevelDefault, &res.val)
-	if err != nil {
-		return res, err
-	}
-
-	fields := make([]*Field, len(cmd.Output))
-	for i := range cmd.Output {
-		fields[i] = &cmd.Output[i]
-	}
-
-	res.val.initFields = fields
-
-	return res, nil
-}
-
-// API for tranactions are preliminary. Not a stable API call.
-func (cp *ConnPool) Transaction(iso IsolationLevel) (*Transaction, error) {
-	panic("Not implemented")
-	return nil, nil
-}
-
-// Get the panic'ing version that doesn't return errors.
-func (cp *ConnPool) Must() ConnPoolMust {
-	return ConnPoolMust{norm: cp}
 }
 
 // The Transaction API is unstable.

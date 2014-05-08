@@ -25,3 +25,20 @@ func TestPing(t *testing.T) {
 		t.Errorf("Ping error: %v", err)
 	}
 }
+
+func TestVersion(t *testing.T) {
+	config := rdb.ParseConfigMust(testConnectionString)
+
+	db, err := rdb.Open(config)
+	if err != nil {
+		t.Errorf("Failed to open DB: %v", err)
+	}
+	defer db.Close()
+
+	connInfo, err := db.ConnectionInfo()
+	if err != nil {
+		t.Errorf("ConnectionInfo error: %v", err)
+	}
+	t.Logf("Server: %v\n", connInfo.Server)
+	t.Logf("Protocol: %v\n", connInfo.Protocol)
+}

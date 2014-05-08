@@ -19,7 +19,7 @@ type UnexpectedMessage struct {
 }
 
 func (msg UnexpectedMessage) Error() string {
-	return fmt.Sprintf("Expected message type %X, recieved type %X.", msg.Expected, msg.Recieved)
+	return fmt.Sprintf("Expected message type 0x%X, recieved type 0x%X.", msg.Expected, msg.Recieved)
 }
 
 type InputToolong struct {

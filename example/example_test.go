@@ -13,6 +13,9 @@ import (
 
 const testConnectionString = "ms://TESTU@localhost/SqlExpress?db=master"
 
+var config = rdb.ParseConfigMust(testConnectionString)
+var db rdb.ConnPoolMust
+
 func TestSimpleQuery(t *testing.T) {
 	err := QueryTest(t)
 	if err != nil {
@@ -30,10 +33,9 @@ func QueryTest(t *testing.T) (ferr error) {
 			panic(re)
 		}
 	}()
-	config := rdb.ParseConfigMust(testConnectionString)
-
-	db := rdb.OpenMust(config)
-	defer db.Close()
+	if db.Normal() == nil {
+		db = rdb.OpenMust(config)
+	}
 
 	SimpleQuery(db, t)
 	RowsQuery(db, t)
