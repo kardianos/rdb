@@ -37,14 +37,14 @@ func TestNumber(t *testing.T) {
 		`,
 		Arity: rdb.OneMust,
 		Input: []rdb.Param{
-			rdb.Param{N: "bt", T: rdb.TypeBool, V: true},
-			rdb.Param{N: "bf", T: rdb.TypeBool, V: false},
-			rdb.Param{N: "i8", T: rdb.TypeInt8, V: byte(55)},
-			rdb.Param{N: "i16", T: rdb.TypeInt16, V: int16(1234)},
-			rdb.Param{N: "bb", T: rdb.TypeBinary, L: 0, V: []byte{23, 24, 25, 26, 27}},
-			rdb.Param{N: "dec", T: rdb.TypeDecimal, Precision: 38, Scale: 4, V: big.NewRat(1234, 100)},
-			rdb.Param{N: "fl32", T: rdb.TypeFloat32, V: float32(45.67)},
-			rdb.Param{N: "fl64", T: rdb.TypeFloat64, V: float64(89.1011)},
+			{N: "bt", T: rdb.TypeBool, V: true},
+			{N: "bf", T: rdb.TypeBool, V: false},
+			{N: "i8", T: rdb.TypeInt8, V: byte(55)},
+			{N: "i16", T: rdb.TypeInt16, V: int16(1234)},
+			{N: "bb", T: rdb.TypeBinary, L: 0, V: []byte{23, 24, 25, 26, 27}},
+			{N: "dec", T: rdb.TypeDecimal, Precision: 38, Scale: 4, V: big.NewRat(1234, 100)},
+			{N: "fl32", T: rdb.TypeFloat32, V: float32(45.67)},
+			{N: "fl64", T: rdb.TypeFloat64, V: float64(89.1011)},
 		},
 	}
 
