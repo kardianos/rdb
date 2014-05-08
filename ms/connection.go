@@ -32,6 +32,9 @@ type Connection struct {
 	mr  *MessageReader
 	val rdb.Valuer
 	col []*SqlColumn
+
+	// Next token type.
+	peek byte
 }
 
 func NewConnection(c io.ReadWriteCloser) *Connection {
@@ -197,7 +200,10 @@ func (tds *Connection) Scan() error {
 			// Prep values must be cleared after the initial fill.
 			// The prior prep values are no longer valid as they are filled
 			// during the row scan.
-			return tds.val.RowScanned()
+			tds.val.RowScanned()
+			if tds.peek == tokenRow {
+				return nil
+			}
 		case SqlRpcResult:
 			tds.inTokenStream = false
 			if debugToken {
@@ -408,7 +414,13 @@ func (tds *Connection) getSingleResponse(m *MessageReader) (response interface{}
 		}
 		return bb
 	}
-	token := read(1)[0]
+	var token byte
+	if tds.peek == 0 {
+		token = read(1)[0]
+	} else {
+		token = tds.peek
+		tds.peek = 0
+	}
 	switch token {
 	// TODO: case tokenReturnValue (0xAC):
 	// TODO: case tokenOrder (0xA9):
@@ -467,6 +479,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader) (response interface{}
 			decodeFieldValue(read, column, tds.val)
 		}
 
+		tds.peek = read(1)[0]
 		return &SqlRow{}, nil
 	default:
 		return nil, fmt.Errorf("Unknown response code: 0x%X", bb[0])
