@@ -38,12 +38,17 @@ type Driver interface {
 	ParseOptions(KV map[string]interface{}, configOptions url.Values) error
 }
 
-type FieldValue struct {
+// Value type used by the driver to report a field value.
+// If a long field, such as a long byte array, it can be chunked
+// directly into destination. If the driver is copying from a common
+// buffer then the MustCopy field must be true so it is known it must be
+// copied out.
+type DriverValue struct {
 	Value    interface{}
 	Null     bool
-	MustCopy bool
-	More     bool // true if more data is expected for the field.
-	Chunked  bool // true if data is sent in chunks.
+	MustCopy bool // If the Value is a common driver buffer, set to true.
+	More     bool // True if more data is expected for the field.
+	Chunked  bool // True if data is sent in chunks.
 }
 
 type Conn interface {
