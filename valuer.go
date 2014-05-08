@@ -14,7 +14,7 @@ import (
 type Valuer interface {
 	Columns(cc []*SqlColumn) error
 	WriteField(c *SqlColumn, value *DriverValue) error
-	SqlError(err *SqlError)
+	SqlMessage(err *SqlMessage)
 	RowScanned() error
 	Done() error
 }
@@ -68,7 +68,7 @@ func (v *valuer) Columns(cc []*SqlColumn) error {
 	v.initFields = nil
 	return nil
 }
-func (v *valuer) SqlError(err *SqlError) {
+func (v *valuer) SqlMessage(err *SqlMessage) {
 	v.errors = append(v.errors, err)
 }
 func (v *valuer) RowScanned() error {

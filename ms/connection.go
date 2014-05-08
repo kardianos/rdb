@@ -14,14 +14,17 @@ import (
 	"io"
 )
 
+const debugToken = false
+
 type Connection struct {
 	pw *PacketWriter
 	pr *PacketReader
 
 	wc io.ReadWriteCloser
 
-	open  bool
-	inUse bool
+	open          bool
+	inUse         bool
+	inTokenStream bool
 
 	ProductVersion  *semver.Version
 	ProtocolVersion *semver.Version
@@ -95,6 +98,7 @@ func (tds *Connection) Close() error {
 	if !tds.open {
 		return nil
 	}
+	// TODO: Catch error from done().
 	tds.done()
 	err := tds.wc.Close()
 	tds.val = nil
@@ -114,16 +118,33 @@ func (tds *Connection) Status() rdb.ConnStatus {
 }
 
 func (tds *Connection) Query(cmd *rdb.Command, vv []rdb.Value, qt rdb.QueryType, iso rdb.IsolationLevel, valuer rdb.Valuer) error {
+	if tds.inUse {
+		panic("Connection in use still!")
+	}
 	param := make([]*rdb.Param, len(cmd.Input))
 	for i := range cmd.Input {
 		param[i] = &cmd.Input[i]
 	}
 	tds.val = valuer
 
+	if !tds.inTokenStream {
+		tds.mr = tds.pr.BeginMessage(packetTabularResult)
+		tds.inTokenStream = true
+	}
 	err := tds.execute(cmd.Sql, cmd.TruncLongText, cmd.Arity, param, vv)
 	if err != nil {
 		return err
 	}
+	if !tds.inTokenStream {
+		tds.mr = tds.pr.BeginMessage(packetTabularResult)
+		tds.inTokenStream = true
+		tds.inUse = true
+		err := tds.Scan()
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	/* TODO: Check Arity.
 	if res.arity&rdb.Zero != 0 {
 		defer res.Close()
@@ -138,27 +159,39 @@ func (tds *Connection) Query(cmd *rdb.Command, vv []rdb.Value, qt rdb.QueryType,
 }
 
 func (tds *Connection) done() error {
-	err := tds.mr.Close()
+	mrCloseErr := tds.mr.Close()
 	tds.inUse = false
+	err := tds.val.Done()
+	if err == nil {
+		err = mrCloseErr
+	}
 	return err
 }
 
 func (tds *Connection) Scan() error {
-	m := tds.mr
 	for {
-		res, err := tds.getSingleResponse(m)
+		res, err := tds.getSingleResponse(tds.mr)
 		if err != nil {
 			tds.val.Done()
 			return err
 		}
 		if res == nil {
+			if debugToken {
+				fmt.Println("TOKEN io.EOF")
+			}
 			// TODO: Determine why io.EOF is being returned (see getSingleResponse recover()).
-			return tds.val.Done()
+			return tds.done()
 		}
 		switch v := res.(type) {
-		case *rdb.SqlError:
-			tds.val.SqlError(v)
+		case *rdb.SqlMessage:
+			if debugToken {
+				fmt.Println("TOKEN MESSAGE")
+			}
+			tds.val.SqlMessage(v)
 		case []*SqlColumn:
+			if debugToken {
+				fmt.Println("TOKEN COLUMN")
+			}
 			tds.col = v
 			cc := make([]*rdb.SqlColumn, len(v))
 			for i, dsc := range v {
@@ -167,14 +200,30 @@ func (tds *Connection) Scan() error {
 			tds.val.Columns(cc)
 			return nil
 		case *SqlRow:
+			if debugToken {
+				fmt.Println("TOKEN ROW")
+			}
 			// Sent after the row is scanned.
 			// Prep values must be cleared after the initial fill.
 			// The prior prep values are no longer valid as they are filled
 			// during the row scan.
 			return tds.val.RowScanned()
 		case SqlRpcResult:
+			tds.inTokenStream = false
+			if debugToken {
+				fmt.Println("TOKEN RPC RESULT")
+			}
 		case *SqlDone:
-			return tds.val.Done()
+			if v.StatusCode == 0 {
+				if debugToken {
+					fmt.Println("TOKEN FINAL DONE")
+				}
+				return tds.done()
+			}
+			if debugToken {
+				fmt.Println("TOKEN DONE")
+			}
+			return nil
 		default:
 			panic(fmt.Sprintf("Unknown response: %v", res))
 		}
@@ -216,7 +265,6 @@ func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, par
 	if err != nil {
 		return err
 	}
-	tds.mr = tds.pr.BeginMessage(packetTabularResult)
 
 	return tds.Scan()
 }
@@ -370,22 +418,32 @@ func (tds *Connection) getSingleResponse(m *MessageReader) (response interface{}
 		}
 		return bb
 	}
-
-	switch read(1)[0] {
+	token := read(1)[0]
+	switch token {
+	// TODO: case tokenReturnValue (0xAC):
+	// TODO: case tokenOrder (0xA9):
+	case tokenInfo:
+		fallthrough
 	case tokenError:
-		sqlErr := &rdb.SqlError{}
+		tp := rdb.SqlError
+		if token == tokenInfo {
+			tp = rdb.SqlInfo
+		}
+		sqlMsg := &rdb.SqlMessage{
+			Type: tp,
+		}
 		_ = binary.LittleEndian.Uint16(read(2)) // length
-		sqlErr.Number = int32(binary.LittleEndian.Uint32(read(4)))
+		sqlMsg.Number = int32(binary.LittleEndian.Uint32(read(4)))
 		state := read(1)[0]
 		class := read(1)[0]
 
 		_, msg := uconv.Decode.Prefix2(read)
-		sqlErr.Message = fmt.Sprintf("%s (%d, %d)", msg, state, class)
-		_, sqlErr.ServerName = uconv.Decode.Prefix1(read)
-		_, sqlErr.ProcName = uconv.Decode.Prefix1(read)
-		sqlErr.LineNumber = int32(binary.LittleEndian.Uint32(read(4)))
+		sqlMsg.Message = fmt.Sprintf("%s (%d, %d)", msg, state, class)
+		_, sqlMsg.ServerName = uconv.Decode.Prefix1(read)
+		_, sqlMsg.ProcName = uconv.Decode.Prefix1(read)
+		sqlMsg.LineNumber = int32(binary.LittleEndian.Uint32(read(4)))
 
-		return sqlErr, nil
+		return sqlMsg, nil
 	case tokenColumnMetaData:
 		bb = read(2)
 		if bb[0] == 0xff && bb[1] == 0xff {

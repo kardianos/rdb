@@ -23,7 +23,6 @@ func TestDateTime(t *testing.T) {
 			panic(re)
 		}
 	}()
-	config := rdb.ParseConfigMust(testConnectionString)
 
 	// Truncate as the round trip for DateTimeN is slightly lossy.
 	truncTo := 200 * time.Millisecond
@@ -61,8 +60,9 @@ func TestDateTime(t *testing.T) {
 		},
 	}
 
-	db := rdb.OpenMust(config)
-	defer db.Close()
+	if db.Normal() == nil {
+		db = rdb.OpenMust(config)
+	}
 
 	res := db.Query(cmd)
 	defer res.Close()

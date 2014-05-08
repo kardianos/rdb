@@ -26,6 +26,7 @@ const (
 const (
 	tokenLoginAck = 0xAD
 	tokenError    = 0xAA
+	tokenInfo     = 0xAB
 	tokenDone     = 0xFD
 
 	tokenReturnStatus   = 0x79

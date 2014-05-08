@@ -4,17 +4,53 @@
 
 package rdb
 
+import "fmt"
+
+const debugConnectionReuse = false
+
 // Manages the life cycle of a query.
 // The result must automaticly Close() if the command Arity is Zero after
 // execution or after the first Scan() if Arity is One.
 type Result struct {
 	conn Conn
 	val  valuer
+	cp   *ConnPool
 }
 
 // Results should automatically close when all rows have been read.
 func (res *Result) Close() error {
-	// TODO: Don't close the connection, just return to pool.
+	if debugConnectionReuse {
+		fmt.Println("Result.Close() start")
+	}
+	for {
+		if res.conn == nil {
+			return nil
+		}
+		switch res.conn.Status() {
+		case StatusQuery:
+			_, err := res.Scan()
+			if err != nil {
+				return err
+			}
+		case StatusReady:
+			if debugConnectionReuse {
+				fmt.Println("Result.Close() REUSE")
+			}
+			// Don't close the connection, just return to pool.
+			res.cp.pool.Put(res.conn)
+			res.cp = nil
+			res.conn = nil
+			res = nil
+			return nil
+		default:
+			break
+		}
+	}
+
+	if debugConnectionReuse {
+		fmt.Println("Result.Close() CLOSE")
+	}
+	// Not sure what the state is, close the entire connection.
 	return res.conn.Close()
 }
 

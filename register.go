@@ -6,6 +6,7 @@ package rdb
 
 import (
 	"fmt"
+	"sync"
 )
 
 var drivers = map[string]Driver{}
@@ -36,5 +37,6 @@ func Open(config *Config) (*ConnPool, error) {
 	return &ConnPool{
 		dr:   dr,
 		conf: config,
+		pool: &sync.Pool{},
 	}, nil
 }

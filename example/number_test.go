@@ -23,7 +23,6 @@ func TestNumber(t *testing.T) {
 			panic(re)
 		}
 	}()
-	config := rdb.ParseConfigMust(testConnectionString)
 
 	cmd := &rdb.Command{
 		Sql: `
@@ -48,8 +47,9 @@ func TestNumber(t *testing.T) {
 		},
 	}
 
-	db := rdb.OpenMust(config)
-	defer db.Close()
+	if db.Normal() == nil {
+		db = rdb.OpenMust(config)
+	}
 
 	var bt, bf bool
 	var i8 byte

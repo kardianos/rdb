@@ -59,14 +59,11 @@ func (dr *Driver) ParseOptions(KV map[string]interface{}, configOptions url.Valu
 	return nil
 }
 
-/* TODO: add back ping.
 var pingCommand = &rdb.Command{
 	Sql:   "select top 0 1;",
 	Arity: rdb.ZeroMust,
 }
 
-func (db *Database) Ping() error {
-	_, err := db.Query(pingCommand)
-	return err
+func (db *Driver) PingCommand() *rdb.Command {
+	return pingCommand
 }
-*/
