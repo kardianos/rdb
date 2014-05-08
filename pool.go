@@ -117,7 +117,7 @@ func (cp *ConnPool) Query(cmd *Command, vv ...Value) (*Result, error) {
 	}
 
 	res.val.initFields = fields
-	err = conn.Query(cmd, vv, QueryImplicit, IsoLevelDefault, &res.val)
+	err = conn.Query(cmd, vv, false, IsoLevelDefault, &res.val)
 
 	if err == nil && len(res.val.errors) != 0 {
 		err = res.val.errors

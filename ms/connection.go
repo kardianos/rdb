@@ -119,7 +119,28 @@ func (tds *Connection) Status() rdb.ConnStatus {
 	return rdb.StatusQuery
 }
 
-func (tds *Connection) Query(cmd *rdb.Command, vv []rdb.Value, qt rdb.QueryType, iso rdb.IsolationLevel, valuer rdb.Valuer) error {
+func (tds *Connection) Prepare(*rdb.Command) (preparedStatementToken interface{}, err error) {
+	panic("Not yet implemented.")
+	return nil, nil
+}
+func (tds *Connection) Unprepare(preparedStatementToken interface{}) (err error) {
+	panic("Not yet implemented.")
+	return nil, nil
+}
+func (tds *Connection) Rollback(savepoint string) error {
+	panic("Not yet implemented.")
+	return nil
+}
+func (tds *Connection) Commit() error {
+	panic("Not yet implemented.")
+	return nil
+}
+func (tds *Connection) SavePoint(name string) error {
+	panic("Not yet implemented.")
+	return nil
+}
+
+func (tds *Connection) Query(cmd *rdb.Command, vv []rdb.Value, startTran bool, iso rdb.IsolationLevel, valuer rdb.Valuer) error {
 	if tds.inUse {
 		panic("Connection in use still!")
 	}

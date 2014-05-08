@@ -8,14 +8,6 @@ import (
 	"net/url"
 )
 
-type QueryType byte
-
-const (
-	QueryImplicit QueryType = iota
-	QueryPrepare            // Create a prepared transaction.
-	QueryBegin              // Transaction
-)
-
 type ConnStatus byte
 
 const (
@@ -59,36 +51,11 @@ type Conn interface {
 	Close()
 	ConnectionInfo() (*ConnectionInfo, error)
 	Scan() error
-	Query(*Command, []Value, QueryType, IsolationLevel, Valuer) error
-	// Rollback(savepoint string) error
-	// Commit() error
-	// SavePoint(name string) error
+	Query(cmd *Command, vv []Value, tranStart bool, iso IsolationLevel, val Valuer) error
+	Prepare(*Command) (preparedStatementToken interface{}, err error)
+	Unprepare(preparedStatementToken interface{}) (err error)
+	Rollback(savepoint string) error
+	Commit() error
+	SavePoint(name string) error
 	Status() ConnStatus
-}
-
-// The Transaction API is unstable.
-// Represents a transaction in progress.
-type Transaction struct {
-}
-
-func (tran *Transaction) Query(cmd *Command, vv ...Value) (*Result, error) {
-	return nil, nil
-}
-func (tran *Transaction) Commit() error {
-	return nil
-}
-func (tran *Transaction) Rollback() error {
-	return nil
-}
-
-// Get the panic'ing version that doesn't return errors.
-func (tran *Transaction) Must() TransactionMust {
-	return TransactionMust{}
-}
-
-// Returned from GetN and GetxN.
-// Represents a nullable type.
-type Nullable struct {
-	Null bool        // True if value is null.
-	V    interface{} // Value, if any present.
 }

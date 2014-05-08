@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Database configuration.
+// Database connection configuration.
 // Drivers may have additional properties held in KV.
 // If a driver is file based, the file name should be in the "Instance" field.
 type Config struct {
@@ -57,7 +57,6 @@ type Config struct {
 //      init_cap=<int>:               PoolInitCapacity
 //      max_cap=<int>:                PoolMaxCapacity
 //      idle_timeout=<time.Duration>: PoolIdleTimeout
-// If PoolIdleTimeout is zero, there is no timeout.
 func ParseConfig(connectionString string) (*Config, error) {
 	u, err := url.Parse(connectionString)
 	if err != nil {

@@ -63,6 +63,13 @@ type SqlColumn struct {
 	Scale     int     // For types with scale, including decimal.
 }
 
+// Returned from GetN and GetxN.
+// Represents a nullable type.
+type Nullable struct {
+	Null bool        // True if value is null.
+	V    interface{} // Value, if any present.
+}
+
 // If the command output fields are specified, the Field output can help manage
 // how the result rows are copied to.
 type Field struct {
