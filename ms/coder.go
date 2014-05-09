@@ -651,11 +651,11 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 		case typeByte:
 			v = bb[0]
 		case typeInt16:
-			v = binary.LittleEndian.Uint16(bb)
+			v = int16(binary.LittleEndian.Uint16(bb))
 		case typeInt32:
-			v = binary.LittleEndian.Uint32(bb)
+			v = int32(binary.LittleEndian.Uint32(bb))
 		case typeInt64:
-			v = binary.LittleEndian.Uint64(bb)
+			v = int64(binary.LittleEndian.Uint64(bb))
 		case typeFloat32:
 			v = math.Float32frombits(binary.LittleEndian.Uint32(bb))
 		case typeFloat64:
