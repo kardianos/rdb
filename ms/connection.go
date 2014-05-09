@@ -158,17 +158,6 @@ func (tds *Connection) Query(cmd *rdb.Command, vv []rdb.Value, startTran bool, i
 	if err != nil {
 		return err
 	}
-
-	/* TODO: Check Arity.
-	if res.arity&rdb.Zero != 0 {
-		defer res.Close()
-
-		err = res.Process(false)
-		if !res.EOF && res.arity&rdb.ArityMust != 0 && err == nil {
-			err = arityError
-		}
-	}
-	*/
 	return nil
 }
 
@@ -182,9 +171,9 @@ func (tds *Connection) done() error {
 	return err
 }
 
-func (tds *Connection) Scan() error {
+func (tds *Connection) Scan(reportRow bool) error {
 	for {
-		res, err := tds.getSingleResponse(tds.mr)
+		res, err := tds.getSingleResponse(tds.mr, reportRow)
 		if err != nil {
 			tds.val.Done()
 			return err
@@ -283,7 +272,7 @@ func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, par
 		return err
 	}
 
-	return tds.Scan()
+	return tds.Scan(true)
 }
 
 const (
@@ -412,7 +401,7 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []*rdb.Param,
 	return nil
 }
 
-func (tds *Connection) getSingleResponse(m *MessageReader) (response interface{}, err error) {
+func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (response interface{}, err error) {
 	var bb []byte
 
 	defer func() {
@@ -497,7 +486,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader) (response interface{}
 		}, nil
 	case tokenRow:
 		for _, column := range tds.col {
-			decodeFieldValue(read, column, tds.val)
+			decodeFieldValue(read, column, tds.val, reportRow)
 		}
 
 		tds.peek = read(1)[0]

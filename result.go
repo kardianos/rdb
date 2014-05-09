@@ -15,6 +15,13 @@ type Result struct {
 
 // Results should automatically close when all rows have been read.
 func (res *Result) Close() error {
+	return res.close(true)
+}
+
+func (res *Result) close(explicit bool) error {
+	if explicit {
+		res.val.clearBuffer()
+	}
 	var err error
 	for {
 		if res.conn == nil {
@@ -22,7 +29,7 @@ func (res *Result) Close() error {
 		}
 		switch res.conn.Status() {
 		case StatusQuery:
-			_, err := res.Scan()
+			_, err := res.scan(false)
 			if err != nil {
 				return err
 			}
@@ -38,8 +45,8 @@ func (res *Result) Close() error {
 			break
 		}
 	}
-	if err == nil && len(res.val.errors) != 0 {
-		err = res.val.errors
+	if err == nil && len(res.val.errorList) != 0 {
+		err = res.val.errorList
 	}
 	return err
 }
@@ -47,6 +54,11 @@ func (res *Result) Close() error {
 // Fetch the table schema.
 func (res *Result) Schema() []*SqlColumn {
 	return res.val.columns
+}
+
+// Informational messages. Do not call concurrently with Scan() or Done().
+func (res *Result) Info() []*SqlMessage {
+	return res.val.infoList
 }
 
 // Prepare pointers to values to be populated by name using Prep. After
@@ -141,20 +153,42 @@ func (r *Result) GetxN(index int) (Nullable, error) {
 // Return value "more" is false if no more rows.
 // Results should automatically close when all rows have been read.
 func (res *Result) Scan() (more bool, err error) {
-	res.val.clearBuffer()
-	err = res.conn.Scan()
-	eof := true
+	return res.scan(true)
+}
+
+func (res *Result) scan(reportRow bool) (more bool, err error) {
+	if reportRow {
+		res.val.clearBuffer()
+	}
+	err = res.conn.Scan(reportRow)
+	res.val.clearPrep()
+
+	// Only show SQL errors if no connection errors,
+	// but show before any other errors.
+	if err == nil && len(res.val.errorList) != 0 {
+		err = res.val.errorList
+	}
+
+	if res.val.arity&One != 0 {
+		res.val.eof = true
+		if res.val.rowCount == 1 {
+			serr := res.conn.Scan(false)
+			if err == nil {
+				err = serr
+			}
+		}
+		if err == nil && res.val.arity&ArityMust != 0 && res.val.rowCount > 1 {
+			err = arityError
+		}
+	}
+
 	if res.val.eof {
-		cerr := res.Close()
+		cerr := res.close(false)
 		if err == nil {
 			err = cerr
 		}
-		eof = false
 	}
-	if err == nil && len(res.val.errors) != 0 {
-		err = res.val.errors
-	}
-	return eof, err
+	return !res.val.eof, err
 }
 
 // Get the panic'ing version that doesn't return errors.
