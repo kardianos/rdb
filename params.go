@@ -7,7 +7,10 @@ package rdb
 // If the N (Name) field is not specified is not specified, then the order
 // of the parameter should be used if the driver supports it.
 type Param struct {
-	N string // Optional Parameter Name.
+	// Optional parameter name.
+	// All parameter names MUST NOT begin with a leading symbol. If required by
+	// the backend the driver should insert.
+	N string
 
 	// Parameter Type. Drivers may be able to infer this type.
 	// Check the driver documentation used for more information.
@@ -17,10 +20,7 @@ type Param struct {
 	L int
 
 	// Value for input parameter.
-	// Do not use if reusing *Command, use Value.V instead.
 	// If the value is an io.Reader it will read the value directly to the wire.
-	// If this satisfies the Filler interface the value will be fetched from
-	// that interface.
 	V interface{}
 
 	// Set to true if the parameter is an output parameter.
@@ -31,22 +31,6 @@ type Param struct {
 	Null      bool
 	Scale     int
 	Precision int
-}
-
-// If the input parameter value isn't populated in the command,
-// the value can be filled in at the time of query.
-// If the N (Name) field is not specified, then the order of the
-// parameters or values are used if the driver supports it.
-type Value struct {
-	N string // Parameter Name.
-
-	// Value for input parameter.
-	// If the value is an io.Reader it will read the value directly to the wire.
-	V interface{}
-
-	// Param is typically only set by the driver.
-	// Users should set the name parameter or just rely on the Value index.
-	Param *Param
 }
 
 // Information about the column as reported by the database.
@@ -77,6 +61,9 @@ type Field struct {
 
 	// Value to report if the driver reports a null value.
 	NullValue interface{}
+
+	// Convert this field with a function.
+	Convert ConvertOutput
 }
 
 type IsolationLevel byte
@@ -111,10 +98,35 @@ const (
 	OneMust Arity = One | ArityMust
 )
 
+type ConvertInputIn struct {
+	// Allows converting based on a column name suffix like
+	// "create_time" -> TypeTD, may attempt to convert a string to a time.Time
+	// value.
+	Name string
+
+	// Out parameters must be able to be converted bi-directionally.
+	// Will be true if value is returning from the database.
+	Returning bool
+
+	// The SqlType as defined in the Param.
+	Type SqlType
+
+	// The input value.
+	Value interface{}
+}
+
+// Convert parameter type to another type or simply set the SqlType.
+// Ordered array in *Config and *Command.
+// The values in *Command are evaluated before any in *Config.
+type ConvertInput func(in ConvertInputIn) (handled bool, outType SqlType, out interface{}, err error)
+
+// Convert output field.
+// In *Config contains a map[SqlType]ConvertOutput map,
+// also in per column Field output.
+type ConvertOutput func(*SqlColumn, interface{}) (interface{}, error)
+
 // Command represents a SQL command and can be used from many different
-// queries at the same time, so long as the input parameter values
-// "Input[N].V (Value)" are not set in the Param struct but passed in with
-// the actual query as Value.
+// queries at the same time.
 // The Command MUST be reused if the Prepare field is true.
 type Command struct {
 	// The SQL to be used in the command.
@@ -126,7 +138,6 @@ type Command struct {
 	//   If Arity is Zero or ZeroOnly, no rows are returned.
 	//   If Arity is ZeroOnnly, if any results are returned an error is returned.
 	Arity Arity
-	Input []Param
 
 	// Optional fields to specify output marshal.
 	Output []Field
@@ -147,4 +158,7 @@ type Command struct {
 
 	// Optional name of the command. May be used if logging.
 	Name string
+
+	// An ordered list of input converters.
+	InputConverters []ConvertInput
 }

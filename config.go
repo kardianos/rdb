@@ -42,6 +42,12 @@ type Config struct {
 	PoolMaxCapacity int
 
 	KV map[string]interface{}
+
+	// An ordered list of input converters.
+	InputConverters []ConvertInput
+
+	// A per-SqlType convertion for result ouput fields.
+	OuputConverters map[SqlType]ConvertOutput
 }
 
 // Provides a standard method to parse configuration options from a text.

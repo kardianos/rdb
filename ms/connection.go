@@ -140,13 +140,9 @@ func (tds *Connection) SavePoint(name string) error {
 	return nil
 }
 
-func (tds *Connection) Query(cmd *rdb.Command, vv []rdb.Value, startTran bool, valuer rdb.Valuer) error {
+func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, startTran bool, valuer rdb.Valuer) error {
 	if tds.inUse {
 		panic("Connection in use still!")
-	}
-	param := make([]*rdb.Param, len(cmd.Input))
-	for i := range cmd.Input {
-		param[i] = &cmd.Input[i]
 	}
 	tds.val = valuer
 
@@ -154,7 +150,7 @@ func (tds *Connection) Query(cmd *rdb.Command, vv []rdb.Value, startTran bool, v
 		tds.mr = tds.pr.BeginMessage(packetTabularResult)
 		tds.inTokenStream = true
 	}
-	err := tds.execute(cmd.Sql, cmd.TruncLongText, cmd.Arity, param, vv)
+	err := tds.execute(cmd.Sql, cmd.TruncLongText, cmd.Arity, params)
 	if err != nil {
 		return err
 	}
@@ -236,7 +232,7 @@ func (tds *Connection) Scan(reportRow bool) error {
 	}
 }
 
-func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, params []*rdb.Param, values []rdb.Value) error {
+func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, params []rdb.Param) error {
 	if !tds.open {
 		return connectionNotOpenError
 	}
@@ -245,29 +241,7 @@ func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, par
 	}
 	tds.inUse = true
 
-	if len(values) != 0 {
-		pm := make(map[string]*rdb.Param, len(params))
-		for _, param := range params {
-			pm[param.N] = param
-		}
-		for i := range values {
-			value := &values[i]
-			var ok bool
-			if len(value.N) == 0 {
-				if i >= len(params) {
-					return rdb.ErrorColumnNotFound{At: "Map values to parameters", Index: i}
-				}
-				value.Param = params[i]
-			} else {
-				value.Param, ok = pm[value.N]
-				if !ok {
-					return rdb.ErrorColumnNotFound{At: "Map values to parameters", Name: value.N}
-				}
-			}
-		}
-	}
-
-	err := tds.sendRpc(sql, truncValue, params, values)
+	err := tds.sendRpc(sql, truncValue, params)
 	if err != nil {
 		return err
 	}
@@ -284,7 +258,7 @@ var rpcHeaderParam = &rdb.Param{
 	L: 0,
 }
 
-func (tds *Connection) sendRpc(sql string, truncValue bool, params []*rdb.Param, values []rdb.Value) error {
+func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) error {
 	// To make a SQL Query with params:
 	// * RPC Param 1 = {Name: "", Type: NText, Field: SqlQuery}
 	// * RPC Param 2 = {Name: "", Type: NText, Field: "@MySqlParam1 int,@Foo varchar(400)"}
@@ -353,7 +327,8 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []*rdb.Param,
 	w.WriteUint16(options) // 16 bits (2 bytes) - Options: fWithRecomp, fNoMetaData, fReuseMetaData, 13FRESERVEDBIT
 
 	paramNames := &bytes.Buffer{}
-	for i, param := range params {
+	for i := range params {
+		param := &params[i]
 		if i != 0 {
 			paramNames.WriteRune(',')
 		}
@@ -377,19 +352,11 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []*rdb.Param,
 	}
 
 	// Other parameters.
-	if len(values) == 0 {
-		for _, param := range params {
-			err = encodeParam(w, truncValue, tds.ProtocolVersion, param, param.V)
-			if err != nil {
-				return err
-			}
-		}
-	} else {
-		for _, value := range values {
-			err = encodeParam(w, truncValue, tds.ProtocolVersion, value.Param, value.V)
-			if err != nil {
-				return err
-			}
+	for i := range params {
+		param := &params[i]
+		err = encodeParam(w, truncValue, tds.ProtocolVersion, param, param.V)
+		if err != nil {
+			return err
 		}
 	}
 	w.WriteByte(0xFF)

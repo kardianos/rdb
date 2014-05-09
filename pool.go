@@ -100,11 +100,11 @@ func (cp *ConnPool) getConn() (Conn, error) {
 // If values are not specified in the Command.Input[...].V, then they
 // may be specified in the Value. Order may be used to match the
 // existing parameters if the Value.N name is omitted.
-func (cp *ConnPool) Query(cmd *Command, vv ...Value) (*Result, error) {
-	return cp.query(cmd, nil, vv...)
+func (cp *ConnPool) Query(cmd *Command, params ...Param) (*Result, error) {
+	return cp.query(cmd, nil, params...)
 }
 
-func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, vv ...Value) (*Result, error) {
+func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, params ...Param) (*Result, error) {
 	conn, err := cp.getConn()
 	if err != nil {
 		return nil, err
@@ -124,7 +124,7 @@ func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, vv ...Value) (*Resu
 	}
 
 	res.val.initFields = fields
-	err = conn.Query(cmd, vv, false, &res.val)
+	err = conn.Query(cmd, params, false, &res.val)
 
 	if ci != nil {
 		var ciErr error
@@ -155,7 +155,7 @@ func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, vv ...Value) (*Resu
 }
 
 // API for tranactions are preliminary. Not a stable API call.
-func (cp *ConnPool) Begin(cmd *Command, vv ...Value) (*Transaction, error) {
+func (cp *ConnPool) Begin(cmd *Command, params ...[]Param) (*Transaction, error) {
 	panic("Not implemented")
 	return nil, nil
 }

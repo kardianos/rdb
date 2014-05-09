@@ -9,7 +9,7 @@ package rdb
 type Transaction struct {
 }
 
-func (tran *Transaction) Query(cmd *Command, vv ...Value) (*Result, error) {
+func (tran *Transaction) Query(cmd *Command, params ...Param) (*Result, error) {
 	return nil, nil
 }
 func (tran *Transaction) Commit() error {
