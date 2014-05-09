@@ -125,7 +125,7 @@ func (tds *Connection) Prepare(*rdb.Command) (preparedStatementToken interface{}
 }
 func (tds *Connection) Unprepare(preparedStatementToken interface{}) (err error) {
 	panic("Not yet implemented.")
-	return nil, nil
+	return nil
 }
 func (tds *Connection) Rollback(savepoint string) error {
 	panic("Not yet implemented.")
