@@ -2,13 +2,12 @@
 // Use of this source code is governed by a zlib-style
 // license that can be found in the LICENSE file.
 
-package example
+package ms
 
 import (
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
-	_ "bitbucket.org/kardianos/rdb/ms"
 )
 
 func TestPing(t *testing.T) {

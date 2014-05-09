@@ -2,7 +2,7 @@
 // Use of this source code is governed by a zlib-style
 // license that can be found in the LICENSE file.
 
-package example
+package ms
 
 import (
 	"math/big"
@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
-	_ "bitbucket.org/kardianos/rdb/ms"
 )
 
 func TestNumber(t *testing.T) {
@@ -47,9 +46,7 @@ func TestNumber(t *testing.T) {
 		},
 	}
 
-	if db.Normal() == nil {
-		db = rdb.OpenMust(config)
-	}
+	openConnPool()
 
 	var bt, bf bool
 	var i8 byte

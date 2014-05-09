@@ -2,19 +2,26 @@
 // Use of this source code is governed by a zlib-style
 // license that can be found in the LICENSE file.
 
-package example
+package ms
 
 import (
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
-	_ "bitbucket.org/kardianos/rdb/ms"
 )
 
 const testConnectionString = "ms://TESTU@localhost/SqlExpress?db=master&dial_timeout=3s"
 
-var config = rdb.ParseConfigMust(testConnectionString)
+var config *rdb.Config
 var db rdb.ConnPoolMust
+
+func openConnPool() {
+	if db.Normal() != nil {
+		return
+	}
+	config = rdb.ParseConfigMust(testConnectionString)
+	db = rdb.OpenMust(config)
+}
 
 func TestSimpleQuery(t *testing.T) {
 	err := QueryTest(t)
@@ -33,9 +40,7 @@ func QueryTest(t *testing.T) (ferr error) {
 			panic(re)
 		}
 	}()
-	if db.Normal() == nil {
-		db = rdb.OpenMust(config)
-	}
+	openConnPool()
 
 	ErrorQuery(db, t)
 	SimpleQuery(db, t)
