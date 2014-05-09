@@ -57,7 +57,9 @@ type Conn interface {
 	// Read the next row from the connection. For each field in the row
 	// call the Valuer.WriteField(...) method. Propagate the reportRow field.
 	Scan(reportRow bool) error
-	Query(cmd *Command, vv []Value, tranStart bool, iso IsolationLevel, val Valuer) error
+
+	// The isolation level is set by the command.
+	Query(cmd *Command, vv []Value, tranStart bool, val Valuer) error
 	Prepare(*Command) (preparedStatementToken interface{}, err error)
 	Unprepare(preparedStatementToken interface{}) (err error)
 	Rollback(savepoint string) error
