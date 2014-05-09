@@ -2,7 +2,7 @@
 // Use of this source code is governed by a zlib-style
 // license that can be found in the LICENSE file.
 
-package example
+package ms
 
 import (
 	"reflect"
@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/ms"
 )
 
 func TestDateTime(t *testing.T) {
@@ -50,19 +49,17 @@ func TestDateTime(t *testing.T) {
 		`,
 		Arity: rdb.OneMust,
 		Input: []rdb.Param{
-			{N: "dt", T: ms.TypeOldTD, V: dt},
+			{N: "dt", T: TypeOldTD, V: dt},
 			{N: "d", T: rdb.TypeDate, V: d},
 			{N: "t", T: rdb.TypeTime, V: tm},
 			{N: "dt2", T: rdb.TypeTD, V: dt2},
 			{N: "dto", T: rdb.TypeTDZ, V: dto},
-			{N: "dtS", T: ms.TypeOldTD, V: dtS},
+			{N: "dtS", T: TypeOldTD, V: dtS},
 			{N: "dt2S", T: rdb.TypeTD, V: dtS},
 		},
 	}
 
-	if db.Normal() == nil {
-		db = rdb.OpenMust(config)
-	}
+	openConnPool()
 
 	res := db.Query(cmd)
 	defer res.Close()
