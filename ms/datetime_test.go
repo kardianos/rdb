@@ -48,20 +48,20 @@ func TestDateTime(t *testing.T) {
 				dto = @dto
 		`,
 		Arity: rdb.OneMust,
-		Input: []rdb.Param{
-			{N: "dt", T: TypeOldTD, V: dt},
-			{N: "d", T: rdb.TypeDate, V: d},
-			{N: "t", T: rdb.TypeTime, V: tm},
-			{N: "dt2", T: rdb.TypeTD, V: dt2},
-			{N: "dto", T: rdb.TypeTDZ, V: dto},
-			{N: "dtS", T: TypeOldTD, V: dtS},
-			{N: "dt2S", T: rdb.TypeTD, V: dtS},
-		},
 	}
 
 	openConnPool()
 
-	res := db.Query(cmd)
+	params := []rdb.Param{
+		{N: "dt", T: TypeOldTD, V: dt},
+		{N: "d", T: rdb.TypeDate, V: d},
+		{N: "t", T: rdb.TypeTime, V: tm},
+		{N: "dt2", T: rdb.TypeTD, V: dt2},
+		{N: "dto", T: rdb.TypeTDZ, V: dto},
+		{N: "dtS", T: TypeOldTD, V: dtS},
+		{N: "dt2S", T: rdb.TypeTD, V: dtS},
+	}
+	res := db.Query(cmd, params...)
 	defer res.Close()
 
 	res.Prep("dt", &dt)
@@ -88,10 +88,10 @@ func TestDateTime(t *testing.T) {
 	compare := []interface{}{dt, d, tm, dt2, dto}
 
 	for i := range compare {
-		if i >= len(cmd.Input) {
+		if i >= len(params) {
 			return
 		}
-		in := cmd.Input[i]
+		in := params[i]
 		diff := false
 		if tv, ok := in.V.(time.Time); ok {
 			if !tv.Equal(compare[i].(time.Time)) {

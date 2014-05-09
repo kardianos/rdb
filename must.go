@@ -72,8 +72,8 @@ func (must ConnPoolMust) ConnectionInfo() *ConnectionInfo {
 // Input parameter values can either be specified in the paremeter definition
 // or on each query. If the value is not put in the parameter definition
 // then the command instance may be reused for every query.
-func (must ConnPoolMust) Query(cmd *Command, vv ...Value) ResultMust {
-	res, err := must.norm.Query(cmd, vv...)
+func (must ConnPoolMust) Query(cmd *Command, params ...Param) ResultMust {
+	res, err := must.norm.Query(cmd, params...)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -83,8 +83,8 @@ func (must ConnPoolMust) Query(cmd *Command, vv ...Value) ResultMust {
 }
 
 // Same as Query but will panic on an error.
-func (must ConnPoolMust) Begin(cmd *Command, vv ...Value) TransactionMust {
-	tran, err := must.norm.Begin(cmd, vv...)
+func (must ConnPoolMust) Begin(cmd *Command, params ...Param) TransactionMust {
+	tran, err := must.norm.Begin(cmd, params)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -96,8 +96,8 @@ func (must ConnPoolMust) Begin(cmd *Command, vv ...Value) TransactionMust {
 // Input parameter values can either be specified in the paremeter definition
 // or on each query. If the value is not put in the parameter definition
 // then the command instance may be reused for every query.
-func (must TransactionMust) Query(cmd *Command, vv ...Value) ResultMust {
-	res, err := must.norm.Query(cmd, vv...)
+func (must TransactionMust) Query(cmd *Command, params ...Param) ResultMust {
+	res, err := must.norm.Query(cmd, params...)
 	if err != nil {
 		panic(MustError{Err: err})
 	}

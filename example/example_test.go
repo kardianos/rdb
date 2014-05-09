@@ -48,17 +48,16 @@ func ErrorQuery(db rdb.ConnPoolMust, t *testing.T) {
 	res, err := db.Normal().Query(&rdb.Command{
 		Sql: `
 			s3l3c1 @animal as 'MyAnimal';`,
-		Arity: rdb.OneMust,
-		Input: []rdb.Param{
-			{
-				N: "animal",
-				T: rdb.TypeString,
-				L: 8,
-				V: "DogIsFriend",
-			},
-		},
+		Arity:         rdb.OneMust,
 		TruncLongText: true,
-	})
+	}, []rdb.Param{
+		{
+			N: "animal",
+			T: rdb.TypeString,
+			L: 8,
+			V: "DogIsFriend",
+		},
+	}...)
 	if err == nil {
 		t.Errorf("Expecting an error.")
 	}
@@ -73,17 +72,16 @@ func SimpleQuery(db rdb.ConnPoolMust, t *testing.T) {
 	db.Query(&rdb.Command{
 		Sql: `
 			select @animal as 'MyAnimal';`,
-		Arity: rdb.OneMust,
-		Input: []rdb.Param{
-			{
-				N: "animal",
-				T: rdb.TypeString,
-				L: 8,
-				V: "DogIsFriend",
-			},
-		},
+		Arity:         rdb.OneMust,
 		TruncLongText: true,
-	}).Prep("MyAnimal", &myFav).Scan()
+	}, []rdb.Param{
+		{
+			N: "animal",
+			T: rdb.TypeString,
+			L: 8,
+			V: "DogIsFriend",
+		},
+	}...).Prep("MyAnimal", &myFav).Scan()
 	t.Logf("Animal_1: %s\n", myFav)
 }
 func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
@@ -94,16 +92,15 @@ func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
 			union all
 			select N'Hello again!'
 		;`,
-		Arity: rdb.Any,
-		Input: []rdb.Param{
-			{
-				N: "animal",
-				T: rdb.TypeString,
-				V: "Dreaming boats.",
-			},
-		},
+		Arity:         rdb.Any,
 		TruncLongText: true,
-	})
+	}, []rdb.Param{
+		{
+			N: "animal",
+			T: rdb.TypeString,
+			V: "Dreaming boats.",
+		},
+	}...)
 	defer res.Close()
 	for {
 		res.Prep("MyAnimal", &myFav)
@@ -124,19 +121,19 @@ func LargerQuery(db rdb.ConnPoolMust, t *testing.T) {
 			;
 			`,
 		Arity: rdb.OneMust,
-		Input: []rdb.Param{
-			{
-				N: "animal",
-				T: rdb.TypeString,
-			},
-		},
 	}
 
 	var dock string
 	var id int
 	var val float64
 
-	res := db.Query(cmd, rdb.Value{V: "Fish"})
+	res := db.Query(cmd, []rdb.Param{
+		{
+			N: "animal",
+			T: rdb.TypeString,
+			V: "Fish",
+		},
+	}...)
 	defer res.Close()
 
 	res.PrepAll(&id, &val, &dock)

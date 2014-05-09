@@ -34,16 +34,6 @@ func TestNumber(t *testing.T) {
 				fl64 = @fl64
 		`,
 		Arity: rdb.OneMust,
-		Input: []rdb.Param{
-			{N: "bt", T: rdb.TypeBool, V: true},
-			{N: "bf", T: rdb.TypeBool, V: false},
-			{N: "i8", T: rdb.TypeInt8, V: byte(55)},
-			{N: "i16", T: rdb.TypeInt16, V: int16(1234)},
-			{N: "bb", T: rdb.TypeBinary, L: 0, V: []byte{23, 24, 25, 26, 27}},
-			{N: "dec", T: rdb.TypeDecimal, Precision: 38, Scale: 4, V: big.NewRat(1234, 100)},
-			{N: "fl32", T: rdb.TypeFloat32, V: float32(45.67)},
-			{N: "fl64", T: rdb.TypeFloat64, V: float64(89.1011)},
-		},
 	}
 
 	openConnPool()
@@ -56,7 +46,18 @@ func TestNumber(t *testing.T) {
 	var fl32 float32
 	var fl64 float64
 
-	res := db.Query(cmd)
+	params := []rdb.Param{
+		{N: "bt", T: rdb.TypeBool, V: true},
+		{N: "bf", T: rdb.TypeBool, V: false},
+		{N: "i8", T: rdb.TypeInt8, V: byte(55)},
+		{N: "i16", T: rdb.TypeInt16, V: int16(1234)},
+		{N: "bb", T: rdb.TypeBinary, L: 0, V: []byte{23, 24, 25, 26, 27}},
+		{N: "dec", T: rdb.TypeDecimal, Precision: 38, Scale: 4, V: big.NewRat(1234, 100)},
+		{N: "fl32", T: rdb.TypeFloat32, V: float32(45.67)},
+		{N: "fl64", T: rdb.TypeFloat64, V: float64(89.1011)},
+	}
+
+	res := db.Query(cmd, params...)
 	defer res.Close()
 
 	res.PrepAll(&bt, &bf, &i8, &i16, &bb, &dec, &fl32, &fl64)
@@ -66,7 +67,7 @@ func TestNumber(t *testing.T) {
 	compare := []interface{}{bt, bf, i8, i16, bb, dec, fl32, fl64}
 
 	for i := range compare {
-		in := cmd.Input[i]
+		in := params[i]
 		if !reflect.DeepEqual(compare[i], in.V) {
 			t.Errorf("Param %s did not round trip: Want (%v) got (%v)", in.N, in.V, compare[i])
 		}
