@@ -61,12 +61,12 @@ func (cp *ConnPool) Ping() error {
 // Returns the information specific to the connection.
 func (cp *ConnPool) ConnectionInfo() (*ConnectionInfo, error) {
 	cmd := cp.dr.PingCommand()
-	res, err := cp.Query(cmd)
+	ci := &ConnectionInfo{}
+	res, err := cp.query(cmd, &ci)
 	if err != nil {
 		return nil, err
 	}
-	defer res.Close()
-	return res.conn.ConnectionInfo()
+	return ci, res.Close()
 }
 
 func (cp *ConnPool) releaseConn(conn Conn, kill bool) error {
@@ -101,6 +101,10 @@ func (cp *ConnPool) getConn() (Conn, error) {
 // may be specified in the Value. Order may be used to match the
 // existing parameters if the Value.N name is omitted.
 func (cp *ConnPool) Query(cmd *Command, vv ...Value) (*Result, error) {
+	return cp.query(cmd, nil, vv...)
+}
+
+func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, vv ...Value) (*Result, error) {
 	conn, err := cp.getConn()
 	if err != nil {
 		return nil, err
@@ -109,6 +113,9 @@ func (cp *ConnPool) Query(cmd *Command, vv ...Value) (*Result, error) {
 	res := &Result{
 		conn: conn,
 		cp:   cp,
+		val: valuer{
+			arity: cmd.Arity,
+		},
 	}
 
 	fields := make([]*Field, len(cmd.Output))
@@ -119,8 +126,29 @@ func (cp *ConnPool) Query(cmd *Command, vv ...Value) (*Result, error) {
 	res.val.initFields = fields
 	err = conn.Query(cmd, vv, false, IsoLevelDefault, &res.val)
 
-	if err == nil && len(res.val.errors) != 0 {
-		err = res.val.errors
+	if ci != nil {
+		var ciErr error
+		*ci, ciErr = conn.ConnectionInfo()
+		if err == nil {
+			err = ciErr
+		}
+	}
+
+	if err == nil && len(res.val.errorList) != 0 {
+		err = res.val.errorList
+	}
+
+	// Zero arity check.
+	if res.val.arity&Zero != 0 {
+		defer res.close(false)
+
+		serr := res.conn.Scan(false)
+		if err == nil {
+			err = serr
+		}
+		if err == nil && res.val.rowCount != 0 && !res.val.eof && res.val.arity&ArityMust != 0 {
+			err = arityError
+		}
 	}
 
 	return res, err

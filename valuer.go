@@ -13,17 +13,18 @@ import (
 
 type Valuer interface {
 	Columns(cc []*SqlColumn) error
-	WriteField(c *SqlColumn, value *DriverValue) error
+	WriteField(c *SqlColumn, reportRow bool, value *DriverValue) error
 	SqlMessage(err *SqlMessage)
 	RowScanned()
 	Done() error
 }
 
 type valuer struct {
-	errors SqlErrors
-	fields []*Field
-	eof    bool
-	arity  Arity
+	errorList SqlErrors
+	infoList  []*SqlMessage
+	fields    []*Field
+	eof       bool
+	arity     Arity
 
 	columns      []*SqlColumn
 	columnLookup map[string]*SqlColumn
@@ -38,6 +39,11 @@ type valuer struct {
 func (v *valuer) clearBuffer() {
 	for i := range v.buffer {
 		v.buffer[i] = nil
+	}
+}
+func (v *valuer) clearPrep() {
+	for i := range v.prep {
+		v.prep[i] = nil
 	}
 }
 
@@ -71,29 +77,14 @@ func (v *valuer) Columns(cc []*SqlColumn) error {
 func (v *valuer) SqlMessage(msg *SqlMessage) {
 	switch msg.Type {
 	case SqlInfo:
-		// TODO: Where should info messages go?
+		v.infoList = append(v.infoList, msg)
 
 	case SqlError:
-		v.errors = append(v.errors, msg)
+		v.errorList = append(v.errorList, msg)
 	}
 }
 func (v *valuer) RowScanned() {
 	v.rowCount += 1
-	for i := range v.prep {
-		v.prep[i] = nil
-	}
-	/*
-		TODO: Fix arity check.
-		if v.arity&One != 0 {
-			v.EOF = true
-			if v.rowCount == 1 {
-				return v.conn.Scan()
-			}
-			if v.arity&ArityMust != 0 && v.rowCount > 1 {
-				return arityError
-			}
-		}
-	*/
 	return
 }
 
@@ -102,13 +93,16 @@ func (v *valuer) Done() error {
 	for i := range v.prep {
 		v.prep[i] = nil
 	}
-	if len(v.errors) != 0 {
-		return v.errors
+	if len(v.errorList) != 0 {
+		return v.errorList
 	}
 	return nil
 }
 
-func (v *valuer) WriteField(c *SqlColumn, value *DriverValue) error {
+func (v *valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue) error {
+	if !reportRow {
+		return nil
+	}
 	prep := v.prep[c.Index]
 	f := v.fields[c.Index]
 	if value.Null {

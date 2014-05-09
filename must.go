@@ -139,6 +139,11 @@ func (must ResultMust) Scan() (more bool) {
 	return eof
 }
 
+// Informational messages. Do not call concurrently with Scan() or Done().
+func (must ResultMust) Info() []*SqlMessage {
+	return must.norm.Info()
+}
+
 // Prepare pointers to values to be populated by name using Prep. After
 // preparing call Scan().
 func (must ResultMust) Prep(name string, value interface{}) ResultMust {
