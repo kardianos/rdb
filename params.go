@@ -142,6 +142,9 @@ type Command struct {
 	// are un-prepared.
 	Prepare bool
 
+	// Set the isolation level for the query or transaction.
+	IsoLevel IsolationLevel
+
 	// Optional name of the command. May be used if logging.
 	Name string
 }

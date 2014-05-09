@@ -140,7 +140,7 @@ func (tds *Connection) SavePoint(name string) error {
 	return nil
 }
 
-func (tds *Connection) Query(cmd *rdb.Command, vv []rdb.Value, startTran bool, iso rdb.IsolationLevel, valuer rdb.Valuer) error {
+func (tds *Connection) Query(cmd *rdb.Command, vv []rdb.Value, startTran bool, valuer rdb.Valuer) error {
 	if tds.inUse {
 		panic("Connection in use still!")
 	}

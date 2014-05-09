@@ -124,7 +124,7 @@ func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, vv ...Value) (*Resu
 	}
 
 	res.val.initFields = fields
-	err = conn.Query(cmd, vv, false, IsoLevelDefault, &res.val)
+	err = conn.Query(cmd, vv, false, &res.val)
 
 	if ci != nil {
 		var ciErr error
@@ -155,7 +155,7 @@ func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, vv ...Value) (*Resu
 }
 
 // API for tranactions are preliminary. Not a stable API call.
-func (cp *ConnPool) Begin(iso IsolationLevel) (*Transaction, error) {
+func (cp *ConnPool) Begin(cmd *Command, vv ...Value) (*Transaction, error) {
 	panic("Not implemented")
 	return nil, nil
 }
