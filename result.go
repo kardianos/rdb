@@ -148,6 +148,10 @@ func (r *Result) GetxN(index int) (Nullable, error) {
 	}, nil
 }
 
+func (res *Result) HasRow() (more bool) {
+	return !res.val.eof
+}
+
 // Scans the row into a buffer that can be fetched with Get and scans
 // directly into any prepared values.
 // Return value "more" is false if no more rows.
