@@ -197,6 +197,9 @@ func (tds *Connection) Scan(reportRow bool) error {
 				cc[i] = &dsc.SqlColumn
 			}
 			tds.val.Columns(cc)
+			if tds.peek != tokenRow {
+				continue
+			}
 			return nil
 		case *SqlRow:
 			if debugToken {
