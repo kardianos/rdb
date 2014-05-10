@@ -225,7 +225,6 @@ func (tds *Connection) Scan(reportRow bool) error {
 			if debugToken {
 				fmt.Println("TOKEN DONE")
 			}
-			return nil
 		default:
 			panic(fmt.Sprintf("Unknown response: %v", res))
 		}
@@ -398,6 +397,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		token = tds.peek
 		tds.peek = 0
 	}
+
 	switch token {
 	// TODO: case tokenReturnValue (0xAC):
 	// TODO: case tokenOrder (0xA9):
@@ -426,6 +426,8 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 	case tokenColumnMetaData:
 		bb = read(2)
 		if bb[0] == 0xff && bb[1] == 0xff {
+
+			tds.peek = read(1)[0]
 			return []*SqlColumn{}, nil
 		}
 		{
@@ -437,6 +439,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 				columns = append(columns, column)
 			}
 
+			tds.peek = read(1)[0]
 			return columns, nil
 		}
 	case tokenReturnStatus:
