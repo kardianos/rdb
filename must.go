@@ -127,6 +127,10 @@ func (must ResultMust) Close() {
 	}
 }
 
+func (must ResultMust) HasRow() (more bool) {
+	return must.norm.HasRow()
+}
+
 // For each needed field, call Prep() or PrepAll() to prepare
 // value pointers for scanning. To scan prepared fields call Scan().
 // Call Scan() before using Get() or Getx().
