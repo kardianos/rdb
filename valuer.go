@@ -28,7 +28,7 @@ type valuer struct {
 
 	columns      []*SqlColumn
 	columnLookup map[string]*SqlColumn
-	buffer       []*DriverValue
+	buffer       []Nullable
 	prep         []interface{}
 
 	initFields []*Field
@@ -38,7 +38,10 @@ type valuer struct {
 
 func (v *valuer) clearBuffer() {
 	for i := range v.buffer {
-		v.buffer[i] = nil
+		v.buffer[i] = Nullable{
+			Null: true,
+		}
+
 	}
 }
 func (v *valuer) clearPrep() {
@@ -53,7 +56,7 @@ func (v *valuer) Columns(cc []*SqlColumn) error {
 	for _, col := range cc {
 		v.columnLookup[col.Name] = col
 	}
-	v.buffer = make([]*DriverValue, len(cc))
+	v.buffer = make([]Nullable, len(cc))
 	v.prep = make([]interface{}, len(cc))
 
 	v.fields = make([]*Field, len(cc))
@@ -111,16 +114,23 @@ func (v *valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue) er
 	if prep == nil {
 		if value.Chunked {
 			bf := v.buffer[c.Index]
-			if bf == nil {
-				v.buffer[c.Index] = value
+			if bf.V == nil {
+				v.buffer[c.Index] = Nullable{
+					Null: value.Null,
+					V:    value.Value,
+				}
 				return nil
 			}
 			switch in := value.Value.(type) {
 			case []byte:
-				bf.Value = append(bf.Value.([]byte), in...)
+				bf.V = append(bf.V.([]byte), in...)
 			}
+			return nil
 		}
-		v.buffer[c.Index] = value
+		v.buffer[c.Index] = Nullable{
+			Null: value.Null,
+			V:    value.Value,
+		}
 		return nil
 	}
 	if value.Value == nil {

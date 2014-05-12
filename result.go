@@ -14,51 +14,51 @@ type Result struct {
 }
 
 // Results should automatically close when all rows have been read.
-func (res *Result) Close() error {
-	return res.close(true)
+func (r *Result) Close() error {
+	return r.close(true)
 }
 
-func (res *Result) close(explicit bool) error {
+func (r *Result) close(explicit bool) error {
 	if explicit {
-		res.val.clearBuffer()
+		r.val.clearBuffer()
 	}
 	var err error
 	for {
-		if res.conn == nil {
+		if r.conn == nil {
 			return nil
 		}
-		switch res.conn.Status() {
+		switch r.conn.Status() {
 		case StatusQuery:
-			_, err := res.scan(false)
+			err = r.scan(false)
 			if err != nil {
 				return err
 			}
 		case StatusReady:
 			// Don't close the connection, just return to pool.
-			err = res.cp.releaseConn(res.conn, false)
-			res.cp = nil
-			res.conn = nil
+			err = r.cp.releaseConn(r.conn, false)
+			r.cp = nil
+			r.conn = nil
 			break
 		default:
 			// Not sure what the state is, close the entire connection.
-			err = res.cp.releaseConn(res.conn, true)
+			err = r.cp.releaseConn(r.conn, true)
 			break
 		}
 	}
-	if err == nil && len(res.val.errorList) != 0 {
-		err = res.val.errorList
+	if err == nil && len(r.val.errorList) != 0 {
+		err = r.val.errorList
 	}
 	return err
 }
 
 // Fetch the table schema.
-func (res *Result) Schema() []*SqlColumn {
-	return res.val.columns
+func (r *Result) Schema() []*SqlColumn {
+	return r.val.columns
 }
 
 // Informational messages. Do not call concurrently with Scan() or Done().
-func (res *Result) Info() []*SqlMessage {
-	return res.val.infoList
+func (r *Result) Info() []*SqlMessage {
+	return r.val.infoList
 }
 
 // Prepare pointers to values to be populated by name using Prep. After
@@ -82,18 +82,6 @@ func (r *Result) Prepx(index int, value interface{}) error {
 	return nil
 }
 
-// Prepare pointers to values to be populated by index using Prep. After
-// preparing call Scan().
-func (r *Result) PrepAll(values ...interface{}) error {
-	for i := range values {
-		if i >= len(r.val.columns) {
-			return ErrorColumnNotFound{At: "PrepAll", Index: i}
-		}
-		r.val.prep[i] = values[i]
-	}
-	return nil
-}
-
 // Use after Scan(). Can only pull fields which have not already been sent
 // into a prepared value.
 func (r *Result) Get(name string) (interface{}, error) {
@@ -102,10 +90,7 @@ func (r *Result) Get(name string) (interface{}, error) {
 		return nil, ErrorColumnNotFound{At: "Get", Name: name}
 	}
 	bv := r.val.buffer[col.Index]
-	if bv == nil {
-		return nil, nil
-	}
-	return bv.Value, nil
+	return bv.V, nil
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent
@@ -115,10 +100,7 @@ func (r *Result) Getx(index int) (interface{}, error) {
 		return nil, ErrorColumnNotFound{At: "Getx", Index: index}
 	}
 	bv := r.val.buffer[index]
-	if bv == nil {
-		return nil, nil
-	}
-	return bv.Value, nil
+	return bv.V, nil
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent
@@ -128,11 +110,7 @@ func (r *Result) GetN(name string) (Nullable, error) {
 	if !found {
 		return Nullable{}, ErrorColumnNotFound{At: "GetN", Name: name}
 	}
-	bv := r.val.buffer[col.Index]
-	return Nullable{
-		Null: bv.Null,
-		V:    bv.Value,
-	}, nil
+	return r.val.buffer[col.Index], nil
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent
@@ -141,61 +119,77 @@ func (r *Result) GetxN(index int) (Nullable, error) {
 	if index < 0 || index >= len(r.val.columns) {
 		return Nullable{}, ErrorColumnNotFound{At: "GetxN", Index: index}
 	}
-	bv := r.val.buffer[index]
-	return Nullable{
-		Null: bv.Null,
-		V:    bv.Value,
-	}, nil
+	return r.val.buffer[index], nil
 }
 
-func (res *Result) HasRow() (more bool) {
-	return !res.val.eof
+// Use after Scan(). Can only pull fields which have not already been sent
+// into a prepared value. Not all fields will be populated if some have
+// been prepared.
+func (r *Result) GetRowN() []Nullable {
+	rowBuf := r.val.buffer
+	ret := make([]Nullable, len(rowBuf))
+	for i := range rowBuf {
+		ret[i] = rowBuf[i]
+	}
+	return ret
+}
+
+// Optional to call. Determine if there is another row.
+// Scan actually advances to the next row.
+func (r *Result) Next() (more bool) {
+	return !r.val.eof
 }
 
 // Scans the row into a buffer that can be fetched with Get and scans
 // directly into any prepared values.
 // Return value "more" is false if no more rows.
 // Results should automatically close when all rows have been read.
-func (res *Result) Scan() (more bool, err error) {
-	return res.scan(true)
+func (r *Result) Scan(values ...interface{}) error {
+	for i := range values {
+		if i >= len(r.val.columns) {
+			return ErrorColumnNotFound{At: "Scan(values)", Index: i}
+		}
+		r.val.prep[i] = values[i]
+	}
+	return r.scan(true)
 }
 
-func (res *Result) scan(reportRow bool) (more bool, err error) {
+func (r *Result) scan(reportRow bool) error {
 	if reportRow {
-		res.val.clearBuffer()
+		r.val.clearBuffer()
 	}
-	err = res.conn.Scan(reportRow)
-	res.val.clearPrep()
+	err := r.conn.Scan(reportRow)
+	r.val.clearPrep()
 
 	// Only show SQL errors if no connection errors,
 	// but show before any other errors.
-	if err == nil && len(res.val.errorList) != 0 {
-		err = res.val.errorList
+	if err == nil && len(r.val.errorList) != 0 {
+		err = r.val.errorList
 	}
 
-	if res.val.arity&One != 0 {
-		res.val.eof = true
-		if res.val.rowCount == 1 {
-			serr := res.conn.Scan(false)
+	if r.val.arity&One != 0 {
+		r.val.eof = true
+		if r.val.rowCount == 1 {
+			serr := r.conn.Scan(false)
 			if err == nil {
 				err = serr
 			}
 		}
-		if err == nil && res.val.arity&ArityMust != 0 && res.val.rowCount > 1 {
+		if err == nil && r.val.arity&ArityMust != 0 && r.val.rowCount > 1 {
 			err = arityError
 		}
 	}
 
-	if res.val.eof {
-		cerr := res.close(false)
+	if r.val.eof {
+		cerr := r.close(false)
 		if err == nil {
 			err = cerr
 		}
 	}
-	return !res.val.eof, err
+	return err
 }
 
 // Get the panic'ing version that doesn't return errors.
-func (res *Result) Must() ResultMust {
-	return ResultMust{norm: res}
+func (r *Result) Must() ResultMust {
+	return ResultMust{norm: r}
 }

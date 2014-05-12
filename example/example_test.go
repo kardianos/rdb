@@ -104,7 +104,7 @@ func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
 	defer res.Close()
 	for {
 		res.Prep("MyAnimal", &myFav)
-		if !res.Scan() {
+		if res.Scan().Next() {
 			break
 		}
 		t.Logf("Animal_2: %s\n", myFav)
@@ -136,9 +136,7 @@ func LargerQuery(db rdb.ConnPoolMust, t *testing.T) {
 	}...)
 	defer res.Close()
 
-	res.PrepAll(&id, &val, &dock)
-
-	res.Scan()
+	res.Scan(&id, &val, &dock)
 
 	// The other values in the row are buffered until the next call to Scan().
 	box := string(res.Get("box").([]byte))
