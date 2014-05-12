@@ -60,9 +60,7 @@ func TestNumber(t *testing.T) {
 	res := db.Query(cmd, params...)
 	defer res.Close()
 
-	res.PrepAll(&bt, &bf, &i8, &i16, &bb, &dec, &fl32, &fl64)
-
-	res.Scan()
+	res.Scan(&bt, &bf, &i8, &i16, &bb, &dec, &fl32, &fl64)
 
 	compare := []interface{}{bt, bf, i8, i16, bb, dec, fl32, fl64}
 

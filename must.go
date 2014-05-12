@@ -127,20 +127,20 @@ func (must ResultMust) Close() {
 	}
 }
 
-func (must ResultMust) HasRow() (more bool) {
-	return must.norm.HasRow()
+func (must ResultMust) Next() (more bool) {
+	return must.norm.Next()
 }
 
 // For each needed field, call Prep() or PrepAll() to prepare
 // value pointers for scanning. To scan prepared fields call Scan().
 // Call Scan() before using Get() or Getx().
 // Returns false if no more rows.
-func (must ResultMust) Scan() (more bool) {
-	eof, err := must.norm.Scan()
+func (must ResultMust) Scan(values ...interface{}) ResultMust {
+	err := must.norm.Scan(values...)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
-	return eof
+	return must
 }
 
 // Informational messages. Do not call concurrently with Scan() or Done().
@@ -162,16 +162,6 @@ func (must ResultMust) Prep(name string, value interface{}) ResultMust {
 // preparing call Scan().
 func (must ResultMust) Prepx(index int, value interface{}) ResultMust {
 	err := must.norm.Prepx(index, value)
-	if err != nil {
-		panic(MustError{Err: err})
-	}
-	return must
-}
-
-// Prepare pointers to values to be populated by index using Prep. After
-// preparing call Scan().
-func (must ResultMust) PrepAll(values ...interface{}) ResultMust {
-	err := must.norm.PrepAll(values...)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -216,6 +206,13 @@ func (must ResultMust) GetxN(index int) Nullable {
 		panic(MustError{Err: err})
 	}
 	return value
+}
+
+// Use after Scan(). Can only pull fields which have not already been sent
+// into a prepared value. Not all fields will be populated if some have
+// been prepared.
+func (must ResultMust) GetRowN() []Nullable {
+	return must.norm.GetRowN()
 }
 
 // Fetch the table schema.
