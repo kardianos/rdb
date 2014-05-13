@@ -44,7 +44,8 @@ func QueryTest(t *testing.T) (ferr error) {
 
 	ErrorQuery(db, t)
 	SimpleQuery(db, t)
-	RowsQuery(db, t)
+	RowsQuerySimple(db, t)
+	RowsQueryNull(db, t)
 	LargerQuery(db, t)
 	return nil
 }
@@ -89,15 +90,20 @@ func SimpleQuery(db rdb.ConnPoolMust, t *testing.T) {
 	}...).Prep("MyAnimal", &myFav).Scan()
 	t.Logf("Animal_1: %s\n", myFav)
 }
-func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
+func RowsQuerySimple(db rdb.ConnPoolMust, t *testing.T) {
 	var myFav string
 	res := db.Query(&rdb.Command{
 		Sql: `
 			select @animal as 'MyAnimal'
 			union all
 			select N'Hello again!'
+			union all
+			select NULL
 		;`,
-		Arity:         rdb.Any,
+		Arity: rdb.Any,
+		Output: []rdb.Field{
+			{NullValue: "null-value"},
+		},
 		TruncLongText: true,
 	}, []rdb.Param{
 		{
@@ -106,13 +112,41 @@ func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
 			V: "Dreaming boats.",
 		},
 	}...)
+	check := []string{
+		"Dreaming boats.",
+		"Hello again!",
+		"null-value",
+	}
 	defer res.Close()
-	for {
-		res.Prep("MyAnimal", &myFav)
-		if !res.Scan().Next() {
-			break
+	i := 0
+	for res.Next() {
+		res.Scan(&myFav)
+		if myFav != check[i] {
+			t.Errorf("Got <%s>, want <%s>", myFav, check[i])
 		}
+		i++
 		t.Logf("Animal_2: %s\n", myFav)
+	}
+}
+func RowsQueryNull(db rdb.ConnPoolMust, t *testing.T) {
+	var colA string
+	cmd := &rdb.Command{
+		Sql: `
+			select N'Sleep well' as 'ColA'
+			union all
+			select NULL
+		;`,
+	}
+	res := db.Query(cmd)
+	defer res.Close()
+	i := 0
+	norm := res.Normal()
+	for norm.Next() {
+		err := norm.Scan(&colA)
+		if i == 1 && err != rdb.ScanNullError {
+			t.Error("Scanning a null value without a *rdb.Nullable should be an error.")
+		}
+		i++
 	}
 }
 func LargerQuery(db rdb.ConnPoolMust, t *testing.T) {
