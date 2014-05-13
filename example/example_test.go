@@ -91,8 +91,13 @@ func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
 			select @animal as 'MyAnimal'
 			union all
 			select N'Hello again!'
+			union all
+			select NULL
 		;`,
-		Arity:         rdb.Any,
+		Arity: rdb.Any,
+		Output: []rdb.Field{
+			{N: "MyAnimal", NullValue: "null-value"},
+		},
 		TruncLongText: true,
 	}, []rdb.Param{
 		{
@@ -102,11 +107,9 @@ func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
 		},
 	}...)
 	defer res.Close()
-	for {
+	for res.Next() {
 		res.Prep("MyAnimal", &myFav)
-		if res.Scan().Next() {
-			break
-		}
+		res.Scan()
 		t.Logf("Animal_2: %s\n", myFav)
 	}
 }

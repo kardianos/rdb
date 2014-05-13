@@ -62,14 +62,18 @@ func (v *valuer) Columns(cc []*SqlColumn) error {
 	v.fields = make([]*Field, len(cc))
 	for i, field := range v.initFields {
 		if len(field.N) == 0 {
-			if i < len(v.columns) {
-				return ErrorColumnNotFound{Index: i}
+			if i >= len(v.columns) {
+				// Don't error. Some queries may return
+				// different number of columns.
+				continue
 			}
 			v.fields[i] = field
 		} else {
 			col, found := v.columnLookup[field.N]
 			if !found {
-				return ErrorColumnNotFound{Name: field.N}
+				// Don't error. Some queries may return
+				// different number of columns.
+				continue
 			}
 			v.fields[col.Index] = field
 		}
@@ -108,7 +112,8 @@ func (v *valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue) er
 	}
 	prep := v.prep[c.Index]
 	f := v.fields[c.Index]
-	if value.Null {
+	if value.Null && f != nil && f.NullValue != nil {
+		value.Null = false
 		value.Value = f.NullValue
 	}
 	if prep == nil {
@@ -133,10 +138,16 @@ func (v *valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue) er
 		}
 		return nil
 	}
-	if value.Value == nil {
-		// May happen with null values.
-		// Nothing to convert or write.
+	if nullable, is := prep.(*Nullable); is {
+		*nullable = Nullable{
+			Null: value.Null,
+			V:    value.Value,
+		}
 		return nil
+	}
+	if value.Null || value.Value == nil {
+		// Can only scan a null value into a nullable type.
+		return ScanNullError
 	}
 	var err error
 	switch in := value.Value.(type) {

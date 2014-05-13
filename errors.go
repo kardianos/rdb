@@ -10,6 +10,8 @@ import (
 	"fmt"
 )
 
+var ScanNullError = errors.New("Can only scan NULL value into a Nullable type.")
+
 // Used when a column lookup fails, either with a name or index.
 type ErrorColumnNotFound struct {
 	At    string
