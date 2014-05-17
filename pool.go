@@ -124,7 +124,7 @@ func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, params ...Param) (*
 	}
 
 	res.val.initFields = fields
-	err = conn.Query(cmd, params, false, &res.val)
+	err = conn.Query(cmd, params, nil, &res.val)
 
 	if ci != nil {
 		var ciErr error
@@ -154,10 +154,12 @@ func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, params ...Param) (*
 	return res, err
 }
 
-// API for tranactions are preliminary. Not a stable API call.
-func (cp *ConnPool) Begin(cmd *Command, params ...[]Param) (*Transaction, error) {
-	panic("Not implemented")
-	return nil, nil
+// Begin a Transaction with the default isolation level.
+func (cp *ConnPool) Begin() (*Transaction, error) {
+	return cp.BeginLevel(LevelDefault)
+}
+func (cp *ConnPool) BeginLevel(level IsolationLevel) (*Transaction, error) {
+	return nil, NotImplemented
 }
 
 // Get the panic'ing version that doesn't return errors.

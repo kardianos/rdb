@@ -83,8 +83,19 @@ func (must ConnPoolMust) Query(cmd *Command, params ...Param) ResultMust {
 }
 
 // Same as Query but will panic on an error.
-func (must ConnPoolMust) Begin(cmd *Command, params ...Param) TransactionMust {
-	tran, err := must.norm.Begin(cmd, params)
+func (must ConnPoolMust) Begin() TransactionMust {
+	tran, err := must.norm.Begin()
+	if err != nil {
+		panic(MustError{Err: err})
+	}
+	return TransactionMust{
+		norm: tran,
+	}
+}
+
+// Same as Query but will panic on an error.
+func (must ConnPoolMust) BeginLevel(level IsolationLevel) TransactionMust {
+	tran, err := must.norm.BeginLevel(level)
 	if err != nil {
 		panic(MustError{Err: err})
 	}
@@ -117,6 +128,21 @@ func (must TransactionMust) Rollback() {
 	if err != nil {
 		panic(MustError{Err: err})
 	}
+}
+func (must TransactionMust) RollbackTo(savepoint string) {
+	err := must.norm.RollbackTo(savepoint)
+	if err != nil {
+		panic(MustError{Err: err})
+	}
+}
+func (must TransactionMust) SavePoint(name string) {
+	err := must.norm.SavePoint(name)
+	if err != nil {
+		panic(MustError{Err: err})
+	}
+}
+func (must TransactionMust) Active() bool {
+	return must.norm.Active()
 }
 
 // Make sure the result is closed.
