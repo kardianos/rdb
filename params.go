@@ -69,13 +69,13 @@ type Field struct {
 type IsolationLevel byte
 
 const (
-	IsoLevelDefault IsolationLevel = iota
-	IsoLevelReadUncommited
-	IsoLevelReadCommited
-	IsoLevelWriteCommited
-	IsoLevelRepeatableRead
-	IsoLevelSerializable
-	IsoLevelSnapshot
+	LevelDefault IsolationLevel = iota
+	LevelReadUncommited
+	LevelReadCommited
+	LevelWriteCommited
+	LevelRepeatableRead
+	LevelSerializable
+	LevelSnapshot
 )
 
 type Arity byte

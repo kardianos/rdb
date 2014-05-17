@@ -23,6 +23,7 @@ func (r *Result) close(explicit bool) error {
 		r.val.clearBuffer()
 	}
 	var err error
+loop:
 	for {
 		if r.conn == nil {
 			return nil
@@ -38,11 +39,11 @@ func (r *Result) close(explicit bool) error {
 			err = r.cp.releaseConn(r.conn, false)
 			r.cp = nil
 			r.conn = nil
-			break
+			break loop
 		default:
 			// Not sure what the state is, close the entire connection.
 			err = r.cp.releaseConn(r.conn, true)
-			break
+			break loop
 		}
 	}
 	if err == nil && len(r.val.errorList) != 0 {

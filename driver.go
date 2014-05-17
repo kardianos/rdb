@@ -8,6 +8,7 @@ import (
 	"net/url"
 )
 
+// TODO: Add states for transactions.
 type ConnStatus byte
 
 const (
@@ -59,11 +60,27 @@ type Conn interface {
 	Scan(reportRow bool) error
 
 	// The isolation level is set by the command.
-	Query(cmd *Command, params []Param, tranStart bool, val Valuer) error
-	Prepare(*Command) (preparedStatementToken interface{}, err error)
-	Unprepare(preparedStatementToken interface{}) (err error)
+	// Should return "PreparedTokenNotValid" if the preparedToken was not recognized.
+	Query(cmd *Command, params []Param, preparedToken interface{}, val Valuer) error
+
+	Status() ConnStatus
+
+	// Happy Path:
+	//  * Interface wants to prepare command, but doesn't have token.
+	//  * Interface sends a conn Prepare requests and gets a token.
+	//  * Interface uses token in query.
+	//  * After some use, Interface unprepares command.
+	//
+	// Re-prepare Path:
+	//  * Interface has a token and attempts to use it in query.
+	//  * Query returns "the token is not valid" error (server restart?).
+	//  * Interface attempts to re-prepare query.
+	//  * Interface uses new token in Query. If that fails again, it should fail the query.
+	Prepare(*Command) (preparedToken interface{}, err error)
+	Unprepare(preparedToken interface{}) (err error)
+
+	Begin() error
 	Rollback(savepoint string) error
 	Commit() error
 	SavePoint(name string) error
-	Status() ConnStatus
 }
