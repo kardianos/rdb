@@ -186,7 +186,6 @@ func (tds *PacketWriter) writeClose(bb []byte, closeMessage bool) (int, error) {
 		}
 
 	}
-	return n, err
 }
 
 type PacketReader struct {
