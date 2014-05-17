@@ -197,7 +197,7 @@ func (value driverType) String() string {
 	if info, in := typeInfoLookup[value]; in {
 		return info.Name
 	}
-	return fmt.Sprintf("<UNKNOWN TYPE: 0x%X>", value)
+	return fmt.Sprintf("<UNKNOWN TYPE: 0x%X>", byte(value))
 }
 
 type typeWidth struct {

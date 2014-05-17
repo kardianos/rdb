@@ -120,27 +120,26 @@ func (tds *Connection) Status() rdb.ConnStatus {
 }
 
 func (tds *Connection) Prepare(*rdb.Command) (preparedStatementToken interface{}, err error) {
-	panic("Not yet implemented.")
-	return nil, nil
+	return nil, rdb.NotImplemented
 }
 func (tds *Connection) Unprepare(preparedStatementToken interface{}) (err error) {
-	panic("Not yet implemented.")
-	return nil
-}
-func (tds *Connection) Rollback(savepoint string) error {
-	panic("Not yet implemented.")
-	return nil
-}
-func (tds *Connection) Commit() error {
-	panic("Not yet implemented.")
-	return nil
-}
-func (tds *Connection) SavePoint(name string) error {
-	panic("Not yet implemented.")
-	return nil
+	return rdb.NotImplemented
 }
 
-func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, startTran bool, valuer rdb.Valuer) error {
+func (tds *Connection) Begin() error {
+	return rdb.NotImplemented
+}
+func (tds *Connection) Rollback(savepoint string) error {
+	return rdb.NotImplemented
+}
+func (tds *Connection) Commit() error {
+	return rdb.NotImplemented
+}
+func (tds *Connection) SavePoint(name string) error {
+	return rdb.NotImplemented
+}
+
+func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, valuer rdb.Valuer) error {
 	if tds.inUse {
 		panic("Connection in use still!")
 	}
