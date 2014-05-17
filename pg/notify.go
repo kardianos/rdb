@@ -67,7 +67,7 @@ type ListenerConn struct {
 
 // Creates a new ListenerConn.  Use NewListener instead.
 func NewListenerConn(name string, notificationChan chan<- *Notification) (*ListenerConn, error) {
-	cn, err := Open(name)
+	/*cn, err := Open(name)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +82,8 @@ func NewListenerConn(name string, notificationChan chan<- *Notification) (*Liste
 	go l.listenerConnMain()
 
 	return l, nil
+	*/
+	return nil, nil
 }
 
 // We can only allow one goroutine at a time to be running a query on the
@@ -332,7 +334,8 @@ func (l *ListenerConn) Close() error {
 		return errListenerConnClosed
 	}
 	l.err = errListenerConnClosed
-	return l.cn.Close()
+	l.cn.Close()
+	return l.err
 }
 
 // Err() returns the reason the connection was closed.  It is not safe to call
