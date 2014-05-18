@@ -95,7 +95,7 @@ func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
 			select NULL
 		;`,
 		Arity: rdb.Any,
-		Output: []rdb.Field{
+		Fields: []rdb.Field{
 			{N: "MyAnimal", NullValue: "null-value"},
 		},
 		TruncLongText: true,

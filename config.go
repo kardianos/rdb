@@ -147,6 +147,10 @@ type DriverOption struct {
 }
 
 type DriverSupport struct {
+	// PreparePerConn is set to true if prepared statements are local to
+	// each connection. Set to false if prepared statements are global.
+	PreparePerConn bool
+
 	NamedParameter   bool // Supports named parameters.
 	FluidType        bool // Like SQLite.
 	MultipleResult   bool // Supports returning multiple result sets.

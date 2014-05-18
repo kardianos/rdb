@@ -140,7 +140,7 @@ type Command struct {
 	Arity Arity
 
 	// Optional fields to specify output marshal.
-	Output []Field
+	Fields []Field
 
 	// If set to true silently truncates text longer then the field.
 	// If this is set to false text truncation will result in an error.

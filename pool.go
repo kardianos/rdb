@@ -118,9 +118,9 @@ func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, params ...Param) (*
 		},
 	}
 
-	fields := make([]*Field, len(cmd.Output))
-	for i := range cmd.Output {
-		fields[i] = &cmd.Output[i]
+	fields := make([]*Field, len(cmd.Fields))
+	for i := range cmd.Fields {
+		fields[i] = &cmd.Fields[i]
 	}
 
 	res.val.initFields = fields

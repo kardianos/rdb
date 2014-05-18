@@ -19,6 +19,9 @@ func (r *Result) Close() error {
 }
 
 func (r *Result) close(explicit bool) error {
+	if r == nil {
+		return nil
+	}
 	if explicit {
 		r.val.clearBuffer()
 	}
