@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 /*
-Package pg is a pure Go Postgres driver for the database/sql package.
+Package pg is a pure Go Postgres driver for the bitbucket.org/kardianos/rdb package.
 
 In most cases clients will use the database/sql package instead of
 using this package directly. For example:
