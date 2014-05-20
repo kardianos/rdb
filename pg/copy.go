@@ -5,7 +5,6 @@
 package pg
 
 import (
-	"database/sql/driver"
 	"encoding/binary"
 	"errors"
 	"sync/atomic"
@@ -62,6 +61,7 @@ const ciBufferSize = 64 * 1024
 // flush buffer before the buffer is filled up and needs reallocation
 const ciBufferFlushSize = 63 * 1024
 
+/*
 func (cn *conn) prepareCopyIn(q string) (_ driver.Stmt, err error) {
 	defer errRecover(&err)
 
@@ -129,6 +129,7 @@ awaitCopyInResponse:
 
 	panic("not reached")
 }
+*/
 
 func (ci *copyin) flush(buf []byte) {
 	// set message length (without message identifier)
@@ -172,9 +173,11 @@ func (ci *copyin) NumInput() int {
 	return -1
 }
 
+/*
 func (ci *copyin) Query(v []driver.Value) (r driver.Rows, err error) {
 	return nil, ErrNotSupported
 }
+*/
 
 // Exec inserts values into the COPY stream. The insert is asynchronous
 // and Exec can return errors from previous Exec calls to the same
@@ -183,6 +186,7 @@ func (ci *copyin) Query(v []driver.Value) (r driver.Rows, err error) {
 // You need to call Exec(nil) to sync the COPY stream and to get any
 // errors from pending data, since Stmt.Close() doesn't return errors
 // to the user.
+/*
 func (ci *copyin) Exec(v []driver.Value) (r driver.Result, err error) {
 	defer errRecover(&err)
 
@@ -218,6 +222,7 @@ func (ci *copyin) Exec(v []driver.Value) (r driver.Result, err error) {
 
 	return driver.RowsAffected(0), nil
 }
+*/
 
 func (ci *copyin) Close() (err error) {
 	defer errRecover(&err)

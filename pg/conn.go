@@ -7,9 +7,9 @@ package pg
 import (
 	"bitbucket.org/kardianos/rdb"
 	"bitbucket.org/kardianos/rdb/pg/oid"
+	"bitbucket.org/kardianos/rdb/semver"
 	"bufio"
 	"crypto/tls"
-	"database/sql/driver"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -31,6 +31,12 @@ type conn struct {
 
 	saveMessageType   byte
 	saveMessageBuffer *readBuf
+
+	open  bool
+	inUse bool
+
+	val rdb.Valuer
+	col []*rdb.SqlColumn
 }
 
 // Return version information regarding the currently connected server.
@@ -38,10 +44,62 @@ func (c *conn) ConnectionInfo() (*rdb.ConnectionInfo, error) { return nil, nil }
 
 // Read the next row from the connection. For each field in the row
 // call the Valuer.WriteField(...) method. Propagate the reportRow field.
-func (c *conn) Scan(reportRow bool) error { return nil }
+func (conn *conn) Scan(reportRow bool) (err error) {
+	if conn.inUse == false {
+		return nil
+	}
+
+	defer errRecover(&err)
+
+	for {
+		t, r := conn.recv1()
+		switch t {
+		case 'E':
+			err = parseError(r)
+		case 'C':
+			continue
+		case 'Z':
+			conn.processReadyForQuery(r)
+			conn.inUse = false
+			if err != nil {
+				return err
+			}
+			return nil
+		case 'D':
+			n := r.int16()
+
+			for i := 0; i < n; i++ {
+				col := conn.col[i]
+				l := r.int32()
+				if l == -1 {
+					conn.val.WriteField(col, reportRow, &rdb.DriverValue{
+						Null: true,
+					})
+					continue
+				}
+				conn.val.WriteField(col, reportRow, &rdb.DriverValue{
+					Value: decode(&conn.parameterStatus, r.next(l), oid.Oid(col.SqlType-rdb.TypeDriverThresh)),
+				})
+			}
+			return
+		default:
+			errorf("unexpected message after execute: %q", t)
+		}
+	}
+
+	panic("not reached")
+}
 
 func (c *conn) SavePoint(name string) error { return nil }
-func (c *conn) Status() rdb.ConnStatus      { return rdb.StatusDisconnected }
+func (c *conn) Status() rdb.ConnStatus {
+	if c.open == false {
+		return rdb.StatusDisconnected
+	}
+	if c.inUse == false {
+		return rdb.StatusReady
+	}
+	return rdb.StatusQuery
+}
 
 func (c *conn) writeBuf(b byte) *writeBuf {
 	c.scratch[0] = b
@@ -63,7 +121,7 @@ func (cn *conn) checkIsInTransaction(intxn bool) {
 func (cn *conn) Begin() (err error) {
 	defer errRecover(&err)
 
-	cn.checkIsInTransaction(false)
+	/*cn.checkIsInTransaction(false)
 	_, commandTag, err := cn.simpleExec("BEGIN")
 	if err != nil {
 		return err
@@ -74,13 +132,14 @@ func (cn *conn) Begin() (err error) {
 	if cn.txnStatus != txnStatusIdleInTransaction {
 		return fmt.Errorf("unexpected transaction status %v", cn.txnStatus)
 	}
+	*/
 	return nil
 }
 
 func (cn *conn) Commit() (err error) {
 	defer errRecover(&err)
 
-	cn.checkIsInTransaction(true)
+	/*cn.checkIsInTransaction(true)
 	// We don't want the client to think that everything is okay if it tries
 	// to commit a failed transaction.  However, no matter what we return,
 	// database/sql will release this connection back into the free connection
@@ -102,13 +161,14 @@ func (cn *conn) Commit() (err error) {
 		return fmt.Errorf("unexpected command tag %s", commandTag)
 	}
 	cn.checkIsInTransaction(false)
+	*/
 	return nil
 }
 
 func (cn *conn) Rollback(savepoint string) (err error) {
 	defer errRecover(&err)
 
-	cn.checkIsInTransaction(true)
+	/*cn.checkIsInTransaction(true)
 	_, commandTag, err := cn.simpleExec("ROLLBACK")
 	if err != nil {
 		return err
@@ -117,6 +177,7 @@ func (cn *conn) Rollback(savepoint string) (err error) {
 		return fmt.Errorf("unexpected command tag %s", commandTag)
 	}
 	cn.checkIsInTransaction(false)
+	*/
 	return nil
 }
 
@@ -125,6 +186,7 @@ func (cn *conn) gname() string {
 	return strconv.FormatInt(int64(cn.namei), 10)
 }
 
+/*
 func (cn *conn) simpleExec(q string) (res driver.Result, commandTag string, err error) {
 	defer errRecover(&err)
 
@@ -139,7 +201,7 @@ func (cn *conn) simpleExec(q string) (res driver.Result, commandTag string, err 
 			res, commandTag = parseComplete(r.string())
 		case 'Z':
 			cn.processReadyForQuery(r)
-			// done
+			cn.inUse = false
 			return
 		case 'E':
 			err = parseError(r)
@@ -151,14 +213,15 @@ func (cn *conn) simpleExec(q string) (res driver.Result, commandTag string, err 
 	}
 	panic("not reached")
 }
+*/
 
-func (cn *conn) simpleQuery(q string) (res driver.Rows, err error) {
+// DT: Keep
+func (cn *conn) simpleQuery(cmd *rdb.Command, val rdb.Valuer) (err error) {
 	defer errRecover(&err)
-
-	st := &stmt{cn: cn, name: "", query: q}
+	cn.inUse = true
 
 	b := cn.writeBuf('Q')
-	b.string(q)
+	b.string(cmd.Sql)
 	cn.send(b)
 
 	for {
@@ -172,31 +235,27 @@ func (cn *conn) simpleQuery(q string) (res driver.Rows, err error) {
 			if err != nil {
 				errorf("unexpected CommandComplete in simple query execution")
 			}
-			res = &rows{st: st, done: true}
+			return val.Done()
 		case 'Z':
 			cn.processReadyForQuery(r)
-			// done
-			return
+			return val.Done()
 		case 'E':
-			res = nil
 			err = parseError(r)
 		case 'T':
-			res = &rows{st: st}
-			st.cols, st.rowTyps = parseMeta(r)
-			// After we get the meta, we want to kick out to Next()
+			cn.parseMeta(r)
 			return
 		default:
 			errorf("unknown response for simple query: %q", t)
 		}
 	}
-	panic("not reached")
 }
 
-func (cn *conn) prepareTo(q, stmtName string) (_ driver.Stmt, err error) {
-	return cn.prepareToSimpleStmt(q, stmtName)
+/*
+func (cn *conn) prepareTo(q, stmtName string, val rdb.Valuer) (_ driver.Stmt, err error) {
+	return cn.prepareToSimpleStmt(q, stmtName, val)
 }
 
-func (cn *conn) prepareToSimpleStmt(q, stmtName string) (_ *stmt, err error) {
+func (cn *conn) prepareToSimpleStmt(q, stmtName string, val rdb.Valuer) (_ *stmt, err error) {
 	defer errRecover(&err)
 
 	st := &stmt{cn: cn, name: stmtName, query: q}
@@ -226,7 +285,7 @@ func (cn *conn) prepareToSimpleStmt(q, stmtName string) (_ *stmt, err error) {
 				st.paramTyps[i] = r.oid()
 			}
 		case 'T':
-			st.cols, st.rowTyps = parseMeta(r)
+			cn.parseMeta(r)
 		case 'n':
 			// no data
 		case 'Z':
@@ -240,7 +299,7 @@ func (cn *conn) prepareToSimpleStmt(q, stmtName string) (_ *stmt, err error) {
 	}
 
 	panic("not reached")
-}
+}*/
 
 func (c *conn) Prepare(*rdb.Command) (preparedStatementToken interface{}, err error) {
 	/*Prepare(q string) (driver.Stmt, error)
@@ -255,6 +314,7 @@ func (c *conn) Unprepare(preparedStatementToken interface{}) (err error) {
 }
 
 func (cn *conn) Close() {
+	cn.open = false
 	var err error
 	defer errRecover(&err)
 
@@ -269,7 +329,17 @@ func (cn *conn) Close() {
 	return
 }
 
-func (c *conn) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, val rdb.Valuer) error {
+func (c *conn) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, val rdb.Valuer) (err error) {
+	defer errRecover(&err)
+	c.val = val
+
+	if len(params) == 0 {
+		return c.simpleQuery(cmd, val)
+	}
+
+	// TODO: Handle other cases.
+	return nil
+
 	/*Query(query string, args []driver.Value) (_ driver.Rows, err error)
 	defer errRecover(&err)
 
@@ -287,25 +357,25 @@ func (c *conn) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interfa
 	st.exec(args)
 	return &rows{st: st}, nil
 	*/
-	return nil
 }
 
+/*
 // Implement the optional "Execer" interface for one-shot queries
-func (cn *conn) Exec(query string, args []driver.Value) (_ driver.Result, err error) {
+func (cn *conn) Exec(cmd *rdb.Command, args []rdb.Param, val rdb.Valuer) (_ driver.Result, err error) {
 	defer errRecover(&err)
 
 	// Check to see if we can use the "simpleExec" interface, which is
 	// *much* faster than going through prepare/exec
 	if len(args) == 0 {
 		// ignore commandTag, our caller doesn't care
-		r, _, err := cn.simpleExec(query)
+		r, _, err := cn.simpleExec(cmd.Sql)
 		return r, err
 	}
 
 	// Use the unnamed statement to defer planning until bind
 	// time, or else value-based selectivity estimates cannot be
 	// used.
-	st, err := cn.prepareTo(query, "")
+	st, err := cn.prepareTo(cmd.Sql, "", val)
 	if err != nil {
 		panic(err)
 	}
@@ -316,7 +386,7 @@ func (cn *conn) Exec(query string, args []driver.Value) (_ driver.Result, err er
 	}
 
 	return r, err
-}
+}*/
 
 // Assumes len(*m) is > 5
 func (cn *conn) send(m *writeBuf) {
@@ -488,6 +558,7 @@ func (cn *conn) startup(o values) {
 			cn.auth(r, o)
 		case 'Z':
 			cn.processReadyForQuery(r)
+			cn.open = true
 			return
 		default:
 			errorf("unknown response for startup: %q", t)
@@ -537,12 +608,12 @@ func (c *conn) processParameterStatus(r *readBuf) {
 	param := r.string()
 	switch param {
 	case "server_version":
-		var major1 int
-		var major2 int
-		var minor int
-		_, err = fmt.Sscanf(r.string(), "%d.%d.%d", &major1, &major2, &minor)
+		ver := &semver.Version{
+			Product: "Postgres",
+		}
+		_, err = fmt.Sscanf(r.string(), "%d.%d.%d", &ver.Major, &ver.Minor, &ver.Patch)
 		if err == nil {
-			c.parameterStatus.serverVersion = major1*10000 + major2*100 + minor
+			c.parameterStatus.serverVersion = ver
 		}
 
 	case "TimeZone":
