@@ -5,12 +5,13 @@
 package pg
 
 import (
+	"bitbucket.org/kardianos/rdb"
 	"bitbucket.org/kardianos/rdb/pg/oid"
+	"bitbucket.org/kardianos/rdb/semver"
 	"crypto/md5"
-	"database/sql/driver"
 	"errors"
 	"fmt"
-	"io"
+	//	"io"
 	"net"
 	"path"
 	"strconv"
@@ -29,7 +30,7 @@ var (
 type parameterStatus struct {
 	// server version in the same format as server_version_num, or 0 if
 	// unavailable
-	serverVersion int
+	serverVersion *semver.Version
 
 	// the current location based on the TimeZone value of the session, if
 	// available
@@ -264,13 +265,14 @@ func (st *stmt) Close() (err error) {
 	return nil
 }
 
-func (st *stmt) Query(v []driver.Value) (r driver.Rows, err error) {
+/*
+func (st *stmt) Query(v []rdb.Param) (r driver.Rows, err error) {
 	defer errRecover(&err)
 	st.exec(v)
 	return &rows{st: st}, nil
 }
 
-func (st *stmt) Exec(v []driver.Value) (res driver.Result, err error) {
+func (st *stmt) Exec(v []rdb.Param) (res driver.Result, err error) {
 	defer errRecover(&err)
 
 	if len(v) == 0 {
@@ -301,7 +303,7 @@ func (st *stmt) Exec(v []driver.Value) (res driver.Result, err error) {
 	panic("not reached")
 }
 
-func (st *stmt) exec(v []driver.Value) {
+func (st *stmt) exec(v []rdb.Param, val rdb.Valuer) {
 	if len(v) != len(st.paramTyps) {
 		errorf("got %d parameters but the statement requires %d", len(v), len(st.paramTyps))
 	}
@@ -312,10 +314,12 @@ func (st *stmt) exec(v []driver.Value) {
 	w.int16(0)
 	w.int16(len(v))
 	for i, x := range v {
-		if x == nil {
+		if x.Null {
 			w.int32(-1)
 		} else {
-			b := encode(&st.cn.parameterStatus, x, st.paramTyps[i])
+			// TODO: Send in SqlType.
+			tp := oid.Oid(st.cn.col[i].SqlType - rdb.TypeDriverThresh)
+			b := encode(&st.cn.parameterStatus, x.V, tp)
 			w.int32(len(b))
 			w.bytes(b)
 		}
@@ -382,6 +386,7 @@ workaround:
 		}
 	}
 }
+*/
 
 func (st *stmt) NumInput() int {
 	return len(st.paramTyps)
@@ -391,6 +396,7 @@ func (st *stmt) NumInput() int {
 // returns the number of rows affected (if applicable) and a string
 // identifying only the command that was executed, e.g. "ALTER TABLE".  If the
 // command tag could not be parsed, parseComplete panics.
+/*
 func parseComplete(commandTag string) (driver.Result, string) {
 	commandsWithAffectedRows := []string{
 		"SELECT ",
@@ -433,15 +439,17 @@ func parseComplete(commandTag string) (driver.Result, string) {
 	}
 	return driver.RowsAffected(n), commandTag
 }
+*/
 
 type rows struct {
 	st   *stmt
 	done bool
 }
 
+/*
 func (rs *rows) Close() error {
 	for {
-		err := rs.Next(nil)
+		err := rs.Scan(false)
 		switch err {
 		case nil:
 		case io.EOF:
@@ -452,11 +460,13 @@ func (rs *rows) Close() error {
 	}
 	panic("not reached")
 }
+*/
 
 func (rs *rows) Columns() []string {
 	return rs.st.cols
 }
 
+/*
 func (rs *rows) Next(dest []driver.Value) (err error) {
 	if rs.done {
 		return io.EOF
@@ -504,6 +514,7 @@ func (rs *rows) Next(dest []driver.Value) (err error) {
 
 	panic("not reached")
 }
+*/
 
 // QuoteIdentifier quotes an "identifier" (e.g. a table or a column name) to be
 // used as part of an SQL statement.  For example:
@@ -528,16 +539,25 @@ func md5s(s string) string {
 	h.Write([]byte(s))
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
-func parseMeta(r *readBuf) (cols []string, rowTyps []oid.Oid) {
+func (cn *conn) parseMeta(r *readBuf) {
+	// (cols []string, rowTyps []oid.Oid)
 	n := r.int16()
-	cols = make([]string, n)
-	rowTyps = make([]oid.Oid, n)
+	cols := make([]*rdb.SqlColumn, n)
+	cn.col = cols
+
+	// rowTyps := make([]oid.Oid, n)
 	for i := range cols {
-		cols[i] = r.string()
+		col := &rdb.SqlColumn{
+			Index: i,
+		}
+		cols[i] = col
+		col.Name = r.string()
 		r.next(6)
-		rowTyps[i] = r.oid()
+		// TODO: Convert
+		col.SqlType = rdb.SqlType(r.oid() + rdb.TypeDriverThresh)
 		r.next(8)
 	}
+	cn.val.Columns(cols)
 	return
 }
 

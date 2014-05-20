@@ -5,7 +5,6 @@
 package pg
 
 import (
-	"database/sql/driver"
 	"fmt"
 	"io"
 	"net"
@@ -472,15 +471,18 @@ func errRecover(err *error) {
 		panic(v)
 	case *Error:
 		if v.Fatal() {
-			*err = driver.ErrBadConn
+			// TODO: Replace with rdb.
+			// *err = driver.ErrBadConn
 		} else {
 			*err = v
 		}
 	case *net.OpError:
-		*err = driver.ErrBadConn
+		// TODO: Replace with rdb.
+		// *err = driver.ErrBadConn
 	case error:
 		if v == io.EOF || v.(error).Error() == "remote error: handshake failure" {
-			*err = driver.ErrBadConn
+			// TODO: Replace with rdb.
+			// *err = driver.ErrBadConn
 		} else {
 			*err = v
 		}

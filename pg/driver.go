@@ -17,7 +17,12 @@ import (
 type drv struct{}
 
 func (d *drv) Open(conf *rdb.Config) (_ rdb.Conn, err error) {
-	defer errRecover(&err)
+	// defer errRecover(&err)
+
+	port := conf.Port
+	if port == 0 {
+		port = 5432
+	}
 
 	o := make(values)
 
@@ -27,7 +32,10 @@ func (d *drv) Open(conf *rdb.Config) (_ rdb.Conn, err error) {
 	// * Environment variables
 	// * Explicitly passed connection information
 	o.Set("host", conf.Hostname)
-	o.Set("port", fmt.Sprintf("%d", conf.Port))
+	o.Set("port", fmt.Sprintf("%d", port))
+
+	o.Set("user", conf.Username)
+	o.Set("password", conf.Password)
 
 	// N.B.: Extra float digits should be set to 3, but that breaks
 	// Postgres 8.4 and older, where the max is 2.

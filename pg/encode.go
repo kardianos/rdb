@@ -6,8 +6,8 @@ package pg
 
 import (
 	"bitbucket.org/kardianos/rdb/pg/oid"
+	"bitbucket.org/kardianos/rdb/semver"
 	"bytes"
-	"database/sql/driver"
 	"encoding/hex"
 	"fmt"
 	"math"
@@ -326,8 +326,8 @@ func parseBytea(s []byte) (result []byte) {
 	return result
 }
 
-func encodeBytea(serverVersion int, v []byte) (result []byte) {
-	if serverVersion >= 90000 {
+func encodeBytea(serverVersion *semver.Version, v []byte) (result []byte) {
+	if serverVersion.Major >= 9 {
 		// Use the hex format if we know that the server supports it
 		result = []byte(fmt.Sprintf("\\x%x", v))
 	} else {
@@ -361,9 +361,11 @@ func (nt *NullTime) Scan(value interface{}) error {
 }
 
 // Value implements the driver Valuer interface.
+/*
 func (nt NullTime) Value() (driver.Value, error) {
 	if !nt.Valid {
 		return nil, nil
 	}
 	return nt.Time, nil
 }
+*/
