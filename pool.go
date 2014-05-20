@@ -23,7 +23,11 @@ func Open(config *Config) (*ConnPool, error) {
 		if debugConnectionReuse {
 			fmt.Println("Conn.Open() NEW")
 		}
-		return dr.Open(config)
+		conn, err := dr.Open(config)
+		if conn == nil && err == nil {
+			return nil, fmt.Errorf("New connection is nil")
+		}
+		return conn, err
 	}
 
 	initSize := config.PoolInitCapacity
