@@ -35,12 +35,12 @@ type conn struct {
 	open  bool
 	inUse bool
 
-	val *rdb.Valuer
+	val rdb.DriverValuer
 	col []*rdb.SqlColumn
 }
 
 // Return version information regarding the currently connected server.
-func (c *conn) ConnectionInfo() (*rdb.ConnectionInfo, error) { return nil, nil }
+func (c *conn) ConnectionInfo() *rdb.ConnectionInfo { return nil }
 
 // Read the next row from the connection. For each field in the row
 // call the Valuer.WriteField(...) method. Propagate the reportRow field.
@@ -216,7 +216,7 @@ func (cn *conn) simpleExec(q string) (res driver.Result, commandTag string, err 
 */
 
 // DT: Keep
-func (cn *conn) simpleQuery(cmd *rdb.Command, val *rdb.Valuer) (err error) {
+func (cn *conn) simpleQuery(cmd *rdb.Command, val rdb.DriverValuer) (err error) {
 	defer errRecover(&err)
 	cn.inUse = true
 
@@ -329,7 +329,7 @@ func (cn *conn) Close() {
 	return
 }
 
-func (c *conn) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, val *rdb.Valuer) (err error) {
+func (c *conn) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, val rdb.DriverValuer) (err error) {
 	defer errRecover(&err)
 	c.val = val
 

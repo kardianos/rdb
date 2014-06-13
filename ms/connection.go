@@ -30,7 +30,7 @@ type Connection struct {
 	ProtocolVersion *semver.Version
 
 	mr  *MessageReader
-	val *rdb.Valuer
+	val rdb.DriverValuer
 	col []*SqlColumn
 
 	// Next token type.
@@ -90,11 +90,11 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 	return si, err
 }
 
-func (tds *Connection) ConnectionInfo() (*rdb.ConnectionInfo, error) {
+func (tds *Connection) ConnectionInfo() *rdb.ConnectionInfo {
 	return &rdb.ConnectionInfo{
 		Server:   tds.ProductVersion,
 		Protocol: tds.ProtocolVersion,
-	}, nil
+	}
 }
 
 func (tds *Connection) Close() {
@@ -139,7 +139,7 @@ func (tds *Connection) SavePoint(name string) error {
 	return rdb.NotImplemented
 }
 
-func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, valuer *rdb.Valuer) error {
+func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, valuer rdb.DriverValuer) error {
 	if tds.inUse {
 		panic("Connection in use still!")
 	}

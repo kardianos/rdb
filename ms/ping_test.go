@@ -8,10 +8,11 @@ import (
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/must"
 )
 
 func TestPing(t *testing.T) {
-	config := rdb.ConfigMust(rdb.ParseConfigURL(testConnectionString))
+	config := must.Config(rdb.ParseConfigURL(testConnectionString))
 
 	db, err := rdb.Open(config)
 	if err != nil {
@@ -26,7 +27,7 @@ func TestPing(t *testing.T) {
 }
 
 func TestVersion(t *testing.T) {
-	config := rdb.ConfigMust(rdb.ParseConfigURL(testConnectionString))
+	config := must.Config(rdb.ParseConfigURL(testConnectionString))
 
 	db, err := rdb.Open(config)
 	if err != nil {

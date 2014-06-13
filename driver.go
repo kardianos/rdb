@@ -81,7 +81,7 @@ type DriverConn interface {
 	Close()
 
 	// Return version information regarding the currently connected server.
-	ConnectionInfo() (*ConnectionInfo, error)
+	ConnectionInfo() *ConnectionInfo
 
 	// Read the next row from the connection. For each field in the row
 	// call the Valuer.WriteField(...) method. Propagate the reportRow field.
@@ -89,7 +89,7 @@ type DriverConn interface {
 
 	// The isolation level is set by the command.
 	// Should return "PreparedTokenNotValid" if the preparedToken was not recognized.
-	Query(cmd *Command, params []Param, preparedToken interface{}, val *Valuer) error
+	Query(cmd *Command, params []Param, preparedToken interface{}, val DriverValuer) error
 
 	Status() ConnStatus
 

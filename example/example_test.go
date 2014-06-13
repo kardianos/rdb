@@ -9,12 +9,13 @@ import (
 
 	"bitbucket.org/kardianos/rdb"
 	_ "bitbucket.org/kardianos/rdb/ms"
+	"bitbucket.org/kardianos/rdb/must"
 )
 
 const testConnectionString = "ms://TESTU@localhost/SqlExpress?db=master&dial_timeout=3s"
 
-var config = rdb.ParseConfigMust(testConnectionString)
-var db rdb.ConnPoolMust
+var config = must.Config(rdb.ParseConfigURL(testConnectionString))
+var db must.ConnPool
 
 func TestSimpleQuery(t *testing.T) {
 	err := QueryTest(t)
@@ -34,7 +35,7 @@ func QueryTest(t *testing.T) (ferr error) {
 		}
 	}()
 	if db.Normal() == nil {
-		db = rdb.OpenMust(config)
+		db = must.Open(config)
 	}
 
 	ErrorQuery(db, t)
@@ -44,7 +45,7 @@ func QueryTest(t *testing.T) (ferr error) {
 	return nil
 }
 
-func ErrorQuery(db rdb.ConnPoolMust, t *testing.T) {
+func ErrorQuery(db must.ConnPool, t *testing.T) {
 	res, err := db.Normal().Query(&rdb.Command{
 		Sql: `
 			s3l3c1 @animal as 'MyAnimal';`,
@@ -67,7 +68,7 @@ func ErrorQuery(db rdb.ConnPoolMust, t *testing.T) {
 	res.Close()
 }
 
-func SimpleQuery(db rdb.ConnPoolMust, t *testing.T) {
+func SimpleQuery(db must.ConnPool, t *testing.T) {
 	var myFav string
 	db.Query(&rdb.Command{
 		Sql: `
@@ -84,7 +85,7 @@ func SimpleQuery(db rdb.ConnPoolMust, t *testing.T) {
 	}...).Prep("MyAnimal", &myFav).Scan()
 	t.Logf("Animal_1: %s\n", myFav)
 }
-func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
+func RowsQuery(db must.ConnPool, t *testing.T) {
 	var myFav string
 	res := db.Query(&rdb.Command{
 		Sql: `
@@ -96,7 +97,7 @@ func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
 		;`,
 		Arity: rdb.Any,
 		Fields: []rdb.Field{
-			{N: "MyAnimal", NullValue: "null-value"},
+			{N: "MyAnimal", Null: "null-value"},
 		},
 		TruncLongText: true,
 	}, []rdb.Param{
@@ -113,7 +114,7 @@ func RowsQuery(db rdb.ConnPoolMust, t *testing.T) {
 		t.Logf("Animal_2: %s\n", myFav)
 	}
 }
-func LargerQuery(db rdb.ConnPoolMust, t *testing.T) {
+func LargerQuery(db must.ConnPool, t *testing.T) {
 	cmd := &rdb.Command{
 		Sql: `
 			select
