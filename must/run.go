@@ -4,10 +4,6 @@
 
 package must
 
-import (
-	"bitbucket.org/kardianos/rdb"
-)
-
 type Roller func(t Transaction, savepoint string)
 
 // A method to take many panicing members and return a normal error.
@@ -37,7 +33,7 @@ func Run(f func(r Roller) error) (err error) {
 	trans := make(map[Transaction]string)
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			if must, is := recovered.(rdb.MustError); is {
+			if must, is := recovered.(MustError); is {
 				err = must.Err
 				return
 			}
