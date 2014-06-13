@@ -5,7 +5,6 @@
 package rdb
 
 import (
-	"bitbucket.org/kardianos/rdb/semver"
 	"net/url"
 	"strconv"
 	"strings"
@@ -141,34 +140,4 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 	}
 
 	return conf, nil
-}
-
-type DriverOption struct {
-	Name string
-
-	Description string
-	Parse       func(input string) (interface{}, error)
-}
-
-type DriverSupport struct {
-	// PreparePerConn is set to true if prepared statements are local to
-	// each connection. Set to false if prepared statements are global.
-	PreparePerConn bool
-
-	NamedParameter   bool // Supports named parameters.
-	FluidType        bool // Like SQLite.
-	MultipleResult   bool // Supports returning multiple result sets.
-	SecureConnection bool // Supports a secure connection.
-	BulkInsert       bool // Supports a fast bulk insert method.
-	Notification     bool // Supports driver notifications.
-	UserDataTypes    bool // Handles user supplied data types.
-}
-
-type DriverInfo struct {
-	Options []*DriverOption
-	DriverSupport
-}
-
-type ConnectionInfo struct {
-	Server, Protocol *semver.Version
 }

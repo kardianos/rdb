@@ -74,7 +74,7 @@ func (cp *ConnPool) ConnectionInfo() (*ConnectionInfo, error) {
 	return ci, res.Close()
 }
 
-func (cp *ConnPool) releaseConn(conn Conn, kill bool) error {
+func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 	if kill {
 		if debugConnectionReuse {
 			fmt.Println("Result.Close() CLOSE")
@@ -92,11 +92,11 @@ func (cp *ConnPool) releaseConn(conn Conn, kill bool) error {
 	}
 	return nil
 }
-func (cp *ConnPool) getConn() (Conn, error) {
-	var conn Conn
+func (cp *ConnPool) getConn() (DriverConn, error) {
+	var conn DriverConn
 	connObj, err := cp.pool.Get()
 	if connObj != nil {
-		conn = connObj.(Conn)
+		conn = connObj.(DriverConn)
 	}
 	return conn, err
 }

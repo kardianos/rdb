@@ -15,7 +15,7 @@ import (
 
 type drv struct{}
 
-func (d *drv) Open(conf *rdb.Config) (_ rdb.Conn, err error) {
+func (d *drv) Open(conf *rdb.Config) (_ rdb.DriverConn, err error) {
 	// defer errRecover(&err)
 
 	port := conf.Port
