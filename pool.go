@@ -3,7 +3,7 @@ package rdb
 import (
 	"fmt"
 
-	"github.com/youtube/vitess/go/pools"
+	"bitbucket.org/kardianos/rdb/third_party/vitess/pools"
 )
 
 const debugConnectionReuse = false
