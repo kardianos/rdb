@@ -55,7 +55,7 @@ type Conn interface {
 
 	// The isolation level is set by the command.
 	// Should return "PreparedTokenNotValid" if the preparedToken was not recognized.
-	Query(cmd *Command, params []Param, preparedToken interface{}, val Valuer) error
+	Query(cmd *Command, params []Param, preparedToken interface{}, val *Valuer) error
 
 	Status() ConnStatus
 

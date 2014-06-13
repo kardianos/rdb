@@ -118,7 +118,7 @@ func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, params ...Param) (*
 	res := &Result{
 		conn: conn,
 		cp:   cp,
-		val: valuer{
+		val: Valuer{
 			arity: cmd.Arity,
 		},
 	}

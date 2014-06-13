@@ -35,7 +35,7 @@ type conn struct {
 	open  bool
 	inUse bool
 
-	val rdb.Valuer
+	val *rdb.Valuer
 	col []*rdb.SqlColumn
 }
 
@@ -74,12 +74,12 @@ func (conn *conn) Scan(reportRow bool) (err error) {
 				if l == -1 {
 					conn.val.WriteField(col, reportRow, &rdb.DriverValue{
 						Null: true,
-					})
+					}, nil)
 					continue
 				}
 				conn.val.WriteField(col, reportRow, &rdb.DriverValue{
 					Value: decode(&conn.parameterStatus, r.next(l), oid.Oid(col.SqlType-rdb.TypeDriverThresh)),
-				})
+				}, nil)
 			}
 			return
 		default:
@@ -216,7 +216,7 @@ func (cn *conn) simpleExec(q string) (res driver.Result, commandTag string, err 
 */
 
 // DT: Keep
-func (cn *conn) simpleQuery(cmd *rdb.Command, val rdb.Valuer) (err error) {
+func (cn *conn) simpleQuery(cmd *rdb.Command, val *rdb.Valuer) (err error) {
 	defer errRecover(&err)
 	cn.inUse = true
 
@@ -329,7 +329,7 @@ func (cn *conn) Close() {
 	return
 }
 
-func (c *conn) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, val rdb.Valuer) (err error) {
+func (c *conn) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, val *rdb.Valuer) (err error) {
 	defer errRecover(&err)
 	c.val = val
 
