@@ -118,7 +118,7 @@ func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, params ...Param) (*
 	res := &Result{
 		conn: conn,
 		cp:   cp,
-		val: Valuer{
+		val: valuer{
 			arity: cmd.Arity,
 		},
 	}
@@ -132,11 +132,7 @@ func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, params ...Param) (*
 	err = conn.Query(cmd, params, nil, &res.val)
 
 	if ci != nil {
-		var ciErr error
-		*ci, ciErr = conn.ConnectionInfo()
-		if err == nil {
-			err = ciErr
-		}
+		*ci = conn.ConnectionInfo()
 	}
 
 	if err == nil && len(res.val.errorList) != 0 {
@@ -165,4 +161,9 @@ func (cp *ConnPool) Begin() (*Transaction, error) {
 }
 func (cp *ConnPool) BeginLevel(level IsolationLevel) (*Transaction, error) {
 	return nil, NotImplemented
+}
+
+func (cp *ConnPool) PoolAvailable() (capacity, available int) {
+	c, a, _, _, _, _ := cp.pool.Stats()
+	return int(c), int(a)
 }

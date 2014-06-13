@@ -2,9 +2,13 @@
 // Use of this source code is governed by a zlib-style
 // license that can be found in the LICENSE file.
 
-package rdb
+package must
 
-type Roller func(t TransactionMust, savepoint string)
+import (
+	"bitbucket.org/kardianos/rdb"
+)
+
+type Roller func(t Transaction, savepoint string)
 
 // A method to take many panicing members and return a normal error.
 // The Roller function will rollback to an existing savepoint if it has not
@@ -30,17 +34,17 @@ type Roller func(t TransactionMust, savepoint string)
 	}
 */
 func Run(f func(r Roller) error) (err error) {
-	trans := make(map[TransactionMust]string)
+	trans := make(map[Transaction]string)
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			if must, is := recovered.(MustError); is {
+			if must, is := recovered.(rdb.MustError); is {
 				err = must.Err
 				return
 			}
 			panic(recovered)
 		}
 	}()
-	err = f(func(t TransactionMust, savepoint string) {
+	err = f(func(t Transaction, savepoint string) {
 		trans[t] = savepoint
 	})
 	var terr error

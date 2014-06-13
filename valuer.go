@@ -11,7 +11,17 @@ import (
 	"time"
 )
 
-type Valuer struct {
+type Assigner func(input, output interface{}) (handled bool, err error)
+
+type DriverValuer interface {
+	Columns([]*SqlColumn) error
+	Done() error
+	RowScanned()
+	SqlMessage(*SqlMessage)
+	WriteField(c *SqlColumn, reportRow bool, value *DriverValue, assign Assigner) error
+}
+
+type valuer struct {
 	errorList SqlErrors
 	infoList  []*SqlMessage
 	fields    []*Field
@@ -28,7 +38,7 @@ type Valuer struct {
 	rowCount uint64
 }
 
-func (v *Valuer) clearBuffer() {
+func (v *valuer) clearBuffer() {
 	for i := range v.buffer {
 		v.buffer[i] = Nullable{
 			Null: true,
@@ -36,13 +46,13 @@ func (v *Valuer) clearBuffer() {
 
 	}
 }
-func (v *Valuer) clearPrep() {
+func (v *valuer) clearPrep() {
 	for i := range v.prep {
 		v.prep[i] = nil
 	}
 }
 
-func (v *Valuer) Columns(cc []*SqlColumn) error {
+func (v *valuer) Columns(cc []*SqlColumn) error {
 	v.columns = cc
 	v.columnLookup = make(map[string]*SqlColumn, len(cc))
 	for _, col := range cc {
@@ -73,7 +83,7 @@ func (v *Valuer) Columns(cc []*SqlColumn) error {
 	v.initFields = nil
 	return nil
 }
-func (v *Valuer) SqlMessage(msg *SqlMessage) {
+func (v *valuer) SqlMessage(msg *SqlMessage) {
 	switch msg.Type {
 	case SqlInfo:
 		v.infoList = append(v.infoList, msg)
@@ -82,12 +92,12 @@ func (v *Valuer) SqlMessage(msg *SqlMessage) {
 		v.errorList = append(v.errorList, msg)
 	}
 }
-func (v *Valuer) RowScanned() {
+func (v *valuer) RowScanned() {
 	v.rowCount += 1
 	return
 }
 
-func (v *Valuer) Done() error {
+func (v *valuer) Done() error {
 	v.eof = true
 	for i := range v.prep {
 		v.prep[i] = nil
@@ -98,9 +108,7 @@ func (v *Valuer) Done() error {
 	return nil
 }
 
-type Assigner func(input, output interface{}) (handled bool, err error)
-
-func (v *Valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue, assign Assigner) error {
+func (v *valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue, assign Assigner) error {
 	if !reportRow {
 		return nil
 	}

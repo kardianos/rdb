@@ -5,15 +5,17 @@
 package pg
 
 import (
-	"bitbucket.org/kardianos/rdb"
 	"testing"
+
+	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/must"
 )
 
 var connectionString = "pg://postgres:AgainMoreToday@localhost:5432?db=photosite"
 
 func TestBasicQuery(t *testing.T) {
-	conf := rdb.ConfigMust(rdb.ParseConfigURL(connectionString))
-	db := rdb.OpenMust(conf)
+	conf := must.Config(rdb.ParseConfigURL(connectionString))
+	db := must.Open(conf)
 
 	var foo, fii int
 

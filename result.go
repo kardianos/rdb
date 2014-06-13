@@ -9,7 +9,7 @@ package rdb
 // execution or after the first Scan() if Arity is One.
 type Result struct {
 	conn DriverConn
-	val  Valuer
+	val  valuer
 	cp   *ConnPool
 }
 

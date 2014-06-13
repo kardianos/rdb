@@ -8,19 +8,20 @@ import (
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/must"
 )
 
 const testConnectionString = "ms://TESTU@localhost/SqlExpress?db=master&dial_timeout=3s"
 
 var config *rdb.Config
-var db rdb.ConnPoolMust
+var db must.ConnPool
 
 func openConnPool() {
 	if db.Normal() != nil {
 		return
 	}
-	config = rdb.ConfigMust(rdb.ParseConfigURL(testConnectionString))
-	db = rdb.OpenMust(config)
+	config = must.Config(rdb.ParseConfigURL(testConnectionString))
+	db = must.Open(config)
 }
 
 func TestSimpleQuery(t *testing.T) {
@@ -47,10 +48,16 @@ func QueryTest(t *testing.T) (ferr error) {
 	RowsQuerySimple(db, t)
 	RowsQueryNull(db, t)
 	LargerQuery(db, t)
+
+	capacity, available := db.Normal().PoolAvailable()
+	t.Logf("Pool capacity: %v, available: %v.", capacity, available)
+	if capacity != available {
+		t.Errorf("Not all connections returned to pool.")
+	}
 	return nil
 }
 
-func ErrorQuery(db rdb.ConnPoolMust, t *testing.T) {
+func ErrorQuery(db must.ConnPool, t *testing.T) {
 	res, err := db.Normal().Query(&rdb.Command{
 		Sql: `
 			s3l3c1 @animal as 'MyAnimal';`,
@@ -73,7 +80,7 @@ func ErrorQuery(db rdb.ConnPoolMust, t *testing.T) {
 	res.Close()
 }
 
-func SimpleQuery(db rdb.ConnPoolMust, t *testing.T) {
+func SimpleQuery(db must.ConnPool, t *testing.T) {
 	var myFav string
 	db.Query(&rdb.Command{
 		Sql: `
@@ -90,7 +97,7 @@ func SimpleQuery(db rdb.ConnPoolMust, t *testing.T) {
 	}...).Prep("MyAnimal", &myFav).Scan()
 	t.Logf("Animal_1: %s\n", myFav)
 }
-func RowsQuerySimple(db rdb.ConnPoolMust, t *testing.T) {
+func RowsQuerySimple(db must.ConnPool, t *testing.T) {
 	var myFav string
 	res := db.Query(&rdb.Command{
 		Sql: `
@@ -128,7 +135,7 @@ func RowsQuerySimple(db rdb.ConnPoolMust, t *testing.T) {
 		t.Logf("Animal_2: %s\n", myFav)
 	}
 }
-func RowsQueryNull(db rdb.ConnPoolMust, t *testing.T) {
+func RowsQueryNull(db must.ConnPool, t *testing.T) {
 	var colA string
 	cmd := &rdb.Command{
 		Sql: `
@@ -149,7 +156,7 @@ func RowsQueryNull(db rdb.ConnPoolMust, t *testing.T) {
 		i++
 	}
 }
-func LargerQuery(db rdb.ConnPoolMust, t *testing.T) {
+func LargerQuery(db must.ConnPool, t *testing.T) {
 	cmd := &rdb.Command{
 		Sql: `
 			select

@@ -544,7 +544,7 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 	return column
 }
 
-func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *rdb.Valuer, reportRow bool) {
+func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.DriverValuer, reportRow bool) {
 	sc := &column.SqlColumn
 	var err error
 	defer func() {
