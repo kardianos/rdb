@@ -106,9 +106,9 @@ func (v *Valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue, as
 	}
 	prep := v.prep[c.Index]
 	f := v.fields[c.Index]
-	if value.Null && f != nil && f.NullValue != nil {
+	if value.Null && f != nil && f.Null != nil {
 		value.Null = false
-		value.Value = f.NullValue
+		value.Value = f.Null
 	}
 	if prep == nil {
 		if value.Chunked {

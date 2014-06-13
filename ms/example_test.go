@@ -102,7 +102,7 @@ func RowsQuerySimple(db rdb.ConnPoolMust, t *testing.T) {
 		;`,
 		Arity: rdb.Any,
 		Fields: []rdb.Field{
-			{NullValue: "null-value"},
+			{Null: "null-value"},
 		},
 		TruncLongText: true,
 	}, []rdb.Param{
