@@ -9,11 +9,11 @@ import (
 )
 
 // Type panic'ed with after calling a Must method.
-type MustError struct {
+type Error struct {
 	Err error
 }
 
-func (err MustError) Error() string {
+func (err Error) Error() string {
 	return err.Err.Error()
 }
 
@@ -63,7 +63,7 @@ func (must Transaction) Normal() *rdb.Transaction {
 // present.
 func Config(config *rdb.Config, err error) *rdb.Config {
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 	return config
 }
@@ -72,7 +72,7 @@ func Config(config *rdb.Config, err error) *rdb.Config {
 func Open(c *rdb.Config) ConnPool {
 	db, err := rdb.Open(c)
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 	return ConnPool{
 		norm: db,
@@ -86,13 +86,13 @@ func (must ConnPool) Close() {
 func (must ConnPool) Ping() {
 	err := must.norm.Ping()
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 }
 func (must ConnPool) ConnectionInfo() *rdb.ConnectionInfo {
 	ci, err := must.norm.ConnectionInfo()
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 	return ci
 }
@@ -103,7 +103,7 @@ func (must ConnPool) ConnectionInfo() *rdb.ConnectionInfo {
 func (must ConnPool) Query(cmd *rdb.Command, params ...rdb.Param) Result {
 	res, err := must.norm.Query(cmd, params...)
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 	return Result{
 		norm: res,
@@ -114,7 +114,7 @@ func (must ConnPool) Query(cmd *rdb.Command, params ...rdb.Param) Result {
 func (must ConnPool) Begin() Transaction {
 	tran, err := must.norm.Begin()
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 	return Transaction{
 		norm: tran,
@@ -125,7 +125,7 @@ func (must ConnPool) Begin() Transaction {
 func (must ConnPool) BeginLevel(level rdb.IsolationLevel) Transaction {
 	tran, err := must.norm.BeginLevel(level)
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 	return Transaction{
 		norm: tran,
@@ -142,7 +142,7 @@ func (must ConnPool) PoolAvailable() (capacity, available int) {
 func (must Transaction) Query(cmd *rdb.Command, params ...rdb.Param) Result {
 	res, err := must.norm.Query(cmd, params...)
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 	return Result{
 		norm: res,
@@ -152,25 +152,25 @@ func (must Transaction) Query(cmd *rdb.Command, params ...rdb.Param) Result {
 func (must Transaction) Commit() {
 	err := must.norm.Commit()
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 }
 func (must Transaction) Rollback() {
 	err := must.norm.Rollback()
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 }
 func (must Transaction) RollbackTo(savepoint string) {
 	err := must.norm.RollbackTo(savepoint)
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 }
 func (must Transaction) SavePoint(name string) {
 	err := must.norm.SavePoint(name)
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 }
 func (must Transaction) Active() bool {
@@ -181,7 +181,7 @@ func (must Transaction) Active() bool {
 func (must Result) Close() {
 	err := must.norm.Close()
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 }
 
@@ -196,7 +196,7 @@ func (must Result) Next() (more bool) {
 func (must Result) Scan(values ...interface{}) Result {
 	err := must.norm.Scan(values...)
 	if err != nil {
-		panic(MustError{Err: err})
+		panic(Error{Err: err})
 	}
 	return must
 }
