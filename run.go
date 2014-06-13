@@ -4,14 +4,16 @@
 
 package rdb
 
+type Roller func(t TransactionMust, savepoint string)
+
 // A method to take many panicing members and return a normal error.
 // The Roller function will rollback to an existing savepoint if it has not
 // already been commited. An empty savepoint parameter to Roller will roll
 // the transaction back entirely.
 /*
 	func ExampleRun() error {
-		return Run(func(r Roller) error {
-			db := OpenMust(config)
+		return rdb.Run(func(r rdb.Roller) error {
+			db := rdb.OpenMust(config)
 			t := db.Begin()
 			r(t, "")
 
@@ -69,5 +71,3 @@ func Run(f func(r Roller) error) (err error) {
 	}
 	return
 }
-
-type Roller func(t TransactionMust, savepoint string)
