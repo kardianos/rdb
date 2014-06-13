@@ -8,6 +8,15 @@ import (
 	"bitbucket.org/kardianos/rdb"
 )
 
+// Type panic'ed with after calling a Must method.
+type MustError struct {
+	Err error
+}
+
+func (err MustError) Error() string {
+	return err.Err.Error()
+}
+
 type Result struct {
 	norm *rdb.Result
 }
@@ -20,22 +29,20 @@ type Transaction struct {
 	norm *rdb.Transaction
 }
 
-/*
 // Get the panic'ing version that doesn't return errors.
-func (cp *rdb.ConnPool) Must() ConnPoolMust {
-	return ConnPoolMust{norm: cp}
+func NewConnPool(cp *rdb.ConnPool) ConnPool {
+	return ConnPool{norm: cp}
 }
 
 // Get the panic'ing version that doesn't return errors.
-func (r *rdb.Result) Must() ResultMust {
-	return ResultMust{norm: r}
+func NewResult(r *rdb.Result) Result {
+	return Result{norm: r}
 }
 
 // Get the panic'ing version that doesn't return errors.
-func (tran *rdb.Transaction) Must() TransactionMust {
-	return TransactionMust{norm: tran}
+func NewTransaction(tran *rdb.Transaction) Transaction {
+	return Transaction{norm: tran}
 }
-*/
 
 // Get the non-panic'ing version of Result.
 func (must Result) Normal() *rdb.Result {
@@ -56,16 +63,16 @@ func (must Transaction) Normal() *rdb.Transaction {
 // present.
 func Config(config *rdb.Config, err error) *rdb.Config {
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 	return config
 }
 
-// Same as Open() but all errors are returned as a panic(rdb.MustError{}).
+// Same as Open() but all errors are returned as a panic(MustError{}).
 func Open(c *rdb.Config) ConnPool {
 	db, err := rdb.Open(c)
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 	return ConnPool{
 		norm: db,
@@ -79,13 +86,13 @@ func (must ConnPool) Close() {
 func (must ConnPool) Ping() {
 	err := must.norm.Ping()
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 }
 func (must ConnPool) ConnectionInfo() *rdb.ConnectionInfo {
 	ci, err := must.norm.ConnectionInfo()
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 	return ci
 }
@@ -96,7 +103,7 @@ func (must ConnPool) ConnectionInfo() *rdb.ConnectionInfo {
 func (must ConnPool) Query(cmd *rdb.Command, params ...rdb.Param) Result {
 	res, err := must.norm.Query(cmd, params...)
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 	return Result{
 		norm: res,
@@ -107,7 +114,7 @@ func (must ConnPool) Query(cmd *rdb.Command, params ...rdb.Param) Result {
 func (must ConnPool) Begin() Transaction {
 	tran, err := must.norm.Begin()
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 	return Transaction{
 		norm: tran,
@@ -118,11 +125,15 @@ func (must ConnPool) Begin() Transaction {
 func (must ConnPool) BeginLevel(level rdb.IsolationLevel) Transaction {
 	tran, err := must.norm.BeginLevel(level)
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 	return Transaction{
 		norm: tran,
 	}
+}
+
+func (must ConnPool) PoolAvailable() (capacity, available int) {
+	return must.norm.PoolAvailable()
 }
 
 // Input parameter values can either be specified in the paremeter definition
@@ -131,7 +142,7 @@ func (must ConnPool) BeginLevel(level rdb.IsolationLevel) Transaction {
 func (must Transaction) Query(cmd *rdb.Command, params ...rdb.Param) Result {
 	res, err := must.norm.Query(cmd, params...)
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 	return Result{
 		norm: res,
@@ -141,25 +152,25 @@ func (must Transaction) Query(cmd *rdb.Command, params ...rdb.Param) Result {
 func (must Transaction) Commit() {
 	err := must.norm.Commit()
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 }
 func (must Transaction) Rollback() {
 	err := must.norm.Rollback()
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 }
 func (must Transaction) RollbackTo(savepoint string) {
 	err := must.norm.RollbackTo(savepoint)
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 }
 func (must Transaction) SavePoint(name string) {
 	err := must.norm.SavePoint(name)
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 }
 func (must Transaction) Active() bool {
@@ -170,7 +181,7 @@ func (must Transaction) Active() bool {
 func (must Result) Close() {
 	err := must.norm.Close()
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 }
 
@@ -185,7 +196,7 @@ func (must Result) Next() (more bool) {
 func (must Result) Scan(values ...interface{}) Result {
 	err := must.norm.Scan(values...)
 	if err != nil {
-		panic(rdb.MustError{Err: err})
+		panic(MustError{Err: err})
 	}
 	return must
 }

@@ -30,15 +30,6 @@ func (err ErrorColumnNotFound) Error() string {
 	return fmt.Sprintf("At <%s>, Column name not valid: %s", err.At, err.Name)
 }
 
-// Type panic'ed with after calling a Must method.
-type MustError struct {
-	Err error
-}
-
-func (err MustError) Error() string {
-	return err.Err.Error()
-}
-
 // List of SQL errors returned by the server.
 type SqlErrors []*SqlMessage
 
