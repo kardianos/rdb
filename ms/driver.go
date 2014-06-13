@@ -16,7 +16,7 @@ func init() {
 
 type Driver struct{}
 
-func (dr *Driver) Open(c *rdb.Config) (rdb.Conn, error) {
+func (dr *Driver) Open(c *rdb.Config) (rdb.DriverConn, error) {
 	port := 1433
 	if c.Port != 0 {
 		port = c.Port
@@ -52,6 +52,8 @@ func (dr *Driver) Open(c *rdb.Config) (rdb.Conn, error) {
 func (dr *Driver) DriverInfo() *rdb.DriverInfo {
 	return &rdb.DriverInfo{
 		DriverSupport: rdb.DriverSupport{
+			PreparePerConn: false,
+
 			NamedParameter:   true,
 			FluidType:        false,
 			MultipleResult:   false,

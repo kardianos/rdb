@@ -8,7 +8,7 @@ package rdb
 // The result must automaticly Close() if the command Arity is Zero after
 // execution or after the first Scan() if Arity is One.
 type Result struct {
-	conn Conn
+	conn DriverConn
 	val  Valuer
 	cp   *ConnPool
 }

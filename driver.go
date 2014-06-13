@@ -4,6 +4,10 @@
 
 package rdb
 
+import (
+	"bitbucket.org/kardianos/rdb/semver"
+)
+
 // TODO: Add states for transactions.
 type ConnStatus byte
 
@@ -14,11 +18,41 @@ const (
 	StatusBulkCopy
 )
 
+type DriverOption struct {
+	Name string
+
+	Description string
+	Parse       func(input string) (interface{}, error)
+}
+
+type DriverSupport struct {
+	// PreparePerConn is set to true if prepared statements are local to
+	// each connection. Set to false if prepared statements are global.
+	PreparePerConn bool
+
+	NamedParameter   bool // Supports named parameters.
+	FluidType        bool // Like SQLite.
+	MultipleResult   bool // Supports returning multiple result sets.
+	SecureConnection bool // Supports a secure connection.
+	BulkInsert       bool // Supports a fast bulk insert method.
+	Notification     bool // Supports driver notifications.
+	UserDataTypes    bool // Handles user supplied data types.
+}
+
+type DriverInfo struct {
+	Options []*DriverOption
+	DriverSupport
+}
+
+type ConnectionInfo struct {
+	Server, Protocol *semver.Version
+}
+
 // Driver is implemented by the database driver.
 type Driver interface {
 	// Open a database. An actual connection does not need to be established
 	// at this time.
-	Open(c *Config) (Conn, error)
+	Open(c *Config) (DriverConn, error)
 
 	// Return information about the database drivers capabilities.
 	// Should not reflect any actual server any connections to it.
@@ -42,7 +76,7 @@ type DriverValue struct {
 }
 
 // Conn represents a database driver connection.
-type Conn interface {
+type DriverConn interface {
 	// Close the underlying connection to the database.
 	Close()
 
