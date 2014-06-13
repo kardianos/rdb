@@ -27,7 +27,7 @@ func TestSimpleQuery(t *testing.T) {
 func QueryTest(t *testing.T) (ferr error) {
 	defer func() {
 		if re := recover(); re != nil {
-			if localError, is := re.(rdb.MustError); is {
+			if localError, is := re.(must.Error); is {
 				ferr = localError
 				return
 			}

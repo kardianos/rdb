@@ -33,7 +33,7 @@ func Run(f func(r Roller) error) (err error) {
 	trans := make(map[Transaction]string)
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			if must, is := recovered.(MustError); is {
+			if must, is := recovered.(Error); is {
 				err = must.Err
 				return
 			}

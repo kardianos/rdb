@@ -10,12 +10,13 @@ import (
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/must"
 )
 
 func TestNumber(t *testing.T) {
 	defer func() {
 		if re := recover(); re != nil {
-			if localError, is := re.(rdb.MustError); is {
+			if localError, is := re.(must.Error); is {
 				t.Errorf("SQL Error: %v", localError)
 				return
 			}

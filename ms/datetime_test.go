@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/must"
 )
 
 func TestDateTime(t *testing.T) {
 	defer func() {
 		if re := recover(); re != nil {
-			if localError, is := re.(rdb.MustError); is {
+			if localError, is := re.(must.Error); is {
 				t.Errorf("SQL Error: %v", localError)
 				return
 			}
