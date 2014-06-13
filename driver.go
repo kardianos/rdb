@@ -9,10 +9,10 @@ import (
 )
 
 // TODO: Add states for transactions.
-type ConnStatus byte
+type DriverConnStatus byte
 
 const (
-	StatusDisconnected ConnStatus = iota
+	StatusDisconnected DriverConnStatus = iota
 	StatusReady
 	StatusQuery
 	StatusBulkCopy
@@ -91,7 +91,7 @@ type DriverConn interface {
 	// Should return "PreparedTokenNotValid" if the preparedToken was not recognized.
 	Query(cmd *Command, params []Param, preparedToken interface{}, val DriverValuer) error
 
-	Status() ConnStatus
+	Status() DriverConnStatus
 
 	// Happy Path:
 	//  * Interface wants to prepare command, but doesn't have token.

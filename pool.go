@@ -67,7 +67,7 @@ func (cp *ConnPool) Ping() error {
 func (cp *ConnPool) ConnectionInfo() (*ConnectionInfo, error) {
 	cmd := cp.dr.PingCommand()
 	ci := &ConnectionInfo{}
-	res, err := cp.query(cmd, &ci)
+	res, err := cp.query(nil, cmd, &ci)
 	if err != nil {
 		return nil, err
 	}
@@ -106,13 +106,16 @@ func (cp *ConnPool) getConn() (DriverConn, error) {
 // may be specified in the Value. Order may be used to match the
 // existing parameters if the Value.N name is omitted.
 func (cp *ConnPool) Query(cmd *Command, params ...Param) (*Result, error) {
-	return cp.query(cmd, nil, params...)
+	return cp.query(nil, cmd, nil, params...)
 }
 
-func (cp *ConnPool) query(cmd *Command, ci **ConnectionInfo, params ...Param) (*Result, error) {
-	conn, err := cp.getConn()
-	if err != nil {
-		return nil, err
+func (cp *ConnPool) query(conn DriverConn, cmd *Command, ci **ConnectionInfo, params ...Param) (*Result, error) {
+	var err error
+	if conn == nil {
+		conn, err = cp.getConn()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	res := &Result{
@@ -160,7 +163,22 @@ func (cp *ConnPool) Begin() (*Transaction, error) {
 	return cp.BeginLevel(LevelDefault)
 }
 func (cp *ConnPool) BeginLevel(level IsolationLevel) (*Transaction, error) {
-	return nil, NotImplemented
+	conn, err := cp.getConn()
+	if err != nil {
+		return nil, err
+	}
+
+	tran := &Transaction{
+		cp:    cp,
+		conn:  conn,
+		level: level,
+	}
+	err = conn.Begin()
+	if err != nil {
+		cp.releaseConn(conn, true)
+		return nil, err
+	}
+	return tran, nil
 }
 
 func (cp *ConnPool) PoolAvailable() (capacity, available int) {

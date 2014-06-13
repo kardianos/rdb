@@ -109,7 +109,7 @@ func (tds *Connection) Close() {
 	return
 }
 
-func (tds *Connection) Status() rdb.ConnStatus {
+func (tds *Connection) Status() rdb.DriverConnStatus {
 	if tds.open == false {
 		return rdb.StatusDisconnected
 	}
