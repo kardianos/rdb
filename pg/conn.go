@@ -91,7 +91,7 @@ func (conn *conn) Scan(reportRow bool) (err error) {
 }
 
 func (c *conn) SavePoint(name string) error { return nil }
-func (c *conn) Status() rdb.ConnStatus {
+func (c *conn) Status() rdb.DriverConnStatus {
 	if c.open == false {
 		return rdb.StatusDisconnected
 	}
