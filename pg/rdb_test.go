@@ -12,7 +12,7 @@ import (
 var connectionString = "pg://postgres:AgainMoreToday@localhost:5432?db=photosite"
 
 func TestBasicQuery(t *testing.T) {
-	conf := rdb.ParseConfigMust(connectionString)
+	conf := rdb.ConfigMust(rdb.ParseConfigURL(connectionString))
 	db := rdb.OpenMust(conf)
 
 	var foo, fii int

@@ -66,9 +66,9 @@ var configTestPass = map[string]*Config{
 	},
 }
 
-func TestConfig(t *testing.T) {
+func TestConfigURL(t *testing.T) {
 	for url, confExpect := range configTestPass {
-		conf, err := ParseConfig(url)
+		conf, err := ParseConfigURL(url)
 		if err != nil {
 			if _, is := err.(DriverNotFound); !is {
 				t.Errorf("Invalid connection string: %v", err)

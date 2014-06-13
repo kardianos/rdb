@@ -11,7 +11,7 @@ import (
 )
 
 func TestPing(t *testing.T) {
-	config := rdb.ParseConfigMust(testConnectionString)
+	config := rdb.ConfigMust(rdb.ParseConfigURL(testConnectionString))
 
 	db, err := rdb.Open(config)
 	if err != nil {
@@ -26,7 +26,7 @@ func TestPing(t *testing.T) {
 }
 
 func TestVersion(t *testing.T) {
-	config := rdb.ParseConfigMust(testConnectionString)
+	config := rdb.ConfigMust(rdb.ParseConfigURL(testConnectionString))
 
 	db, err := rdb.Open(config)
 	if err != nil {

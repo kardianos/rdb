@@ -46,9 +46,9 @@ func (must TransactionMust) Normal() *Transaction {
 	return must.norm
 }
 
-// Same as ParseConfig() but all errors are returned as a panic(MustError{}).
-func ParseConfigMust(connectionString string) *Config {
-	config, err := ParseConfig(connectionString)
+// ConfigMust takes the output of the ParseConfig and panics if an error is
+// present.
+func ConfigMust(config *Config, err error) *Config {
 	if err != nil {
 		panic(MustError{Err: err})
 	}

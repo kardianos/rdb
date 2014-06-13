@@ -63,7 +63,7 @@ type Config struct {
 //      init_cap=<int>:               PoolInitCapacity
 //      max_cap=<int>:                PoolMaxCapacity
 //      idle_timeout=<time.Duration>: PoolIdleTimeout
-func ParseConfig(connectionString string) (*Config, error) {
+func ParseConfigURL(connectionString string) (*Config, error) {
 	u, err := url.Parse(connectionString)
 	if err != nil {
 		return nil, err
