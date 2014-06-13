@@ -544,7 +544,7 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 	return column
 }
 
-func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valuer, reportRow bool) {
+func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result *rdb.Valuer, reportRow bool) {
 	sc := &column.SqlColumn
 	var err error
 	defer func() {
@@ -552,12 +552,17 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 			panic(recoverError{err: err})
 		}
 	}()
+
+	var wf = func(val *rdb.DriverValue) {
+		err = result.WriteField(sc, reportRow, val, nil)
+	}
+
 	if column.Unlimit {
 		totalSize := binary.LittleEndian.Uint64(read(8))
 		sizeUnknown := false
 
 		if totalSize == 0xFFFFFFFFFFFFFFFF {
-			err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+			wf(&rdb.DriverValue{
 				Null: true,
 			})
 			return
@@ -571,7 +576,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 			chunkSize := int(binary.LittleEndian.Uint32(read(4)))
 			if chunkSize == 0 {
 				if useChunks {
-					err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+					wf(&rdb.DriverValue{
 						More:    false,
 						Chunked: true,
 						Value:   []byte{},
@@ -590,7 +595,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 				value = make([]byte, chunkSize)
 				copy(value, read(chunkSize))
 			}
-			err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+			wf(&rdb.DriverValue{
 				More:    useChunks,
 				Chunked: useChunks,
 				Value:   value,
@@ -622,7 +627,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 
 	if column.info.Bytes {
 		if dataLen == nullValue {
-			err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+			wf(&rdb.DriverValue{
 				Null: true,
 			})
 			return
@@ -634,14 +639,14 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 			value = make([]byte, dataLen)
 			copy(value, read(dataLen))
 		}
-		err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+		wf(&rdb.DriverValue{
 			Value: value,
 		})
 		return
 	}
 
 	if dataLen == 0 || column.code == typeNull {
-		err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+		wf(&rdb.DriverValue{
 			Null: true,
 		})
 		return
@@ -669,7 +674,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 		default:
 			panic("unhandled fixed type")
 		}
-		err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+		wf(&rdb.DriverValue{
 			Value: v,
 		})
 		return
@@ -678,19 +683,19 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 	if column.code == typeIntN {
 		switch dataLen {
 		case 1:
-			err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+			wf(&rdb.DriverValue{
 				Value: read(1)[0],
 			})
 		case 2:
-			err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+			wf(&rdb.DriverValue{
 				Value: binary.LittleEndian.Uint16(read(2)),
 			})
 		case 4:
-			err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+			wf(&rdb.DriverValue{
 				Value: binary.LittleEndian.Uint32(read(4)),
 			})
 		case 8:
-			err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+			wf(&rdb.DriverValue{
 				Value: binary.LittleEndian.Uint64(read(8)),
 			})
 		default:
@@ -707,7 +712,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 			if v != 0 {
 				writeValue = true
 			}
-			err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+			wf(&rdb.DriverValue{
 				Value: writeValue,
 			})
 		default:
@@ -734,7 +739,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 		}
 		v.Quo(v, (&big.Rat{}).SetInt64(mult))
 
-		err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+		wf(&rdb.DriverValue{
 			Value: v,
 		})
 		return
@@ -743,12 +748,12 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 	if column.code == typeFloatN {
 		switch dataLen {
 		case 4:
-			err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+			wf(&rdb.DriverValue{
 				Value: math.Float32frombits(binary.LittleEndian.Uint32(read(4))),
 			})
 			return
 		case 8:
-			err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+			wf(&rdb.DriverValue{
 				Value: math.Float64frombits(binary.LittleEndian.Uint64(read(8))),
 			})
 			return
@@ -766,7 +771,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 			tm := time.Duration(int64(tmf / 300 * 1000000000))
 
 			v := zeroDateTime.Add(dt).Add(tm).Local()
-			err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+			wf(&rdb.DriverValue{
 				Value: v,
 			})
 			return
@@ -800,7 +805,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 
 			tm = time.Duration(1000000000 / scale * value)
 			if column.info.Dt == dtTime {
-				err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+				wf(&rdb.DriverValue{
 					Value: tm,
 				})
 				return
@@ -836,7 +841,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Valu
 			loc = time.FixedZone(fmt.Sprintf("UTC %d:%02d", hrs, mins), int(offset)*60)
 		}
 		dt = time.Date(dt.Year(), dt.Month(), dt.Day(), dt.Hour(), dt.Minute(), dt.Second(), dt.Nanosecond(), loc)
-		err = result.WriteField(sc, reportRow, &rdb.DriverValue{
+		wf(&rdb.DriverValue{
 			Value: dt,
 		})
 		return

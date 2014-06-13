@@ -30,7 +30,7 @@ type Connection struct {
 	ProtocolVersion *semver.Version
 
 	mr  *MessageReader
-	val rdb.Valuer
+	val *rdb.Valuer
 	col []*SqlColumn
 
 	// Next token type.
@@ -139,7 +139,7 @@ func (tds *Connection) SavePoint(name string) error {
 	return rdb.NotImplemented
 }
 
-func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, valuer rdb.Valuer) error {
+func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, valuer *rdb.Valuer) error {
 	if tds.inUse {
 		panic("Connection in use still!")
 	}

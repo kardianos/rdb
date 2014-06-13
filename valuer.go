@@ -11,15 +11,7 @@ import (
 	"time"
 )
 
-type Valuer interface {
-	Columns(cc []*SqlColumn) error
-	WriteField(c *SqlColumn, reportRow bool, value *DriverValue) error
-	SqlMessage(err *SqlMessage)
-	RowScanned()
-	Done() error
-}
-
-type valuer struct {
+type Valuer struct {
 	errorList SqlErrors
 	infoList  []*SqlMessage
 	fields    []*Field
@@ -36,7 +28,7 @@ type valuer struct {
 	rowCount uint64
 }
 
-func (v *valuer) clearBuffer() {
+func (v *Valuer) clearBuffer() {
 	for i := range v.buffer {
 		v.buffer[i] = Nullable{
 			Null: true,
@@ -44,13 +36,13 @@ func (v *valuer) clearBuffer() {
 
 	}
 }
-func (v *valuer) clearPrep() {
+func (v *Valuer) clearPrep() {
 	for i := range v.prep {
 		v.prep[i] = nil
 	}
 }
 
-func (v *valuer) Columns(cc []*SqlColumn) error {
+func (v *Valuer) Columns(cc []*SqlColumn) error {
 	v.columns = cc
 	v.columnLookup = make(map[string]*SqlColumn, len(cc))
 	for _, col := range cc {
@@ -81,7 +73,7 @@ func (v *valuer) Columns(cc []*SqlColumn) error {
 	v.initFields = nil
 	return nil
 }
-func (v *valuer) SqlMessage(msg *SqlMessage) {
+func (v *Valuer) SqlMessage(msg *SqlMessage) {
 	switch msg.Type {
 	case SqlInfo:
 		v.infoList = append(v.infoList, msg)
@@ -90,12 +82,12 @@ func (v *valuer) SqlMessage(msg *SqlMessage) {
 		v.errorList = append(v.errorList, msg)
 	}
 }
-func (v *valuer) RowScanned() {
+func (v *Valuer) RowScanned() {
 	v.rowCount += 1
 	return
 }
 
-func (v *valuer) Done() error {
+func (v *Valuer) Done() error {
 	v.eof = true
 	for i := range v.prep {
 		v.prep[i] = nil
@@ -106,7 +98,9 @@ func (v *valuer) Done() error {
 	return nil
 }
 
-func (v *valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue) error {
+type Assigner func(input, output interface{}) (handled bool, err error)
+
+func (v *Valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue, assign Assigner) error {
 	if !reportRow {
 		return nil
 	}
@@ -150,6 +144,13 @@ func (v *valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue) er
 		return ScanNullError
 	}
 	var err error
+	var handled = false
+	if assign != nil {
+		handled, err = assign(value.Value, prep)
+		if handled {
+			return err
+		}
+	}
 	switch in := value.Value.(type) {
 	case string:
 		switch out := prep.(type) {
