@@ -37,8 +37,3 @@ func (tran *Transaction) SavePoint(name string) error {
 func (tran *Transaction) Active() bool {
 	return !tran.done
 }
-
-// Get the panic'ing version that doesn't return errors.
-func (tran *Transaction) Must() TransactionMust {
-	return TransactionMust{norm: tran}
-}

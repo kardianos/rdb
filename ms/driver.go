@@ -8,7 +8,6 @@ import (
 	"bitbucket.org/kardianos/rdb"
 	"fmt"
 	"net"
-	"net/url"
 )
 
 func init() {
@@ -50,8 +49,8 @@ func (dr *Driver) Open(c *rdb.Config) (rdb.Conn, error) {
 
 	return tds, nil
 }
-func (dr *Driver) DriverMetaInfo() *rdb.DriverMeta {
-	return &rdb.DriverMeta{
+func (dr *Driver) DriverInfo() *rdb.DriverInfo {
+	return &rdb.DriverInfo{
 		DriverSupport: rdb.DriverSupport{
 			NamedParameter:   true,
 			FluidType:        false,
@@ -62,10 +61,6 @@ func (dr *Driver) DriverMetaInfo() *rdb.DriverMeta {
 			UserDataTypes:    false,
 		},
 	}
-}
-
-func (dr *Driver) ParseOptions(KV map[string]interface{}, configOptions url.Values) error {
-	return nil
 }
 
 var pingCommand = &rdb.Command{

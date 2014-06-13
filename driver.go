@@ -4,10 +4,6 @@
 
 package rdb
 
-import (
-	"net/url"
-)
-
 // TODO: Add states for transactions.
 type ConnStatus byte
 
@@ -18,7 +14,7 @@ const (
 	StatusBulkCopy
 )
 
-// Type the database driver must implement.
+// Driver is implemented by the database driver.
 type Driver interface {
 	// Open a database. An actual connection does not need to be established
 	// at this time.
@@ -26,16 +22,13 @@ type Driver interface {
 
 	// Return information about the database drivers capabilities.
 	// Should not reflect any actual server any connections to it.
-	DriverMetaInfo() *DriverMeta
+	DriverInfo() *DriverInfo
 
 	// Return the command to send a NOOP to the server.
 	PingCommand() *Command
-
-	// Parse driver specific options into the configuration.
-	ParseOptions(KV map[string]interface{}, configOptions url.Values) error
 }
 
-// Value type used by the driver to report a field value.
+// DriverValue used by the driver to report a field value.
 // If a long field, such as a long byte array, it can be chunked
 // directly into destination. If the driver is copying from a common
 // buffer then the MustCopy field must be true so it is known it must be
@@ -48,6 +41,7 @@ type DriverValue struct {
 	Chunked  bool // True if data is sent in chunks.
 }
 
+// Conn represents a database driver connection.
 type Conn interface {
 	// Close the underlying connection to the database.
 	Close()

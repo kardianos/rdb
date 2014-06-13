@@ -9,7 +9,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"time"
 )
@@ -106,8 +105,8 @@ func (d *drv) Open(conf *rdb.Config) (_ rdb.Conn, err error) {
 	return cn, err
 }
 
-func (d *drv) DriverMetaInfo() *rdb.DriverMeta {
-	return &rdb.DriverMeta{}
+func (d *drv) DriverInfo() *rdb.DriverInfo {
+	return &rdb.DriverInfo{}
 }
 
 var cmdPing = &rdb.Command{
@@ -117,10 +116,6 @@ var cmdPing = &rdb.Command{
 
 func (d *drv) PingCommand() *rdb.Command {
 	return cmdPing
-}
-
-func (d *drv) ParseOptions(KV map[string]interface{}, configOptions url.Values) error {
-	return nil
 }
 
 func init() {

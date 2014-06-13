@@ -134,7 +134,17 @@ func ParseConfig(connectionString string) (*Config, error) {
 	if err != nil {
 		return conf, err
 	}
-	dr.ParseOptions(conf.KV, val)
+	meta := dr.DriverInfo()
+	for _, op := range meta.Options {
+		if op.Parse == nil {
+			continue
+		}
+		v, err := op.Parse(val.Get(op.Name))
+		if err != nil {
+			return nil, err
+		}
+		conf.KV[op.Name] = v
+	}
 
 	return conf, nil
 }
@@ -142,8 +152,8 @@ func ParseConfig(connectionString string) (*Config, error) {
 type DriverOption struct {
 	Name string
 
-	Description  string
-	DefaultValue interface{}
+	Description string
+	Parse       func(input string) (interface{}, error)
 }
 
 type DriverSupport struct {
@@ -160,7 +170,7 @@ type DriverSupport struct {
 	UserDataTypes    bool // Handles user supplied data types.
 }
 
-type DriverMeta struct {
+type DriverInfo struct {
 	Options []*DriverOption
 	DriverSupport
 }
