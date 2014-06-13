@@ -2,6 +2,7 @@ package rdb
 
 import (
 	"fmt"
+
 	"github.com/youtube/vitess/go/pools"
 )
 
@@ -164,9 +165,4 @@ func (cp *ConnPool) Begin() (*Transaction, error) {
 }
 func (cp *ConnPool) BeginLevel(level IsolationLevel) (*Transaction, error) {
 	return nil, NotImplemented
-}
-
-// Get the panic'ing version that doesn't return errors.
-func (cp *ConnPool) Must() ConnPoolMust {
-	return ConnPoolMust{norm: cp}
 }

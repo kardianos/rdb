@@ -16,6 +16,21 @@ type TransactionMust struct {
 	norm *Transaction
 }
 
+// Get the panic'ing version that doesn't return errors.
+func (cp *ConnPool) Must() ConnPoolMust {
+	return ConnPoolMust{norm: cp}
+}
+
+// Get the panic'ing version that doesn't return errors.
+func (r *Result) Must() ResultMust {
+	return ResultMust{norm: r}
+}
+
+// Get the panic'ing version that doesn't return errors.
+func (tran *Transaction) Must() TransactionMust {
+	return TransactionMust{norm: tran}
+}
+
 // Get the non-panic'ing version of Result.
 func (must ResultMust) Normal() *Result {
 	return must.norm
@@ -177,61 +192,39 @@ func (must ResultMust) Info() []*SqlMessage {
 // Prepare pointers to values to be populated by name using Prep. After
 // preparing call Scan().
 func (must ResultMust) Prep(name string, value interface{}) ResultMust {
-	err := must.norm.Prep(name, value)
-	if err != nil {
-		panic(MustError{Err: err})
-	}
+	must.norm.Prep(name, value)
 	return must
 }
 
 // Prepare pointers to values to be populated by index using Prep. After
 // preparing call Scan().
 func (must ResultMust) Prepx(index int, value interface{}) ResultMust {
-	err := must.norm.Prepx(index, value)
-	if err != nil {
-		panic(MustError{Err: err})
-	}
+	must.norm.Prepx(index, value)
 	return must
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent
 // into a prepared value.
 func (must ResultMust) Get(name string) interface{} {
-	value, err := must.norm.Get(name)
-	if err != nil {
-		panic(MustError{Err: err})
-	}
-	return value
+	return must.norm.Get(name)
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent
 // into a prepared value.
 func (must ResultMust) Getx(index int) interface{} {
-	value, err := must.norm.Getx(index)
-	if err != nil {
-		panic(MustError{Err: err})
-	}
-	return value
+	return must.norm.Getx(index)
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent
 // into a prepared value.
 func (must ResultMust) GetN(name string) Nullable {
-	value, err := must.norm.GetN(name)
-	if err != nil {
-		panic(MustError{Err: err})
-	}
-	return value
+	return must.norm.GetN(name)
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent
 // into a prepared value.
 func (must ResultMust) GetxN(index int) Nullable {
-	value, err := must.norm.GetxN(index)
-	if err != nil {
-		panic(MustError{Err: err})
-	}
-	return value
+	return must.norm.GetxN(index)
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent

@@ -192,8 +192,3 @@ func (r *Result) scan(reportRow bool) error {
 	}
 	return err
 }
-
-// Get the panic'ing version that doesn't return errors.
-func (r *Result) Must() ResultMust {
-	return ResultMust{norm: r}
-}
