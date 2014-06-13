@@ -19,7 +19,7 @@ func openConnPool() {
 	if db.Normal() != nil {
 		return
 	}
-	config = rdb.ParseConfigMust(testConnectionString)
+	config = rdb.ConfigMust(rdb.ParseConfigURL(testConnectionString))
 	db = rdb.OpenMust(config)
 }
 
