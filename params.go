@@ -60,10 +60,7 @@ type Field struct {
 	N string // Optional Field Name.
 
 	// Value to report if the driver reports a null value.
-	NullValue interface{}
-
-	// Convert this field with a function.
-	Convert ConvertOutput
+	Null interface{}
 }
 
 type IsolationLevel byte
@@ -98,33 +95,6 @@ const (
 	OneMust Arity = One | ArityMust
 )
 
-type ConvertInputIn struct {
-	// Allows converting based on a column name suffix like
-	// "create_time" -> TypeTD, may attempt to convert a string to a time.Time
-	// value.
-	Name string
-
-	// Out parameters must be able to be converted bi-directionally.
-	// Will be true if value is returning from the database.
-	Returning bool
-
-	// The SqlType as defined in the Param.
-	Type SqlType
-
-	// The input value.
-	Value interface{}
-}
-
-// Convert parameter type to another type or simply set the SqlType.
-// Ordered array in *Config and *Command.
-// The values in *Command are evaluated before any in *Config.
-type ConvertInput func(in ConvertInputIn) (handled bool, outType SqlType, out interface{}, err error)
-
-// Convert output field.
-// In *Config contains a map[SqlType]ConvertOutput map,
-// also in per column Field output.
-type ConvertOutput func(*SqlColumn, interface{}) (interface{}, error)
-
 // Command represents a SQL command and can be used from many different
 // queries at the same time.
 // The Command MUST be reused if the Prepare field is true.
@@ -158,7 +128,4 @@ type Command struct {
 
 	// Optional name of the command. May be used if logging.
 	Name string
-
-	// An ordered list of input converters.
-	InputConverters []ConvertInput
 }
