@@ -66,64 +66,64 @@ func (r *Result) Info() []*SqlMessage {
 }
 
 // Prepare pointers to values to be populated by name using Prep. After
-// preparing call Scan().
-func (r *Result) Prep(name string, value interface{}) error {
+// preparing call Scan(). Will panic if name is not a valid column name.
+func (r *Result) Prep(name string, value interface{}) *Result {
 	col, found := r.val.columnLookup[name]
 	if !found {
-		return ErrorColumnNotFound{At: "Prep", Name: name}
+		panic(ErrorColumnNotFound{At: "Prep", Name: name})
 	}
 	r.val.prep[col.Index] = value
-	return nil
+	return r
 }
 
 // Prepare pointers to values to be populated by index using Prep. After
-// preparing call Scan().
-func (r *Result) Prepx(index int, value interface{}) error {
+// preparing call Scan(). Will panic if index is not a valid column index.
+func (r *Result) Prepx(index int, value interface{}) *Result {
 	if index < 0 || index >= len(r.val.columns) {
-		return ErrorColumnNotFound{At: "Prepx", Index: index}
+		panic(ErrorColumnNotFound{At: "Prepx", Index: index})
 	}
 	r.val.prep[index] = value
-	return nil
+	return r
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent
-// into a prepared value.
-func (r *Result) Get(name string) (interface{}, error) {
+// into a prepared value. Will panic if name is not a valid column name.
+func (r *Result) Get(name string) interface{} {
 	col, found := r.val.columnLookup[name]
 	if !found {
-		return nil, ErrorColumnNotFound{At: "Get", Name: name}
+		panic(ErrorColumnNotFound{At: "Get", Name: name})
 	}
 	bv := r.val.buffer[col.Index]
-	return bv.V, nil
+	return bv.V
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent
-// into a prepared value.
-func (r *Result) Getx(index int) (interface{}, error) {
+// into a prepared value. Will panic if index is not a valid column index.
+func (r *Result) Getx(index int) interface{} {
 	if index < 0 || index >= len(r.val.columns) {
-		return nil, ErrorColumnNotFound{At: "Getx", Index: index}
+		panic(ErrorColumnNotFound{At: "Getx", Index: index})
 	}
 	bv := r.val.buffer[index]
-	return bv.V, nil
+	return bv.V
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent
-// into a prepared value.
-func (r *Result) GetN(name string) (Nullable, error) {
+// into a prepared value. Will panic if name is not a valid column name.
+func (r *Result) GetN(name string) Nullable {
 	col, found := r.val.columnLookup[name]
 	if !found {
-		return Nullable{}, ErrorColumnNotFound{At: "GetN", Name: name}
+		panic(ErrorColumnNotFound{At: "GetN", Name: name})
 	}
-	return r.val.buffer[col.Index], nil
+	return r.val.buffer[col.Index]
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent
-// into a prepared value.
-func (r *Result) GetxN(index int) (Nullable, error) {
+// into a prepared value. Will panic if index is not a valid column index.
+func (r *Result) GetxN(index int) Nullable {
 	if index < 0 || index >= len(r.val.columns) {
-		return Nullable{}, ErrorColumnNotFound{At: "GetxN", Index: index}
+		panic(ErrorColumnNotFound{At: "GetxN", Index: index})
 	}
-	return r.val.buffer[index], nil
+	return r.val.buffer[index]
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent
