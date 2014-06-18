@@ -106,7 +106,19 @@ func (d *drv) Open(conf *rdb.Config) (_ rdb.DriverConn, err error) {
 }
 
 func (d *drv) DriverInfo() *rdb.DriverInfo {
-	return &rdb.DriverInfo{}
+	return &rdb.DriverInfo{
+		DriverSupport: rdb.DriverSupport{
+			PreparePerConn: true,
+
+			NamedParameter:   true,
+			FluidType:        false,
+			MultipleResult:   false,
+			SecureConnection: true,
+			BulkInsert:       false,
+			Notification:     false,
+			UserDataTypes:    false,
+		},
+	}
 }
 
 var cmdPing = &rdb.Command{

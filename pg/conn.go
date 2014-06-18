@@ -29,9 +29,6 @@ type conn struct {
 
 	parameterStatus parameterStatus
 
-	saveMessageType   byte
-	saveMessageBuffer *readBuf
-
 	open  bool
 	inUse bool
 
@@ -81,6 +78,7 @@ func (conn *conn) Scan(reportRow bool) (err error) {
 					Value: decode(&conn.parameterStatus, r.next(l), oid.Oid(col.SqlType-rdb.TypeDriverThresh)),
 				}, nil)
 			}
+			conn.val.RowScanned()
 			return
 		default:
 			errorf("unexpected message after execute: %q", t)
@@ -186,9 +184,11 @@ func (cn *conn) gname() string {
 	return strconv.FormatInt(int64(cn.namei), 10)
 }
 
-/*
-func (cn *conn) simpleExec(q string) (res driver.Result, commandTag string, err error) {
+// Very similar to simpleQuery, but doesn't interact with valuer or
+// kick out to an external scan.
+func (cn *conn) simpleExec(q string) (commandTag string, err error) {
 	defer errRecover(&err)
+	cn.inUse = true
 
 	b := cn.writeBuf('Q')
 	b.string(q)
@@ -198,7 +198,7 @@ func (cn *conn) simpleExec(q string) (res driver.Result, commandTag string, err 
 		t, r := cn.recv1()
 		switch t {
 		case 'C':
-			res, commandTag = parseComplete(r.string())
+			_, commandTag = parseComplete(r.string())
 		case 'Z':
 			cn.processReadyForQuery(r)
 			cn.inUse = false
@@ -213,9 +213,7 @@ func (cn *conn) simpleExec(q string) (res driver.Result, commandTag string, err 
 	}
 	panic("not reached")
 }
-*/
 
-// DT: Keep
 func (cn *conn) simpleQuery(cmd *rdb.Command, val rdb.DriverValuer) (err error) {
 	defer errRecover(&err)
 	cn.inUse = true
@@ -228,13 +226,6 @@ func (cn *conn) simpleQuery(cmd *rdb.Command, val rdb.DriverValuer) (err error) 
 		t, r := cn.recv1()
 		switch t {
 		case 'C':
-			// We allow queries which don't return any results through Query as
-			// well as Exec.  We still have to give database/sql a rows object
-			// the user can close, though, to avoid connections from being
-			// leaked.  A "rows" with done=true works fine for that purpose.
-			if err != nil {
-				errorf("unexpected CommandComplete in simple query execution")
-			}
 			return val.Done()
 		case 'Z':
 			cn.processReadyForQuery(r)
@@ -250,25 +241,19 @@ func (cn *conn) simpleQuery(cmd *rdb.Command, val rdb.DriverValuer) (err error) 
 	}
 }
 
-/*
-func (cn *conn) prepareTo(q, stmtName string, val rdb.Valuer) (_ driver.Stmt, err error) {
-	return cn.prepareToSimpleStmt(q, stmtName, val)
-}
-
-func (cn *conn) prepareToSimpleStmt(q, stmtName string, val rdb.Valuer) (_ *stmt, err error) {
+func (cn *conn) prepareToSimpleStmt(q, stmtName string) (err error) {
 	defer errRecover(&err)
-
-	st := &stmt{cn: cn, name: stmtName, query: q}
+	cn.inUse = true
 
 	b := cn.writeBuf('P')
-	b.string(st.name)
+	b.string(stmtName)
 	b.string(q)
 	b.int16(0)
 	cn.send(b)
 
 	b = cn.writeBuf('D')
 	b.byte('S')
-	b.string(st.name)
+	b.string(stmtName)
 	cn.send(b)
 
 	cn.send(cn.writeBuf('S'))
@@ -278,11 +263,13 @@ func (cn *conn) prepareToSimpleStmt(q, stmtName string, val rdb.Valuer) (_ *stmt
 		switch t {
 		case '1':
 		case 't':
+			// TODO: What to do with these...?
 			nparams := int(r.int16())
-			st.paramTyps = make([]oid.Oid, nparams)
+			cols := make([]*rdb.SqlColumn, nparams)
 
-			for i := range st.paramTyps {
-				st.paramTyps[i] = r.oid()
+			for _ = range cols {
+				// st.paramTyps[i] = r.oid()
+				_ = r.oid()
 			}
 		case 'T':
 			cn.parseMeta(r)
@@ -290,7 +277,7 @@ func (cn *conn) prepareToSimpleStmt(q, stmtName string, val rdb.Valuer) (_ *stmt
 			// no data
 		case 'Z':
 			cn.processReadyForQuery(r)
-			return st, err
+			return err
 		case 'E':
 			err = parseError(r)
 		default:
@@ -299,7 +286,63 @@ func (cn *conn) prepareToSimpleStmt(q, stmtName string, val rdb.Valuer) (_ *stmt
 	}
 
 	panic("not reached")
-}*/
+}
+
+func (c *conn) exec(statementName string, v []rdb.Param, val rdb.DriverValuer) {
+	// TODO: Add this check back in.
+	// if len(v) != len(st.paramTyps) {
+	// 	errorf("got %d parameters but the statement requires %d", len(v), len(st.paramTyps))
+	// }
+	c.inUse = true
+
+	w := c.writeBuf('B')
+	w.string("")
+	w.string(statementName)
+	w.int16(0)
+	w.int16(len(v))
+	for i, x := range v {
+		if x.Null || x.V == nil {
+			w.int32(-1)
+		} else {
+			// TODO: Send in SqlType.
+			tp := oid.Oid(c.col[i].SqlType - rdb.TypeDriverThresh)
+			b := encode(&c.parameterStatus, x.V, tp)
+			w.int32(len(b))
+			w.bytes(b)
+		}
+	}
+	w.int16(0)
+	c.send(w)
+
+	w = c.writeBuf('E')
+	w.string("")
+	w.int32(0)
+	c.send(w)
+
+	c.send(c.writeBuf('S'))
+
+	var err error
+	for {
+		t, r := c.recv1()
+		switch t {
+		case 'E':
+			err = parseError(r)
+		case '2':
+			if err != nil {
+				panic(err)
+			}
+			return
+		case 'Z':
+			c.processReadyForQuery(r)
+			if err != nil {
+				panic(err)
+			}
+			return
+		default:
+			errorf("unexpected bind response: %q", t)
+		}
+	}
+}
 
 func (c *conn) Prepare(*rdb.Command) (preparedStatementToken interface{}, err error) {
 	/*Prepare(q string) (driver.Stmt, error)
@@ -337,56 +380,13 @@ func (c *conn) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interfa
 		return c.simpleQuery(cmd, val)
 	}
 
-	// TODO: Handle other cases.
+	err = c.prepareToSimpleStmt(cmd.Sql, "")
+	if err != nil {
+		panic(err)
+	}
+	c.exec("", params, val)
 	return nil
-
-	/*Query(query string, args []driver.Value) (_ driver.Rows, err error)
-	defer errRecover(&err)
-
-	// Check to see if we can use the "simpleQuery" interface, which is
-	// *much* faster than going through prepare/exec
-	if len(args) == 0 {
-		return cn.simpleQuery(query)
-	}
-
-	st, err := cn.prepareToSimpleStmt(query, "")
-	if err != nil {
-		panic(err)
-	}
-
-	st.exec(args)
-	return &rows{st: st}, nil
-	*/
 }
-
-/*
-// Implement the optional "Execer" interface for one-shot queries
-func (cn *conn) Exec(cmd *rdb.Command, args []rdb.Param, val rdb.Valuer) (_ driver.Result, err error) {
-	defer errRecover(&err)
-
-	// Check to see if we can use the "simpleExec" interface, which is
-	// *much* faster than going through prepare/exec
-	if len(args) == 0 {
-		// ignore commandTag, our caller doesn't care
-		r, _, err := cn.simpleExec(cmd.Sql)
-		return r, err
-	}
-
-	// Use the unnamed statement to defer planning until bind
-	// time, or else value-based selectivity estimates cannot be
-	// used.
-	st, err := cn.prepareTo(cmd.Sql, "", val)
-	if err != nil {
-		panic(err)
-	}
-
-	r, err := st.Exec(args)
-	if err != nil {
-		panic(err)
-	}
-
-	return r, err
-}*/
 
 // Assumes len(*m) is > 5
 func (cn *conn) send(m *writeBuf) {
@@ -414,14 +414,6 @@ func (cn *conn) sendSimpleMessage(typ byte) (err error) {
 // recvMessage receives any message from the backend, or returns an error if
 // a problem occurred while reading the message.
 func (cn *conn) recvMessage() (byte, *readBuf, error) {
-	// workaround for a QueryRow bug, see exec
-	if cn.saveMessageType != 0 {
-		t, r := cn.saveMessageType, cn.saveMessageBuffer
-		cn.saveMessageType = 0
-		cn.saveMessageBuffer = nil
-		return t, r, nil
-	}
-
 	x := cn.scratch[:5]
 	_, err := io.ReadFull(cn.buf, x)
 	if err != nil {
