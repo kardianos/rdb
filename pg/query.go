@@ -302,90 +302,6 @@ func (st *stmt) Exec(v []rdb.Param) (res driver.Result, err error) {
 
 	panic("not reached")
 }
-
-func (st *stmt) exec(v []rdb.Param, val rdb.Valuer) {
-	if len(v) != len(st.paramTyps) {
-		errorf("got %d parameters but the statement requires %d", len(v), len(st.paramTyps))
-	}
-
-	w := st.cn.writeBuf('B')
-	w.string("")
-	w.string(st.name)
-	w.int16(0)
-	w.int16(len(v))
-	for i, x := range v {
-		if x.Null {
-			w.int32(-1)
-		} else {
-			// TODO: Send in SqlType.
-			tp := oid.Oid(st.cn.col[i].SqlType - rdb.TypeDriverThresh)
-			b := encode(&st.cn.parameterStatus, x.V, tp)
-			w.int32(len(b))
-			w.bytes(b)
-		}
-	}
-	w.int16(0)
-	st.cn.send(w)
-
-	w = st.cn.writeBuf('E')
-	w.string("")
-	w.int32(0)
-	st.cn.send(w)
-
-	st.cn.send(st.cn.writeBuf('S'))
-
-	var err error
-	for {
-		t, r := st.cn.recv1()
-		switch t {
-		case 'E':
-			err = parseError(r)
-		case '2':
-			if err != nil {
-				panic(err)
-			}
-			goto workaround
-		case 'Z':
-			st.cn.processReadyForQuery(r)
-			if err != nil {
-				panic(err)
-			}
-			return
-		default:
-			errorf("unexpected bind response: %q", t)
-		}
-	}
-
-	// Work around a bug in sql.DB.QueryRow: in Go 1.2 and earlier it ignores
-	// any errors from rows.Next, which masks errors that happened during the
-	// execution of the query.  To avoid the problem in common cases, we wait
-	// here for one more message from the database.  If it's not an error the
-	// query will likely succeed (or perhaps has already, if it's a
-	// CommandComplete), so we push the message into the conn struct; recv1
-	// will return it as the next message for rows.Next or rows.Close.
-	// However, if it's an error, we wait until ReadyForQuery and then return
-	// the error to our caller.
-workaround:
-	for {
-		t, r := st.cn.recv1()
-		switch t {
-		case 'E':
-			err = parseError(r)
-		case 'C', 'D':
-			// the query didn't fail, but we can't process this message
-			st.cn.saveMessageType = t
-			st.cn.saveMessageBuffer = r
-			return
-		case 'Z':
-			if err == nil {
-				errorf("unexpected ReadyForQuery during extended query execution")
-			}
-			panic(err)
-		default:
-			errorf("unexpected message during query execution: %q", t)
-		}
-	}
-}
 */
 
 func (st *stmt) NumInput() int {
@@ -396,8 +312,7 @@ func (st *stmt) NumInput() int {
 // returns the number of rows affected (if applicable) and a string
 // identifying only the command that was executed, e.g. "ALTER TABLE".  If the
 // command tag could not be parsed, parseComplete panics.
-/*
-func parseComplete(commandTag string) (driver.Result, string) {
+func parseComplete(commandTag string) (int64, string) {
 	commandsWithAffectedRows := []string{
 		"SELECT ",
 		// INSERT is handled below
@@ -431,15 +346,14 @@ func parseComplete(commandTag string) (driver.Result, string) {
 	}
 	// There should be no affected rows attached to the tag, just return it
 	if affectedRows == nil {
-		return driver.RowsAffected(0), commandTag
+		return 0, commandTag
 	}
 	n, err := strconv.ParseInt(*affectedRows, 10, 64)
 	if err != nil {
 		errorf("could not parse commandTag: %s", err)
 	}
-	return driver.RowsAffected(n), commandTag
+	return n, commandTag
 }
-*/
 
 type rows struct {
 	st   *stmt
