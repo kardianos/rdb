@@ -5,9 +5,10 @@
 package pg
 
 import (
-	"bitbucket.org/kardianos/rdb/pg/oid"
 	"bytes"
 	"encoding/binary"
+
+	"bitbucket.org/kardianos/rdb/pg/oid"
 )
 
 type readBuf []byte

@@ -5,10 +5,11 @@
 package hstore
 
 import (
-	_ "bitbucket.org/kardianos/rdb/pg"
 	"database/sql"
 	"os"
 	"testing"
+
+	_ "bitbucket.org/kardianos/rdb/pg"
 )
 
 type Fatalistic interface {

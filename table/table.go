@@ -9,8 +9,9 @@
 package table
 
 import (
-	"bitbucket.org/kardianos/rdb"
 	"errors"
+
+	"bitbucket.org/kardianos/rdb"
 )
 
 type Row struct {

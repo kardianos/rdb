@@ -5,13 +5,14 @@
 package ms
 
 import (
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/ms/uconv"
-	"bitbucket.org/kardianos/rdb/semver"
 	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
+
+	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/ms/uconv"
+	"bitbucket.org/kardianos/rdb/semver"
 )
 
 const debugToken = false
