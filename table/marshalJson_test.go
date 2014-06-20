@@ -11,13 +11,14 @@ import (
 )
 
 func TestJsonMarshal(t *testing.T) {
-	check := `[{"ColA":"Hello","ColB":123.524},{"ColA":"Hi","ColB":null}]`
-	buf := &Buffer{}
-	buf.SetSchema([]*rdb.SqlColumn{
+	checkRowObject := `[{"ColA":"Hello","ColB":123.524},{"ColA":"Hi","ColB":null}]`
+	checkRowArray := `{"Names":["ColA","ColB"],"Data":[["Hello",123.524],["Hi",null]]}`
+	table := &Buffer{}
+	table.SetSchema([]*rdb.SqlColumn{
 		&rdb.SqlColumn{Name: "ColA"},
 		&rdb.SqlColumn{Name: "ColB"},
 	})
-	buf.Row = []Row{
+	table.Row = []Row{
 		{
 			Field: []rdb.Nullable{
 				{V: "Hello"},
@@ -32,14 +33,25 @@ func TestJsonMarshal(t *testing.T) {
 		},
 	}
 
-	bb := &bytes.Buffer{}
+	var err error
+	buf := &bytes.Buffer{}
 
-	coder := JsonObjectArray{Buffer: buf}
-	_, err := coder.WriteTo(bb)
+	coderObj := JsonRowObject{Buffer: table}
+	_, err = coderObj.WriteTo(buf)
 	if err != nil {
 		t.Error(err)
 	}
-	if bb.String() != check {
-		t.Errorf("Doesn't match: want <%s> got <%s>", check, bb.String())
+	if buf.String() != checkRowObject {
+		t.Errorf("Doesn't match: want <%s> got <%s>", checkRowObject, buf.String())
+	}
+	buf.Reset()
+
+	coderArray := JsonRowArray{Buffer: table}
+	_, err = coderArray.WriteTo(buf)
+	if err != nil {
+		t.Error(err)
+	}
+	if buf.String() != checkRowArray {
+		t.Errorf("Doesn't match:\nwant\n\t%s\ngot\n\t%s", checkRowArray, buf.String())
 	}
 }
