@@ -5,9 +5,10 @@
 package ms
 
 import (
-	"bitbucket.org/kardianos/rdb"
 	"fmt"
 	"net"
+
+	"bitbucket.org/kardianos/rdb"
 )
 
 func init() {

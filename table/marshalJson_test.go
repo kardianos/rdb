@@ -5,9 +5,10 @@
 package table
 
 import (
-	"bitbucket.org/kardianos/rdb"
 	"bytes"
 	"testing"
+
+	"bitbucket.org/kardianos/rdb"
 )
 
 func TestJsonMarshal(t *testing.T) {

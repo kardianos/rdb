@@ -5,12 +5,13 @@
 package pg
 
 import (
-	"bitbucket.org/kardianos/rdb"
 	"bufio"
 	"errors"
 	"fmt"
 	"os"
 	"time"
+
+	"bitbucket.org/kardianos/rdb"
 )
 
 type drv struct{}

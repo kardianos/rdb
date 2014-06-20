@@ -5,10 +5,11 @@
 package ms
 
 import (
-	"bitbucket.org/kardianos/rsync/sbuffer"
 	"bytes"
 	"encoding/binary"
 	"io"
+
+	"bitbucket.org/kardianos/rsync/sbuffer"
 
 	"encoding/hex"
 	"fmt"

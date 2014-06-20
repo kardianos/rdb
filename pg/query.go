@@ -5,12 +5,13 @@
 package pg
 
 import (
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/pg/oid"
-	"bitbucket.org/kardianos/rdb/semver"
 	"crypto/md5"
 	"errors"
 	"fmt"
+
+	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/pg/oid"
+	"bitbucket.org/kardianos/rdb/semver"
 	//	"io"
 	"net"
 	"path"

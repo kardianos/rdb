@@ -5,14 +5,15 @@
 package ms
 
 import (
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/ms/uconv"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"time"
+
+	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/ms/uconv"
 )
 
 const (

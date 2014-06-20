@@ -5,8 +5,6 @@
 package pg
 
 import (
-	"bitbucket.org/kardianos/rdb/pg/oid"
-	"bitbucket.org/kardianos/rdb/semver"
 	"bytes"
 	"encoding/hex"
 	"fmt"
@@ -14,6 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"bitbucket.org/kardianos/rdb/pg/oid"
+	"bitbucket.org/kardianos/rdb/semver"
 )
 
 func encode(parameterStatus *parameterStatus, x interface{}, pgtypOid oid.Oid) []byte {

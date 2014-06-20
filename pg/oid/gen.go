@@ -13,8 +13,9 @@ import (
 	"os"
 	"os/exec"
 
-	_ "bitbucket.org/kardianos/rdb/pg"
 	"database/sql"
+
+	_ "bitbucket.org/kardianos/rdb/pg"
 )
 
 var header = `// Copyright (c) 2011, The pg Authors. All Rights Reserved.

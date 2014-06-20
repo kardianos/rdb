@@ -7,7 +7,6 @@
 package pg
 
 import (
-	"bitbucket.org/kardianos/rdb/pg/oid"
 	"bufio"
 	"bytes"
 	"database/sql"
@@ -18,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"bitbucket.org/kardianos/rdb/pg/oid"
 )
 
 var (

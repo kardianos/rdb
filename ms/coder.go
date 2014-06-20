@@ -5,15 +5,16 @@
 package ms
 
 import (
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/ms/uconv"
-	"bitbucket.org/kardianos/rdb/semver"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
 	"math/big"
 	"time"
+
+	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/ms/uconv"
+	"bitbucket.org/kardianos/rdb/semver"
 )
 
 var zeroDateTime = time.Date(1900, time.January, 1, 0, 0, 0, 0, time.UTC)

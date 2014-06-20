@@ -5,9 +5,10 @@
 package ms
 
 import (
-	"bitbucket.org/kardianos/rdb"
 	"fmt"
 	"strings"
+
+	"bitbucket.org/kardianos/rdb"
 )
 
 type SqlDone struct {

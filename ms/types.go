@@ -5,9 +5,10 @@
 package ms
 
 import (
+	"fmt"
+
 	"bitbucket.org/kardianos/rdb"
 	"bitbucket.org/kardianos/rdb/semver"
-	"fmt"
 )
 
 type driverType byte
