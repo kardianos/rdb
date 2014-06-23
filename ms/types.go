@@ -211,7 +211,7 @@ type typeWidth struct {
 
 func (t *typeWidth) IsMaxParam(param *rdb.Param) bool {
 	info := typeInfoLookup[t.T]
-	return info.Max && (param.L <= 0 || ((info.NChar && param.L > 4000) || param.L > 8000))
+	return info.Max && (param.Length <= 0 || ((info.NChar && param.Length > 4000) || param.Length > 8000))
 }
 
 func (t *typeWidth) TypeString(param *rdb.Param) string {
@@ -223,7 +223,7 @@ func (t *typeWidth) TypeString(param *rdb.Param) string {
 		if t.IsMaxParam(param) {
 			return fmt.Sprintf("%s(max)", t.SqlName)
 		}
-		return fmt.Sprintf("%s(%d)", t.SqlName, param.L)
+		return fmt.Sprintf("%s(%d)", t.SqlName, param.Length)
 	default:
 		return t.SqlName
 	}

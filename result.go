@@ -94,7 +94,7 @@ func (r *Result) Get(name string) interface{} {
 		panic(ErrorColumnNotFound{At: "Get", Name: name})
 	}
 	bv := r.val.buffer[col.Index]
-	return bv.V
+	return bv.Value
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent
@@ -104,7 +104,7 @@ func (r *Result) Getx(index int) interface{} {
 		panic(ErrorColumnNotFound{At: "Getx", Index: index})
 	}
 	bv := r.val.buffer[index]
-	return bv.V
+	return bv.Value
 }
 
 // Use after Scan(). Can only pull fields which have not already been sent

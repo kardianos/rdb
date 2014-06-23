@@ -48,14 +48,14 @@ func TestNumber(t *testing.T) {
 	var fl64 float64
 
 	params := []rdb.Param{
-		{N: "bt", T: rdb.TypeBool, V: true},
-		{N: "bf", T: rdb.TypeBool, V: false},
-		{N: "i8", T: rdb.TypeInt8, V: byte(55)},
-		{N: "i16", T: rdb.TypeInt16, V: int16(1234)},
-		{N: "bb", T: rdb.Binary, L: 0, V: []byte{23, 24, 25, 26, 27}},
-		{N: "dec", T: rdb.TypeDecimal, Precision: 38, Scale: 4, V: big.NewRat(1234, 100)},
-		{N: "fl32", T: rdb.TypeFloat32, V: float32(45.67)},
-		{N: "fl64", T: rdb.TypeFloat64, V: float64(89.1011)},
+		{Name: "bt", Type: rdb.TypeBool, Value: true},
+		{Name: "bf", Type: rdb.TypeBool, Value: false},
+		{Name: "i8", Type: rdb.TypeInt8, Value: byte(55)},
+		{Name: "i16", Type: rdb.TypeInt16, Value: int16(1234)},
+		{Name: "bb", Type: rdb.Binary, Length: 0, Value: []byte{23, 24, 25, 26, 27}},
+		{Name: "dec", Type: rdb.TypeDecimal, Precision: 38, Scale: 4, Value: big.NewRat(1234, 100)},
+		{Name: "fl32", Type: rdb.TypeFloat32, Value: float32(45.67)},
+		{Name: "fl64", Type: rdb.TypeFloat64, Value: float64(89.1011)},
 	}
 
 	res := db.Query(cmd, params...)
@@ -67,8 +67,8 @@ func TestNumber(t *testing.T) {
 
 	for i := range compare {
 		in := params[i]
-		if !reflect.DeepEqual(compare[i], in.V) {
-			t.Errorf("Param %s did not round trip: Want (%v) got (%v)", in.N, in.V, compare[i])
+		if !reflect.DeepEqual(compare[i], in.Value) {
+			t.Errorf("Param %s did not round trip: Want (%v) got (%v)", in.Name, in.Value, compare[i])
 		}
 	}
 }

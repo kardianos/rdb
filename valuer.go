@@ -68,7 +68,7 @@ func (v *valuer) Columns(cc []*Column) error {
 	// Prepare fields.
 	v.fields = make([]*Field, len(cc))
 	for i, field := range v.cmd.Fields {
-		if len(field.N) == 0 {
+		if len(field.Name) == 0 {
 			if i >= len(v.columns) {
 				// Don't error. Some queries may return
 				// different number of columns.
@@ -76,7 +76,7 @@ func (v *valuer) Columns(cc []*Column) error {
 			}
 			v.fields[i] = &field
 		} else {
-			col, found := v.columnLookup[field.N]
+			col, found := v.columnLookup[field.Name]
 			if !found {
 				// Don't error. Some queries may return
 				// different number of columns.
@@ -156,10 +156,10 @@ func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assig
 	if prep == nil {
 		if value.Chunked {
 			bf := v.buffer[c.Index]
-			if bf.V == nil {
+			if bf.Value == nil {
 				outValue := Nullable{
 					Null: value.Null,
-					V:    value.Value,
+					Value:    value.Value,
 				}
 				if !value.More && convert != nil {
 					convert(false, c, &outValue)
@@ -169,7 +169,7 @@ func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assig
 			}
 			switch in := value.Value.(type) {
 			case []byte:
-				bf.V = append(bf.V.([]byte), in...)
+				bf.Value = append(bf.Value.([]byte), in...)
 			default:
 				return fmt.Errorf("Type not supported for chunked read: %T", in)
 			}
@@ -180,7 +180,7 @@ func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assig
 		}
 		outValue := Nullable{
 			Null: value.Null,
-			V:    value.Value,
+			Value:    value.Value,
 		}
 		if convert != nil {
 			convert(false, c, &outValue)
@@ -190,7 +190,7 @@ func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assig
 	}
 	outValue := Nullable{
 		Null: value.Null,
-		V:    value.Value,
+		Value:    value.Value,
 	}
 	if convert != nil {
 		convert(false, c, &outValue)
@@ -199,20 +199,20 @@ func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assig
 		*nullable = outValue
 		return nil
 	}
-	if outValue.Null || outValue.V == nil {
+	if outValue.Null || outValue.Value == nil {
 		// Can only scan a null value into a nullable type.
 		return ScanNullError
 	}
 	var err error
 	var handled = false
 	if assign != nil {
-		handled, err = assign(outValue.V, prep)
+		handled, err = assign(outValue.Value, prep)
 		if handled {
 			return err
 		}
 	}
 
-	switch in := outValue.V.(type) {
+	switch in := outValue.Value.(type) {
 	case string:
 		switch out := prep.(type) {
 		case io.Writer:

@@ -256,8 +256,8 @@ const (
 )
 
 var rpcHeaderParam = &rdb.Param{
-	T: rdb.Text,
-	L: 0,
+	Type:   rdb.Text,
+	Length: 0,
 }
 
 func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) error {
@@ -334,15 +334,15 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) 
 		if i != 0 {
 			paramNames.WriteRune(',')
 		}
-		if len(param.N) == 0 {
+		if len(param.Name) == 0 {
 			return fmt.Errorf("Missing parameter name at index: %d", i)
 		}
 
-		st, found := sqlTypeLookup[param.T]
+		st, found := sqlTypeLookup[param.Type]
 		if !found {
-			panic(fmt.Sprintf("SqlType not found: %d", param.T))
+			panic(fmt.Sprintf("SqlType not found: %d", param.Type))
 		}
-		fmt.Fprintf(paramNames, "@%s %s", param.N, st.TypeString(param))
+		fmt.Fprintf(paramNames, "@%s %s", param.Name, st.TypeString(param))
 	}
 	err = encodeParam(w, truncValue, tds.ProtocolVersion, rpcHeaderParam, []byte(sql))
 	if err != nil {
@@ -356,7 +356,7 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) 
 	// Other parameters.
 	for i := range params {
 		param := &params[i]
-		err = encodeParam(w, truncValue, tds.ProtocolVersion, param, param.V)
+		err = encodeParam(w, truncValue, tds.ProtocolVersion, param, param.Value)
 		if err != nil {
 			return err
 		}
