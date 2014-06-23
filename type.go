@@ -26,19 +26,21 @@ func (t SqlType) Generic() bool {
 }
 
 // Sql Type constants are not represented in all database systems.
-// Names were chosen to afford the best understanding from the go language
-// and not from the sql standard.
+// Additional sql types may be recognized per driver, but such types
+// must have a vlaue greater then TypeDriverThresh.
 const (
 	TypeUnknown SqlType = 0
 )
 
 const (
-	// Generic SQL types.
+	// Generic SQL types. Can be used in parameters.
+	// Reported in SqlColumn.Generic.
 	Text SqlType = 16 + iota
 	Binary
 	Bool
 	Integer
 	Float
+	Decimal
 	Time
 	Other
 )
