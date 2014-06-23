@@ -14,14 +14,14 @@ const (
 // Values over SqlTypeDriverThresh establish thier own namespace for types.
 // Driver types are often limited to 16 bits so that leaves enough space Open
 // for more then one type spaces or user types.
-type SqlType uint32
+type Type uint32
 
 // Returns true if this is a driver specific type.
-func (t SqlType) Driver() bool {
+func (t Type) Driver() bool {
 	return t >= TypeDriverThresh
 }
 
-func (t SqlType) Generic() bool {
+func (t Type) Generic() bool {
 	return t >= 16 && t < 1024
 }
 
@@ -29,13 +29,13 @@ func (t SqlType) Generic() bool {
 // Additional sql types may be recognized per driver, but such types
 // must have a vlaue greater then TypeDriverThresh.
 const (
-	TypeUnknown SqlType = 0
+	TypeUnknown Type = 0
 )
 
 const (
 	// Generic SQL types. Can be used in parameters.
 	// Reported in SqlColumn.Generic.
-	Text SqlType = 16 + iota
+	Text Type = 16 + iota
 	Binary
 	Bool
 	Integer
@@ -48,12 +48,12 @@ const (
 const (
 	// Driver defaults for text varying lengths.
 	// Specific character data types.
-	TypeText        SqlType = 1024 + iota // Unicode text with varying length. Also nvarchar.
-	TypeAnsiText                          // Ansi text with varying length. Also varchar.
-	TypeVarChar                           // Unicode text with varying length. Also nvarchar.
-	TypeAnsiVarChar                       // Ansi text with varying length. Also varchar.
-	TypeChar                              // Unicode text with fixed length. Also nchar.
-	TypeAnsiChar                          // Ansi text with fixed length. Also char.
+	TypeText        Type = 1024 + iota // Unicode text with varying length. Also nvarchar.
+	TypeAnsiText                       // Ansi text with varying length. Also varchar.
+	TypeVarChar                        // Unicode text with varying length. Also nvarchar.
+	TypeAnsiVarChar                    // Ansi text with varying length. Also varchar.
+	TypeChar                           // Unicode text with fixed length. Also nchar.
+	TypeAnsiChar                       // Ansi text with fixed length. Also char.
 
 	TypeBinary // Byte array.
 

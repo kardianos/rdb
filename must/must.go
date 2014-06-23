@@ -202,7 +202,7 @@ func (must Result) Scan(values ...interface{}) Result {
 }
 
 // Informational messages. Do not call concurrently with Scan() or Done().
-func (must Result) Info() []*rdb.SqlMessage {
+func (must Result) Info() []*rdb.Message {
 	return must.norm.Info()
 }
 
@@ -252,6 +252,6 @@ func (must Result) GetRowN() []rdb.Nullable {
 }
 
 // Fetch the table schema.
-func (must Result) Schema() []*rdb.SqlColumn {
+func (must Result) Schema() []*rdb.Column {
 	return must.norm.Schema()
 }

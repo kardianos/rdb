@@ -54,7 +54,7 @@ func ErrorQuery(db must.ConnPool, t *testing.T) {
 	}, []rdb.Param{
 		{
 			N: "animal",
-			T: rdb.TypeString,
+			T: rdb.Text,
 			L: 8,
 			V: "DogIsFriend",
 		},
@@ -62,7 +62,7 @@ func ErrorQuery(db must.ConnPool, t *testing.T) {
 	if err == nil {
 		t.Errorf("Expecting an error.")
 	}
-	if _, is := err.(rdb.SqlErrors); !is {
+	if _, is := err.(rdb.Errors); !is {
 		t.Errorf("Expecting SqlErrors type.")
 	}
 	res.Close()
@@ -78,7 +78,7 @@ func SimpleQuery(db must.ConnPool, t *testing.T) {
 	}, []rdb.Param{
 		{
 			N: "animal",
-			T: rdb.TypeString,
+			T: rdb.Text,
 			L: 8,
 			V: "DogIsFriend",
 		},
@@ -103,7 +103,7 @@ func RowsQuery(db must.ConnPool, t *testing.T) {
 	}, []rdb.Param{
 		{
 			N: "animal",
-			T: rdb.TypeString,
+			T: rdb.Text,
 			V: "Dreaming boats.",
 		},
 	}...)
@@ -134,7 +134,7 @@ func LargerQuery(db must.ConnPool, t *testing.T) {
 	res := db.Query(cmd, []rdb.Param{
 		{
 			N: "animal",
-			T: rdb.TypeString,
+			T: rdb.Text,
 			V: "Fish",
 		},
 	}...)

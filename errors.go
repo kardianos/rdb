@@ -31,9 +31,9 @@ func (err ErrorColumnNotFound) Error() string {
 }
 
 // List of SQL errors returned by the server.
-type SqlErrors []*SqlMessage
+type Errors []*Message
 
-func (errs SqlErrors) Error() string {
+func (errs Errors) Error() string {
 	bb := &bytes.Buffer{}
 	if errs == nil {
 		return ""
@@ -47,19 +47,19 @@ func (errs SqlErrors) Error() string {
 	return bb.String()
 }
 
-type SqlMessageType byte
+type MessageType byte
 
 const (
-	_                       = iota
-	SqlError SqlMessageType = iota
+	_                    = iota
+	SqlError MessageType = iota
 	SqlInfo
 )
 
 // SQL errors reported by the server.
 // Must always be wrapped by SqlErrors.
 // This is why it doesn't satisfy the error interface.
-type SqlMessage struct {
-	Type       SqlMessageType
+type Message struct {
+	Type       MessageType
 	Message    string
 	ServerName string
 	ProcName   string
@@ -68,7 +68,7 @@ type SqlMessage struct {
 	Number     int32
 }
 
-func (err *SqlMessage) String() string {
+func (err *Message) String() string {
 	return fmt.Sprintf("(%s %s: %d) L%d: %s)", err.ServerName, err.ProcName, err.Number, err.LineNumber, err.Message)
 }
 

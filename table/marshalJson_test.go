@@ -15,9 +15,9 @@ func TestJsonMarshal(t *testing.T) {
 	checkRowObject := `[{"ColA":"Hello","ColB":123.524},{"ColA":"Hi","ColB":null}]`
 	checkRowArray := `{"Names":["ColA","ColB"],"Data":[["Hello",123.524],["Hi",null]]}`
 	table := &Buffer{}
-	table.SetSchema([]*rdb.SqlColumn{
-		&rdb.SqlColumn{Name: "ColA"},
-		&rdb.SqlColumn{Name: "ColB"},
+	table.SetSchema([]*rdb.Column{
+		&rdb.Column{Name: "ColA"},
+		&rdb.Column{Name: "ColB"},
 	})
 	table.Row = []Row{
 		{

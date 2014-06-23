@@ -36,7 +36,7 @@ func (row Row) GetN(name string) (rdb.Nullable, error) {
 
 type Buffer struct {
 	Row             []Row
-	schema          []*rdb.SqlColumn
+	schema          []*rdb.Column
 	nameIndexLookup map[string]int
 }
 
@@ -74,7 +74,7 @@ func FillCommand(cp *rdb.ConnPool, cmd *rdb.Command, params ...rdb.Param) (*Buff
 
 var errSetSchema = errors.New("Can only set the schema when no rows exist.")
 
-func (b *Buffer) SetSchema(schema []*rdb.SqlColumn) error {
+func (b *Buffer) SetSchema(schema []*rdb.Column) error {
 	if len(b.Row) != 0 {
 		return errSetSchema
 	}
@@ -86,6 +86,6 @@ func (b *Buffer) SetSchema(schema []*rdb.SqlColumn) error {
 	return nil
 }
 
-func (b *Buffer) Schema() []*rdb.SqlColumn {
+func (b *Buffer) Schema() []*rdb.Column {
 	return b.schema
 }

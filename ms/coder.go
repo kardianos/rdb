@@ -499,7 +499,7 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 	}
 
 	column := &SqlColumn{
-		SqlColumn: rdb.SqlColumn{
+		Column: rdb.Column{
 			Nullable: flags[0]&(1<<0) != 0,
 			Serial:   flags[0]&(1<<4) != 0,
 			Key:      flags[1]&(1<<4) != 0,
@@ -524,11 +524,11 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 		}
 	}
 	var err error
-	column.SqlColumn.SqlType, err = lookupSqlType(driverType, byte(column.Length))
+	column.Column.Type, err = lookupSqlType(driverType, byte(column.Length))
 	if err != nil {
 		panic(err)
 	}
-	column.SqlColumn.Generic = info.Generic
+	column.Column.Generic = info.Generic
 
 	if info.IsText {
 		copy(column.Collation[:], read(5))
@@ -543,7 +543,7 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 }
 
 func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.DriverValuer, reportRow bool) {
-	sc := &column.SqlColumn
+	sc := &column.Column
 	var err error
 	defer func() {
 		if err != nil {

@@ -5,6 +5,9 @@
 package pg
 
 import (
+	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/pg/oid"
+	"bitbucket.org/kardianos/rdb/semver"
 	"bufio"
 	"crypto/tls"
 	"encoding/binary"
@@ -12,10 +15,6 @@ import (
 	"io"
 	"net"
 	"strconv"
-
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/pg/oid"
-	"bitbucket.org/kardianos/rdb/semver"
 	// "strings"
 	"time"
 )
@@ -34,7 +33,7 @@ type conn struct {
 	inUse bool
 
 	val rdb.DriverValuer
-	col []*rdb.SqlColumn
+	col []*rdb.Column
 }
 
 // Return version information regarding the currently connected server.
@@ -76,7 +75,7 @@ func (conn *conn) Scan(reportRow bool) (err error) {
 					continue
 				}
 				conn.val.WriteField(col, reportRow, &rdb.DriverValue{
-					Value: decode(&conn.parameterStatus, r.next(l), oid.Oid(col.SqlType-rdb.TypeDriverThresh)),
+					Value: decode(&conn.parameterStatus, r.next(l), oid.Oid(col.Type-rdb.TypeDriverThresh)),
 				}, nil)
 			}
 			conn.val.RowScanned()
@@ -266,7 +265,7 @@ func (cn *conn) prepareToSimpleStmt(q, stmtName string) (err error) {
 		case 't':
 			// TODO: What to do with these...?
 			nparams := int(r.int16())
-			cols := make([]*rdb.SqlColumn, nparams)
+			cols := make([]*rdb.Column, nparams)
 
 			for _ = range cols {
 				// st.paramTyps[i] = r.oid()
@@ -306,7 +305,7 @@ func (c *conn) exec(statementName string, v []rdb.Param, val rdb.DriverValuer) {
 			w.int32(-1)
 		} else {
 			// TODO: Send in SqlType.
-			tp := oid.Oid(c.col[i].SqlType - rdb.TypeDriverThresh)
+			tp := oid.Oid(c.col[i].Type - rdb.TypeDriverThresh)
 			b := encode(&c.parameterStatus, x.V, tp)
 			w.int32(len(b))
 			w.bytes(b)

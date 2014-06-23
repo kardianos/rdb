@@ -182,19 +182,19 @@ func (tds *Connection) Scan(reportRow bool) error {
 			return tds.done()
 		}
 		switch v := res.(type) {
-		case *rdb.SqlMessage:
+		case *rdb.Message:
 			if debugToken {
 				fmt.Println("TOKEN MESSAGE")
 			}
-			tds.val.SqlMessage(v)
+			tds.val.Message(v)
 		case []*SqlColumn:
 			if debugToken {
 				fmt.Println("TOKEN COLUMN")
 			}
 			tds.col = v
-			cc := make([]*rdb.SqlColumn, len(v))
+			cc := make([]*rdb.Column, len(v))
 			for i, dsc := range v {
-				cc[i] = &dsc.SqlColumn
+				cc[i] = &dsc.Column
 			}
 			tds.val.Columns(cc)
 			if tds.peek != tokenRow {
@@ -411,7 +411,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		if token == tokenInfo {
 			tp = rdb.SqlInfo
 		}
-		sqlMsg := &rdb.SqlMessage{
+		sqlMsg := &rdb.Message{
 			Type: tp,
 		}
 		_ = binary.LittleEndian.Uint16(read(2)) // length
