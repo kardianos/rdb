@@ -8,7 +8,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+
+	"bitbucket.org/kardianos/rdb"
 )
+
+// type Converter func(value *rdb.Nullable) error
 
 // Serialize table buffer as an array of JSON objects.
 type JsonRowObject struct {
@@ -45,7 +49,14 @@ func (coder *JsonRowObject) WriteTo(writer io.Writer) (n int64, err error) {
 			if field.Null {
 				buf.WriteString("null")
 			} else {
-				bb, err = json.Marshal(field.V)
+				val := field.V
+				if col.Generic == rdb.Text {
+					valBytes, is := val.([]byte)
+					if is {
+						val = string(valBytes)
+					}
+				}
+				bb, err = json.Marshal(val)
 				if err != nil {
 					return
 				}
@@ -106,7 +117,8 @@ func (coder *JsonRowArray) WriteTo(writer io.Writer) (n int64, err error) {
 	buf.WriteRune(':')
 	// Write headers array.
 	buf.WriteRune('[')
-	for i, col := range coder.Buffer.Schema() {
+	schema := coder.Buffer.Schema()
+	for i, col := range schema {
 		if i != 0 {
 			buf.WriteRune(',')
 		}
@@ -132,13 +144,21 @@ func (coder *JsonRowArray) WriteTo(writer io.Writer) (n int64, err error) {
 		}
 		buf.WriteRune('[')
 		for j, field := range row.Field {
+			col := schema[j]
 			if j != 0 {
 				buf.WriteRune(',')
 			}
 			if field.Null {
 				buf.WriteString("null")
 			} else {
-				bb, err = json.Marshal(field.V)
+				val := field.V
+				if col.Generic == rdb.Text {
+					valBytes, is := val.([]byte)
+					if is {
+						val = string(valBytes)
+					}
+				}
+				bb, err = json.Marshal(val)
 				if err != nil {
 					return
 				}
