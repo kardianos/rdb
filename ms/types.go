@@ -131,7 +131,7 @@ type typeInfo struct {
 
 	MinVer *semver.Version // Minimum protocol version for type.
 
-	Generic rdb.SqlType
+	Generic rdb.Type
 }
 
 // Don't bother with anything before 72 (Server 2005).
@@ -264,8 +264,8 @@ func getMult(scale int) int64 {
 }
 
 const (
-	_                       = iota
-	TypeOldBool rdb.SqlType = rdb.TypeDriverThresh + iota
+	_                    = iota
+	TypeOldBool rdb.Type = rdb.TypeDriverThresh + iota
 	TypeOldByte
 	TypeOldInt16
 	TypeOldInt32
@@ -276,7 +276,7 @@ const (
 	TypeNumeric
 )
 
-var sqlTypeLookup = map[rdb.SqlType]*typeWidth{
+var sqlTypeLookup = map[rdb.Type]*typeWidth{
 	TypeOldBool:    {T: typeBool, SqlName: "bit"},
 	TypeOldByte:    {T: typeByte, SqlName: "tinyint"},
 	TypeOldInt16:   {T: typeInt16, SqlName: "smallint"},
@@ -328,20 +328,20 @@ type driverTypeWidth struct {
 	W uint8
 }
 
-var driverTypeLookup = map[driverType]map[uint8]rdb.SqlType{}
+var driverTypeLookup = map[driverType]map[uint8]rdb.Type{}
 
 func init() {
 	for st, tw := range sqlTypeLookup {
 		wLookup, found := driverTypeLookup[tw.T]
 		if !found {
-			wLookup = make(map[uint8]rdb.SqlType)
+			wLookup = make(map[uint8]rdb.Type)
 			driverTypeLookup[tw.T] = wLookup
 		}
 		wLookup[tw.W] = st
 	}
 }
 
-func lookupSqlType(dt driverType, w uint8) (specific rdb.SqlType, err error) {
+func lookupSqlType(dt driverType, w uint8) (specific rdb.Type, err error) {
 	wLookup, found := driverTypeLookup[dt]
 	if !found {
 		err = fmt.Errorf("Unknown driver type: 0x%X", uint8(dt))

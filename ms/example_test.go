@@ -74,7 +74,7 @@ func ErrorQuery(db must.ConnPool, t *testing.T) {
 	if err == nil {
 		t.Errorf("Expecting an error.")
 	}
-	if _, is := err.(rdb.SqlErrors); !is {
+	if _, is := err.(rdb.Errors); !is {
 		t.Errorf("Expecting SqlErrors type.")
 	}
 	res.Close()

@@ -56,12 +56,12 @@ loop:
 }
 
 // Fetch the table schema.
-func (r *Result) Schema() []*SqlColumn {
+func (r *Result) Schema() []*Column {
 	return r.val.columns
 }
 
 // Informational messages. Do not call concurrently with Scan() or Done().
-func (r *Result) Info() []*SqlMessage {
+func (r *Result) Info() []*Message {
 	return r.val.infoList
 }
 

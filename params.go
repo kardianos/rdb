@@ -14,7 +14,7 @@ type Param struct {
 
 	// Parameter Type. Drivers may be able to infer this type.
 	// Check the driver documentation used for more information.
-	T SqlType
+	T Type
 
 	// Paremeter Length. Useful for variable length types that may check truncation.
 	L int
@@ -34,18 +34,18 @@ type Param struct {
 }
 
 // Information about the column as reported by the database.
-type SqlColumn struct {
-	Name      string  // Columnn name.
-	Index     int     // Column zero based index as appearing in result.
-	SqlType   SqlType // The data type as reported from the driver.
-	Generic   SqlType // The generic data type as reported from the driver.
-	Length    int     // The length of the column as it makes sense per type.
-	Unlimit   bool    // Provides near unlimited length.
-	Nullable  bool    // True if the column type can be null.
-	Key       bool    // True if the column is part of the key.
-	Serial    bool    // True if the column is auto-incrementing.
-	Precision int     // For decimal types, the precision.
-	Scale     int     // For types with scale, including decimal.
+type Column struct {
+	Name      string // Columnn name.
+	Index     int    // Column zero based index as appearing in result.
+	Type      Type   // The data type as reported from the driver.
+	Generic   Type   // The generic data type as reported from the driver.
+	Length    int    // The length of the column as it makes sense per type.
+	Unlimit   bool   // Provides near unlimited length.
+	Nullable  bool   // True if the column type can be null.
+	Key       bool   // True if the column is part of the key.
+	Serial    bool   // True if the column is auto-incrementing.
+	Precision int    // For decimal types, the precision.
+	Scale     int    // For types with scale, including decimal.
 }
 
 // Returned from GetN and GetxN.

@@ -17,23 +17,23 @@ import (
 type Assigner func(input, output interface{}) (handled bool, err error)
 
 type DriverValuer interface {
-	Columns([]*SqlColumn) error
+	Columns([]*Column) error
 	Done() error
 	RowScanned()
-	SqlMessage(*SqlMessage)
-	WriteField(c *SqlColumn, reportRow bool, value *DriverValue, assign Assigner) error
+	Message(*Message)
+	WriteField(c *Column, reportRow bool, value *DriverValue, assign Assigner) error
 }
 
 type valuer struct {
 	cmd *Command
 
-	errorList SqlErrors
-	infoList  []*SqlMessage
+	errorList Errors
+	infoList  []*Message
 	fields    []*Field
 	eof       bool
 
-	columns      []*SqlColumn
-	columnLookup map[string]*SqlColumn
+	columns      []*Column
+	columnLookup map[string]*Column
 	buffer       []Nullable
 	prep         []interface{}
 
@@ -56,9 +56,9 @@ func (v *valuer) clearPrep() {
 	}
 }
 
-func (v *valuer) Columns(cc []*SqlColumn) error {
+func (v *valuer) Columns(cc []*Column) error {
 	v.columns = cc
-	v.columnLookup = make(map[string]*SqlColumn, len(cc))
+	v.columnLookup = make(map[string]*Column, len(cc))
 	for _, col := range cc {
 		v.columnLookup[col.Name] = col
 	}
@@ -95,7 +95,7 @@ func (v *valuer) Columns(cc []*SqlColumn) error {
 
 	return nil
 }
-func (v *valuer) SqlMessage(msg *SqlMessage) {
+func (v *valuer) Message(msg *Message) {
 	switch msg.Type {
 	case SqlInfo:
 		v.infoList = append(v.infoList, msg)
@@ -136,7 +136,7 @@ func (v *valuer) Done() error {
 	If there is no prepped value, put it in a buffer.
 	If using a buffer, append any value
 */
-func (v *valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue, assign Assigner) error {
+func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assign Assigner) error {
 	// TODO: Respect value.MustCopy.
 	if !reportRow {
 		return nil
@@ -439,7 +439,7 @@ func (v *valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue, as
 	return err
 }
 
-func errorTypeNotSupported(in, out interface{}, c *SqlColumn) error {
+func errorTypeNotSupported(in, out interface{}, c *Column) error {
 	if out == nil && in == nil {
 		return fmt.Errorf("Unsupported column type: %s", c.Name)
 	}

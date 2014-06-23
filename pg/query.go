@@ -457,19 +457,19 @@ func md5s(s string) string {
 func (cn *conn) parseMeta(r *readBuf) {
 	// (cols []string, rowTyps []oid.Oid)
 	n := r.int16()
-	cols := make([]*rdb.SqlColumn, n)
+	cols := make([]*rdb.Column, n)
 	cn.col = cols
 
 	// rowTyps := make([]oid.Oid, n)
 	for i := range cols {
-		col := &rdb.SqlColumn{
+		col := &rdb.Column{
 			Index: i,
 		}
 		cols[i] = col
 		col.Name = r.string()
 		r.next(6)
 		// TODO: Convert
-		col.SqlType = rdb.SqlType(r.oid() + rdb.TypeDriverThresh)
+		col.Type = rdb.Type(r.oid() + rdb.TypeDriverThresh)
 		r.next(8)
 	}
 	cn.val.Columns(cols)

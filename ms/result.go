@@ -54,7 +54,7 @@ func (done *SqlDone) Error() string {
 }
 
 type SqlColumn struct {
-	rdb.SqlColumn
+	rdb.Column
 
 	Collation [5]byte
 
