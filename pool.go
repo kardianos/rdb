@@ -122,16 +122,10 @@ func (cp *ConnPool) query(conn DriverConn, cmd *Command, ci **ConnectionInfo, pa
 		conn: conn,
 		cp:   cp,
 		val: valuer{
-			arity: cmd.Arity,
+			cmd: cmd,
 		},
 	}
 
-	fields := make([]*Field, len(cmd.Fields))
-	for i := range cmd.Fields {
-		fields[i] = &cmd.Fields[i]
-	}
-
-	res.val.initFields = fields
 	err = conn.Query(cmd, params, nil, &res.val)
 
 	if ci != nil {
@@ -143,14 +137,14 @@ func (cp *ConnPool) query(conn DriverConn, cmd *Command, ci **ConnectionInfo, pa
 	}
 
 	// Zero arity check.
-	if res.val.arity&Zero != 0 {
+	if res.val.cmd.Arity&Zero != 0 {
 		defer res.close(false)
 
 		serr := res.conn.Scan(false)
 		if err == nil {
 			err = serr
 		}
-		if err == nil && res.val.rowCount != 0 && !res.val.eof && res.val.arity&ArityMust != 0 {
+		if err == nil && res.val.rowCount != 0 && !res.val.eof && res.val.cmd.Arity&ArityMust != 0 {
 			err = arityError
 		}
 	}
