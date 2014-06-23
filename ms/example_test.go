@@ -66,7 +66,7 @@ func ErrorQuery(db must.ConnPool, t *testing.T) {
 	}, []rdb.Param{
 		{
 			N: "animal",
-			T: rdb.TypeString,
+			T: rdb.Text,
 			L: 8,
 			V: "DogIsFriend",
 		},
@@ -90,7 +90,7 @@ func SimpleQuery(db must.ConnPool, t *testing.T) {
 	}, []rdb.Param{
 		{
 			N: "animal",
-			T: rdb.TypeString,
+			T: rdb.Text,
 			L: 8,
 			V: "DogIsFriend",
 		},
@@ -115,7 +115,7 @@ func RowsQuerySimple(db must.ConnPool, t *testing.T) {
 	}, []rdb.Param{
 		{
 			N: "animal",
-			T: rdb.TypeString,
+			T: rdb.Text,
 			V: "Dreaming boats.",
 		},
 	}...)
@@ -176,7 +176,7 @@ func LargerQuery(db must.ConnPool, t *testing.T) {
 	res := db.Query(cmd, []rdb.Param{
 		{
 			N: "animal",
-			T: rdb.TypeString,
+			T: rdb.Text,
 			V: "Fish",
 		},
 	}...)
