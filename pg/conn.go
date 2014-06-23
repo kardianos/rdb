@@ -301,12 +301,12 @@ func (c *conn) exec(statementName string, v []rdb.Param, val rdb.DriverValuer) {
 	w.int16(0)
 	w.int16(len(v))
 	for i, x := range v {
-		if x.Null || x.V == nil {
+		if x.Null || x.Value == nil {
 			w.int32(-1)
 		} else {
 			// TODO: Send in SqlType.
 			tp := oid.Oid(c.col[i].Type - rdb.TypeDriverThresh)
-			b := encode(&c.parameterStatus, x.V, tp)
+			b := encode(&c.parameterStatus, x.Value, tp)
 			w.int32(len(b))
 			w.bytes(b)
 		}

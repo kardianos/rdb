@@ -54,13 +54,13 @@ func TestDateTime(t *testing.T) {
 	openConnPool()
 
 	params := []rdb.Param{
-		{N: "dt", T: TypeOldTD, V: dt},
-		{N: "d", T: rdb.TypeDate, V: d},
-		{N: "t", T: rdb.TypeTime, V: tm},
-		{N: "dt2", T: rdb.TypeTimestamp, V: dt2},
-		{N: "dto", T: rdb.TypeTimestampz, V: dto},
-		{N: "dtS", T: TypeOldTD, V: dtS},
-		{N: "dt2S", T: rdb.TypeTimestamp, V: dtS},
+		{Name: "dt", Type: TypeOldTD, Value: dt},
+		{Name: "d", Type: rdb.TypeDate, Value: d},
+		{Name: "t", Type: rdb.TypeTime, Value: tm},
+		{Name: "dt2", Type: rdb.TypeTimestamp, Value: dt2},
+		{Name: "dto", Type: rdb.TypeTimestampz, Value: dto},
+		{Name: "dtS", Type: TypeOldTD, Value: dtS},
+		{Name: "dt2S", Type: rdb.TypeTimestamp, Value: dtS},
 	}
 	res := db.Query(cmd, params...)
 	defer res.Close()
@@ -94,15 +94,15 @@ func TestDateTime(t *testing.T) {
 		}
 		in := params[i]
 		diff := false
-		if tv, ok := in.V.(time.Time); ok {
+		if tv, ok := in.Value.(time.Time); ok {
 			if !tv.Equal(compare[i].(time.Time)) {
 				diff = true
 			}
-		} else if !reflect.DeepEqual(compare[i], in.V) {
+		} else if !reflect.DeepEqual(compare[i], in.Value) {
 			diff = true
 		}
 		if diff {
-			t.Errorf("Param %s did not round trip: Want (%v) got (%v)", in.N, in.V, compare[i])
+			t.Errorf("Param %s did not round trip: Want (%v) got (%v)", in.Name, in.Value, compare[i])
 		}
 	}
 }

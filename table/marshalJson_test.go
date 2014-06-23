@@ -22,13 +22,13 @@ func TestJsonMarshal(t *testing.T) {
 	table.Row = []Row{
 		{
 			Field: []rdb.Nullable{
-				{V: "Hello"},
-				{V: 123.524},
+				{Value: "Hello"},
+				{Value: 123.524},
 			},
 		},
 		{
 			Field: []rdb.Nullable{
-				{V: "Hi"},
+				{Value: "Hi"},
 				{Null: true},
 			},
 		},

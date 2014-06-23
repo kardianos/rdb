@@ -6,7 +6,7 @@ package rdb
 
 // If the value is headed to the server, for instance for a parameter, toServer
 // is true. If the value is being received by the client toServer is false.
-type Convert func(toServer bool, column *Column, value *Nullable) error
+type Convert func(toServer bool, column *Column, nullable *Nullable) error
 
 func (c Convert) Convert(toServer bool, column *Column) Convert {
 	return c

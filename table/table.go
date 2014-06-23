@@ -24,7 +24,7 @@ func (row Row) Get(name string) (interface{}, error) {
 	if !found {
 		return rdb.Nullable{}, rdb.ErrorColumnNotFound{At: "Get", Name: name}
 	}
-	return row.Field[index].V, nil
+	return row.Field[index].Value, nil
 }
 func (row Row) GetN(name string) (rdb.Nullable, error) {
 	index, found := row.buffer.nameIndexLookup[name]

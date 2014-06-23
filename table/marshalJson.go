@@ -49,7 +49,7 @@ func (coder *JsonRowObject) WriteTo(writer io.Writer) (n int64, err error) {
 			if field.Null {
 				buf.WriteString("null")
 			} else {
-				val := field.V
+				val := field.Value
 				if col.Generic == rdb.Text {
 					valBytes, is := val.([]byte)
 					if is {
@@ -151,7 +151,7 @@ func (coder *JsonRowArray) WriteTo(writer io.Writer) (n int64, err error) {
 			if field.Null {
 				buf.WriteString("null")
 			} else {
-				val := field.V
+				val := field.Value
 				if col.Generic == rdb.Text {
 					valBytes, is := val.([]byte)
 					if is {

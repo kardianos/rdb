@@ -10,18 +10,18 @@ type Param struct {
 	// Optional parameter name.
 	// All parameter names MUST NOT begin with a leading symbol. If required by
 	// the backend the driver should insert.
-	N string
+	Name string
 
 	// Parameter Type. Drivers may be able to infer this type.
 	// Check the driver documentation used for more information.
-	T Type
+	Type Type
 
 	// Paremeter Length. Useful for variable length types that may check truncation.
-	L int
+	Length int
 
 	// Value for input parameter.
 	// If the value is an io.Reader it will read the value directly to the wire.
-	V interface{}
+	Value interface{}
 
 	// Set to true if the parameter is an output parameter.
 	// If true, the value member should be provided through a pointer.
@@ -51,14 +51,14 @@ type Column struct {
 // Returned from GetN and GetxN.
 // Represents a nullable type.
 type Nullable struct {
-	Null bool        // True if value is null.
-	V    interface{} // Value, if any present.
+	Null  bool        // True if value is null.
+	Value interface{} // Value, if any present.
 }
 
 // If the command output fields are specified, the Field output can help manage
 // how the result rows are copied to.
 type Field struct {
-	N string // Optional Field Name.
+	Name string // Optional Field Name.
 
 	// Value to report if the driver reports a null value.
 	Null interface{}

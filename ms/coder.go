@@ -33,18 +33,18 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 	}
 
 	// Write field name.
-	if len(param.N) == 0 {
+	if len(param.Name) == 0 {
 		w.WriteByte(0) // No name. Length zero.
 	} else {
-		nameUtf16 := uconv.Encode.FromString("@" + param.N)
+		nameUtf16 := uconv.Encode.FromString("@" + param.Name)
 		w.WriteByte(byte(len(nameUtf16) / 2))
 		w.WriteBuffer(nameUtf16)
 	}
 	w.WriteByte(0) // Status flag.
 
-	st, found := sqlTypeLookup[param.T]
+	st, found := sqlTypeLookup[param.Type]
 	if !found {
-		return fmt.Errorf("Sql type not setup: %d", param.T)
+		return fmt.Errorf("Sql type not setup: %d", param.Type)
 	}
 
 	info, found := typeInfoLookup[driverType(st.T)]
@@ -68,7 +68,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			typeLength = 0xFFFF
 			writeMaxValue = true
 		} else {
-			typeLength = uint32(param.L)
+			typeLength = uint32(param.Length)
 			if info.NChar {
 				// Double the stated length if utf16 sized text.
 				typeLength += typeLength
@@ -212,7 +212,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			case byte:
 				w.WriteByte(v)
 			default:
-				return fmt.Errorf("Need byte or smaller for param @%s", param.N)
+				return fmt.Errorf("Need byte or smaller for param @%s", param.Name)
 			}
 		case 2:
 			switch v := value.(type) {
@@ -225,7 +225,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			case uint16:
 				w.WriteUint16(uint16(v))
 			default:
-				return fmt.Errorf("Need uint16 or smaller for param @%s", param.N)
+				return fmt.Errorf("Need uint16 or smaller for param @%s", param.Name)
 			}
 		case 4:
 			switch v := value.(type) {
@@ -242,7 +242,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			case uint32:
 				w.WriteUint32(uint32(v))
 			default:
-				return fmt.Errorf("Need uint32 or smaller for param @%s", param.N)
+				return fmt.Errorf("Need uint32 or smaller for param @%s", param.Name)
 			}
 		case 8:
 			switch v := value.(type) {
@@ -263,7 +263,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			case uint64:
 				w.WriteUint64(uint64(v))
 			default:
-				return fmt.Errorf("Need uint64 or smaller for param @%s", param.N)
+				return fmt.Errorf("Need uint64 or smaller for param @%s", param.Name)
 			}
 		}
 		return nil
@@ -285,7 +285,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			}
 			w.WriteByte(writeValue)
 		default:
-			return fmt.Errorf("Need bool for param @%s", param.N)
+			return fmt.Errorf("Need bool for param @%s", param.Name)
 		}
 		return nil
 	}
@@ -318,7 +318,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			scale := big.NewRat(mult, 1)
 			bb := scale.Mul(v, scale).Num().Bytes()
 			if len(bb) > 16 {
-				return fmt.Errorf("Decimal value of (%s) too large for param %s %s", v.String(), param.N, st.TypeString(param))
+				return fmt.Errorf("Decimal value of (%s) too large for param %s %s", v.String(), param.Name, st.TypeString(param))
 			}
 			// Big.Bytes writes out in big-endian.
 			// Want little endian so reverse bytes.
@@ -343,7 +343,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 				w.WriteBuffer(filler)
 			}
 		default:
-			return fmt.Errorf("Need bool for param @%s", param.N)
+			return fmt.Errorf("Need bool for param @%s", param.Name)
 		}
 		return nil
 	}
@@ -381,7 +381,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		case *big.Rat:
 			writeValue, _ = v.Float64()
 		default:
-			return fmt.Errorf("Need numeric for param @%s", param.N)
+			return fmt.Errorf("Need numeric for param @%s", param.Name)
 		}
 
 		if st.W == 4 {
@@ -402,13 +402,13 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		switch v := value.(type) {
 		case time.Time:
 			if v.Before(minDateTime) {
-				return fmt.Errorf("Time for @%s must be after %s", param.N, minDateTime.String())
+				return fmt.Errorf("Time for @%s must be after %s", param.Name, minDateTime.String())
 			}
 			vNoTime := v.Truncate(24 * time.Hour)
 			w.WriteUint32(uint32(vNoTime.Sub(zeroDateTime).Hours() / 24))
 			w.WriteUint32(uint32(v.Sub(vNoTime).Seconds() * 300))
 		default:
-			return fmt.Errorf("Need time.Time for param @%s", param.N)
+			return fmt.Errorf("Need time.Time for param @%s", param.Name)
 		}
 		return nil
 	}
@@ -433,7 +433,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		case time.Duration:
 			dur = input
 		default:
-			return fmt.Errorf("Need time.Time for param @%s", param.N)
+			return fmt.Errorf("Need time.Time for param @%s", param.Name)
 		}
 
 		if (info.Dt & dtTime) != 0 {
@@ -483,7 +483,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		return nil
 	}
 
-	return fmt.Errorf("Unhandled type for param @%s", param.N)
+	return fmt.Errorf("Unhandled type for param @%s", param.Name)
 }
 
 func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {

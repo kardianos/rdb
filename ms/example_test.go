@@ -65,10 +65,10 @@ func ErrorQuery(db must.ConnPool, t *testing.T) {
 		TruncLongText: true,
 	}, []rdb.Param{
 		{
-			N: "animal",
-			T: rdb.Text,
-			L: 8,
-			V: "DogIsFriend",
+			Name:   "animal",
+			Type:   rdb.Text,
+			Length: 8,
+			Value:  "DogIsFriend",
 		},
 	}...)
 	if err == nil {
@@ -89,10 +89,10 @@ func SimpleQuery(db must.ConnPool, t *testing.T) {
 		TruncLongText: true,
 	}, []rdb.Param{
 		{
-			N: "animal",
-			T: rdb.Text,
-			L: 8,
-			V: "DogIsFriend",
+			Name:   "animal",
+			Type:   rdb.Text,
+			Length: 8,
+			Value:  "DogIsFriend",
 		},
 	}...).Prep("MyAnimal", &myFav).Scan()
 	t.Logf("Animal_1: %s\n", myFav)
@@ -114,9 +114,9 @@ func RowsQuerySimple(db must.ConnPool, t *testing.T) {
 		TruncLongText: true,
 	}, []rdb.Param{
 		{
-			N: "animal",
-			T: rdb.Text,
-			V: "Dreaming boats.",
+			Name:  "animal",
+			Type:  rdb.Text,
+			Value: "Dreaming boats.",
 		},
 	}...)
 	check := []string{
@@ -175,9 +175,9 @@ func LargerQuery(db must.ConnPool, t *testing.T) {
 
 	res := db.Query(cmd, []rdb.Param{
 		{
-			N: "animal",
-			T: rdb.Text,
-			V: "Fish",
+			Name:  "animal",
+			Type:  rdb.Text,
+			Value: "Fish",
 		},
 	}...)
 	defer res.Close()
