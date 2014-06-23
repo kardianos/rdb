@@ -57,10 +57,10 @@ func TestDateTime(t *testing.T) {
 		{N: "dt", T: TypeOldTD, V: dt},
 		{N: "d", T: rdb.TypeDate, V: d},
 		{N: "t", T: rdb.TypeTime, V: tm},
-		{N: "dt2", T: rdb.TypeTD, V: dt2},
-		{N: "dto", T: rdb.TypeTDZ, V: dto},
+		{N: "dt2", T: rdb.TypeTimestamp, V: dt2},
+		{N: "dto", T: rdb.TypeTimestampz, V: dto},
 		{N: "dtS", T: TypeOldTD, V: dtS},
-		{N: "dt2S", T: rdb.TypeTD, V: dtS},
+		{N: "dt2S", T: rdb.TypeTimestamp, V: dtS},
 	}
 	res := db.Query(cmd, params...)
 	defer res.Close()

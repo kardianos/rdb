@@ -256,7 +256,7 @@ const (
 )
 
 var rpcHeaderParam = &rdb.Param{
-	T: rdb.TypeString,
+	T: rdb.Text,
 	L: 0,
 }
 

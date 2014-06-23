@@ -28,7 +28,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 	collation := []byte{0x09, 0x04, 0xD0, 0x00, 0x34}
 
 	nullValue := false
-	if typeValue, isType := value.(rdb.SqlType); isType && typeValue == rdb.TypeNull {
+	if value == rdb.Null {
 		nullValue = true
 	}
 
@@ -125,10 +125,6 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			}
 			var writeBb []byte
 			switch v := value.(type) {
-			case rdb.SqlType:
-				if v != rdb.TypeNull {
-					return fmt.Errorf("Unsupported SqlType as a value: %v", v)
-				}
 			case string:
 				if info.NChar {
 					writeBb = uconv.Encode.FromString(v)
@@ -532,6 +528,7 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 	if err != nil {
 		panic(err)
 	}
+	column.SqlColumn.Generic = info.Generic
 
 	if info.IsText {
 		copy(column.Collation[:], read(5))
