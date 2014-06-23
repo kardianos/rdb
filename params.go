@@ -38,6 +38,7 @@ type SqlColumn struct {
 	Name      string  // Columnn name.
 	Index     int     // Column zero based index as appearing in result.
 	SqlType   SqlType // The data type as reported from the driver.
+	Generic   SqlType // The generic data type as reported from the driver.
 	Length    int     // The length of the column as it makes sense per type.
 	Unlimit   bool    // Provides near unlimited length.
 	Nullable  bool    // True if the column type can be null.
@@ -125,6 +126,10 @@ type Command struct {
 
 	// Set the isolation level for the query or transaction.
 	IsoLevel IsolationLevel
+
+	// Converter returns conversion functions per column or parameter. If nil
+	// no conversion is performed.
+	Converter Converter
 
 	// Optional name of the command. May be used if logging.
 	Name string

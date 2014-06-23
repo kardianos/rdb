@@ -4,6 +4,8 @@
 
 package rdb
 
+var Null byte = 0
+
 const (
 	TypeDriverThresh = 0x00010000
 )
@@ -19,28 +21,39 @@ func (t SqlType) Driver() bool {
 	return t >= TypeDriverThresh
 }
 
+func (t SqlType) Generic() bool {
+	return t >= 16 && t < 1024
+}
+
 // Sql Type constants are not represented in all database systems.
 // Names were chosen to afford the best understanding from the go language
 // and not from the sql standard.
 const (
-	TypeUnknown SqlType = iota // Zero default value.
+	TypeUnknown SqlType = 0
+)
 
-	TypeNull // A special "type" that can indicate a null value.
+const (
+	// Generic SQL types.
+	Text SqlType = 16 + iota
+	Binary
+	Bool
+	Integer
+	Float
+	Time
+	Other
+)
 
+const (
 	// Driver defaults for text varying lengths.
-	// PostgreSQL will use "text", Tds will use "nvarchar", Oracle will use "nvarchar2".
-	// In greenfield development it is suggested to use this type text rather then another type.
-	TypeString     // Unicode text. Some drivers call this ntext or nvarchar.
-	TypeAnsiString // Ansi text. Some drivers call this just text or varchar.
-	TypeBinary     // Just a string of bytes.
-
 	// Specific character data types.
-	TypeText        // Unicode text with varying length. Also nvarchar.
-	TypeAnsiText    // Ansi text with varying length. Also varchar.
-	TypeVarChar     // Unicode text with varying length. Also nvarchar.
-	TypeAnsiVarChar // Ansi text with varying length. Also varchar.
-	TypeChar        // Unicode text with fixed length. Also nchar.
-	TypeAnsiChar    // Ansi text with fixed length. Also char.
+	TypeText        SqlType = 1024 + iota // Unicode text with varying length. Also nvarchar.
+	TypeAnsiText                          // Ansi text with varying length. Also varchar.
+	TypeVarChar                           // Unicode text with varying length. Also nvarchar.
+	TypeAnsiVarChar                       // Ansi text with varying length. Also varchar.
+	TypeChar                              // Unicode text with fixed length. Also nchar.
+	TypeAnsiChar                          // Ansi text with fixed length. Also char.
+
+	TypeBinary // Byte array.
 
 	TypeBool   // Also bit.
 	TypeUint8  // Also unsigned tiny int.
@@ -63,11 +76,11 @@ const (
 	TypeDecimal // Exact number with specified scale and precision.
 	TypeMoney
 
-	TypeTDZ      // Contains time, date, and time zone.
-	TypeDuration // Contains a span of time.
-	TypeTime     // Only contains time of day.
-	TypeDate     // Only contains a date.
-	TypeTD       // Only contains a time and, no time zone.
+	TypeTimestampz // Contains time, date, and time zone.
+	TypeDuration   // Contains a span of time.
+	TypeTime       // Only contains time of day.
+	TypeDate       // Only contains a date.
+	TypeTimestamp  // Only contains a time and, no time zone.
 
 	TypeUUID // Also uniqueidentifier or GUID.
 

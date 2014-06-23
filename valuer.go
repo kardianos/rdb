@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// TODO: Rename to DriverAssigner and document better.
+// Assigner can be used by the driver to put special values directly into prepped
+// value pointer.
 type Assigner func(input, output interface{}) (handled bool, err error)
 
 type DriverValuer interface {
@@ -22,18 +25,19 @@ type DriverValuer interface {
 }
 
 type valuer struct {
+	cmd *Command
+
 	errorList SqlErrors
 	infoList  []*SqlMessage
 	fields    []*Field
 	eof       bool
-	arity     Arity
 
 	columns      []*SqlColumn
 	columnLookup map[string]*SqlColumn
 	buffer       []Nullable
 	prep         []interface{}
 
-	initFields []*Field
+	convert []Convert
 
 	rowCount uint64
 }
@@ -61,15 +65,16 @@ func (v *valuer) Columns(cc []*SqlColumn) error {
 	v.buffer = make([]Nullable, len(cc))
 	v.prep = make([]interface{}, len(cc))
 
+	// Prepare fields.
 	v.fields = make([]*Field, len(cc))
-	for i, field := range v.initFields {
+	for i, field := range v.cmd.Fields {
 		if len(field.N) == 0 {
 			if i >= len(v.columns) {
 				// Don't error. Some queries may return
 				// different number of columns.
 				continue
 			}
-			v.fields[i] = field
+			v.fields[i] = &field
 		} else {
 			col, found := v.columnLookup[field.N]
 			if !found {
@@ -77,10 +82,17 @@ func (v *valuer) Columns(cc []*SqlColumn) error {
 				// different number of columns.
 				continue
 			}
-			v.fields[col.Index] = field
+			v.fields[col.Index] = &field
 		}
 	}
-	v.initFields = nil
+
+	if v.cmd.Converter != nil {
+		v.convert = make([]Convert, len(cc))
+		for i, col := range cc {
+			v.convert[i] = v.cmd.Converter.Convert(false, col)
+		}
+	}
+
 	return nil
 }
 func (v *valuer) SqlMessage(msg *SqlMessage) {
@@ -108,10 +120,33 @@ func (v *valuer) Done() error {
 	return nil
 }
 
+/*
+	if (value is null) && (has default value) {
+		set value to default value
+	}
+	if no prepped value {
+		if chunked {
+			append to any existing value.
+		}
+	}
+	if prepped value {
+		if prepped value is Nullable
+	}
+	If there is a default value for the field, use the default value.
+	If there is no prepped value, put it in a buffer.
+	If using a buffer, append any value
+*/
 func (v *valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue, assign Assigner) error {
+	// TODO: Respect value.MustCopy.
 	if !reportRow {
 		return nil
 	}
+
+	var convert Convert
+	if v.convert != nil {
+		convert = v.convert[c.Index]
+	}
+
 	prep := v.prep[c.Index]
 	f := v.fields[c.Index]
 	if value.Null && f != nil && f.Null != nil {
@@ -122,44 +157,62 @@ func (v *valuer) WriteField(c *SqlColumn, reportRow bool, value *DriverValue, as
 		if value.Chunked {
 			bf := v.buffer[c.Index]
 			if bf.V == nil {
-				v.buffer[c.Index] = Nullable{
+				outValue := Nullable{
 					Null: value.Null,
 					V:    value.Value,
 				}
+				if !value.More && convert != nil {
+					convert(false, c, &outValue)
+				}
+				v.buffer[c.Index] = outValue
 				return nil
 			}
 			switch in := value.Value.(type) {
 			case []byte:
 				bf.V = append(bf.V.([]byte), in...)
+			default:
+				return fmt.Errorf("Type not supported for chunked read: %T", in)
+			}
+			if !value.More && convert != nil {
+				convert(false, c, &v.buffer[c.Index])
 			}
 			return nil
 		}
-		v.buffer[c.Index] = Nullable{
+		outValue := Nullable{
 			Null: value.Null,
 			V:    value.Value,
 		}
+		if convert != nil {
+			convert(false, c, &outValue)
+		}
+		v.buffer[c.Index] = outValue
 		return nil
+	}
+	outValue := Nullable{
+		Null: value.Null,
+		V:    value.Value,
+	}
+	if convert != nil {
+		convert(false, c, &outValue)
 	}
 	if nullable, is := prep.(*Nullable); is {
-		*nullable = Nullable{
-			Null: value.Null,
-			V:    value.Value,
-		}
+		*nullable = outValue
 		return nil
 	}
-	if value.Null || value.Value == nil {
+	if outValue.Null || outValue.V == nil {
 		// Can only scan a null value into a nullable type.
 		return ScanNullError
 	}
 	var err error
 	var handled = false
 	if assign != nil {
-		handled, err = assign(value.Value, prep)
+		handled, err = assign(outValue.V, prep)
 		if handled {
 			return err
 		}
 	}
-	switch in := value.Value.(type) {
+
+	switch in := outValue.V.(type) {
 	case string:
 		switch out := prep.(type) {
 		case io.Writer:

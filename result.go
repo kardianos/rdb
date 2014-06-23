@@ -171,7 +171,7 @@ func (r *Result) scan(reportRow bool) error {
 		err = r.val.errorList
 	}
 
-	if r.val.arity&One != 0 {
+	if r.val.cmd.Arity&One != 0 {
 		r.val.eof = true
 		if r.val.rowCount == 1 {
 			serr := r.conn.Scan(false)
@@ -179,7 +179,7 @@ func (r *Result) scan(reportRow bool) error {
 				err = serr
 			}
 		}
-		if err == nil && r.val.arity&ArityMust != 0 && r.val.rowCount > 1 {
+		if err == nil && r.val.cmd.Arity&ArityMust != 0 && r.val.rowCount > 1 {
 			err = arityError
 		}
 	}
