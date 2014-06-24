@@ -10,31 +10,29 @@ const (
 	TypeDriverThresh = 0x00010000
 )
 
-// Each driver should define its own SqlType over value SqlTypeDriverThresh (65536).
-// Values over SqlTypeDriverThresh establish thier own namespace for types.
+// Each driver should define its own Type over value TypeDriverThresh (65536).
+// Values over TypeDriverThresh establish thier own namespace for types.
 // Driver types are often limited to 16 bits so that leaves enough space Open
 // for more then one type spaces or user types.
 type Type uint32
 
-// Returns true if this is a driver specific type.
+// Returns true if this is a driver defined type.
 func (t Type) Driver() bool {
 	return t >= TypeDriverThresh
 }
 
+// Generic returns true if the type is a generic type.
 func (t Type) Generic() bool {
 	return t >= 16 && t < 1024
 }
 
-// Sql Type constants are not represented in all database systems.
-// Additional sql types may be recognized per driver, but such types
-// must have a vlaue greater then TypeDriverThresh.
 const (
 	TypeUnknown Type = 0
 )
 
+// Generic SQL types. Can be used in parameters.
+// Reported in SqlColumn.Generic.
 const (
-	// Generic SQL types. Can be used in parameters.
-	// Reported in SqlColumn.Generic.
 	Text Type = 16 + iota
 	Binary
 	Bool
@@ -45,6 +43,9 @@ const (
 	Other
 )
 
+// Type constants are not represented in all database systems.
+// Additional sql types may be recognized per driver, but such types
+// must have a vlaue greater then TypeDriverThresh.
 const (
 	// Driver defaults for text varying lengths.
 	// Specific character data types.
