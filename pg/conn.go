@@ -5,9 +5,6 @@
 package pg
 
 import (
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/pg/oid"
-	"bitbucket.org/kardianos/rdb/semver"
 	"bufio"
 	"crypto/tls"
 	"encoding/binary"
@@ -15,8 +12,11 @@ import (
 	"io"
 	"net"
 	"strconv"
-	// "strings"
 	"time"
+
+	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/pg/oid"
+	"bitbucket.org/kardianos/rdb/semver"
 )
 
 type conn struct {
