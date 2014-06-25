@@ -31,11 +31,6 @@ type Param struct {
 	Null      bool
 	Scale     int
 	Precision int
-
-	// DefaultValue hold the default value for the column.
-	// It may not always be populated. A nil value indicates no default value,
-	// while rdb.Null indicates a NULL default value.
-	DefaultValue interface{}
 }
 
 // Information about the column as reported by the database.
@@ -51,6 +46,11 @@ type Column struct {
 	Serial    bool   // True if the column is auto-incrementing.
 	Precision int    // For decimal types, the precision.
 	Scale     int    // For types with scale, including decimal.
+
+	// DefaultValue hold the default value for the column.
+	// It may not always be populated. A nil value indicates no default value,
+	// while rdb.Null indicates a NULL default value.
+	DefaultValue interface{}
 }
 
 // Returned from GetN and GetxN.
