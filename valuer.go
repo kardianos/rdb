@@ -37,7 +37,7 @@ type valuer struct {
 	buffer       []Nullable
 	prep         []interface{}
 
-	convert []Convert
+	convert []ColumnConverter
 
 	rowCount uint64
 }
@@ -87,9 +87,9 @@ func (v *valuer) Columns(cc []*Column) error {
 	}
 
 	if v.cmd.Converter != nil {
-		v.convert = make([]Convert, len(cc))
+		v.convert = make([]ColumnConverter, len(cc))
 		for i, col := range cc {
-			v.convert[i] = v.cmd.Converter.Convert(false, col)
+			v.convert[i] = v.cmd.Converter.ColumnConverter(col)
 		}
 	}
 
@@ -142,7 +142,7 @@ func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assig
 		return nil
 	}
 
-	var convert Convert
+	var convert ColumnConverter
 	if v.convert != nil {
 		convert = v.convert[c.Index]
 	}
@@ -158,11 +158,11 @@ func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assig
 			bf := v.buffer[c.Index]
 			if bf.Value == nil {
 				outValue := Nullable{
-					Null: value.Null,
-					Value:    value.Value,
+					Null:  value.Null,
+					Value: value.Value,
 				}
 				if !value.More && convert != nil {
-					convert(false, c, &outValue)
+					convert(c, &outValue)
 				}
 				v.buffer[c.Index] = outValue
 				return nil
@@ -174,26 +174,26 @@ func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assig
 				return fmt.Errorf("Type not supported for chunked read: %T", in)
 			}
 			if !value.More && convert != nil {
-				convert(false, c, &v.buffer[c.Index])
+				convert(c, &v.buffer[c.Index])
 			}
 			return nil
 		}
 		outValue := Nullable{
-			Null: value.Null,
-			Value:    value.Value,
+			Null:  value.Null,
+			Value: value.Value,
 		}
 		if convert != nil {
-			convert(false, c, &outValue)
+			convert(c, &outValue)
 		}
 		v.buffer[c.Index] = outValue
 		return nil
 	}
 	outValue := Nullable{
-		Null: value.Null,
-		Value:    value.Value,
+		Null:  value.Null,
+		Value: value.Value,
 	}
 	if convert != nil {
-		convert(false, c, &outValue)
+		convert(c, &outValue)
 	}
 	if nullable, is := prep.(*Nullable); is {
 		*nullable = outValue
