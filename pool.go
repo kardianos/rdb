@@ -126,6 +126,15 @@ func (cp *ConnPool) query(conn DriverConn, cmd *Command, ci **ConnectionInfo, pa
 		},
 	}
 
+	if cmd.Converter != nil {
+		for i := range params {
+			err = cmd.Converter.ConvertParam(&params[i])
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	err = conn.Query(cmd, params, nil, &res.val)
 
 	if ci != nil {
