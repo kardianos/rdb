@@ -241,6 +241,10 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 				w.WriteUint32(uint32(v))
 			case uint32:
 				w.WriteUint32(uint32(v))
+			case int:
+				w.WriteUint32(uint32(v))
+			case uint:
+				w.WriteUint32(uint32(v))
 			default:
 				return fmt.Errorf("Need uint32 or smaller for param @%s", param.Name)
 			}
@@ -261,6 +265,10 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			case int64:
 				w.WriteUint64(uint64(v))
 			case uint64:
+				w.WriteUint64(uint64(v))
+			case int:
+				w.WriteUint64(uint64(v))
+			case uint:
 				w.WriteUint64(uint64(v))
 			default:
 				return fmt.Errorf("Need uint64 or smaller for param @%s", param.Name)
