@@ -6,6 +6,7 @@ package semver
 import (
 	"bytes"
 	"fmt"
+	"strings"
 )
 
 type Version struct {
@@ -60,4 +61,22 @@ func (v1 *Version) Comp(v2 *Version) (r int) {
 		return 1
 	}
 	return 0
+}
+
+func Parse(s string) (*Version, error) {
+	ver := &Version{}
+	ss := strings.SplitN(s, "-", 2)
+	nums := ss[0]
+	if len(ss) == 2 {
+		ver.PreRelease = ss[1]
+	}
+	n, err := fmt.Sscanf(nums, "%d.%d.%d", &ver.Major, &ver.Minor, &ver.Patch)
+	if err != nil {
+		return nil, err
+	}
+	if n != 3 {
+		return nil, fmt.Errorf("Expected to parse 3 numbers, got %d.", n)
+	}
+
+	return ver, nil
 }
