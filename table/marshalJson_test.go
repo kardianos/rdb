@@ -13,7 +13,7 @@ import (
 
 func TestJsonMarshal(t *testing.T) {
 	checkRowObject := `[{"ColA":"Hello","ColB":123.524},{"ColA":"Hi","ColB":null}]`
-	checkRowArray := `{"Names":["ColA","ColB"],"Data":[["Hello",123.524],["Hi",null]]}`
+	checkRowArray := `{"T1":"HI","Names":["ColA","ColB"],"Data":[["Hello",123.524],["Hi",null]]}`
 	table := &Buffer{}
 	table.SetSchema([]*rdb.Column{
 		&rdb.Column{Name: "ColA"},
@@ -47,7 +47,13 @@ func TestJsonMarshal(t *testing.T) {
 	}
 	buf.Reset()
 
-	coderArray := JsonRowArray{Buffer: table}
+	coderArray := JsonRowArray{
+		Buffer: table,
+		Meta: map[string]interface{}{
+			"Names": "Ignored",
+			"T1":    "HI",
+		},
+	}
 	_, err = coderArray.WriteTo(buf)
 	if err != nil {
 		t.Error(err)

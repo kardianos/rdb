@@ -85,6 +85,9 @@ type JsonRowArray struct {
 	*Buffer
 	FlushAt int
 
+	// Additional properties to add to the output.
+	Meta map[string]interface{}
+
 	ColumnHeadersName string
 	DataRowsName      string
 }
@@ -109,6 +112,23 @@ func (coder *JsonRowArray) WriteTo(writer io.Writer) (n int64, err error) {
 
 	// Write header.
 	buf.WriteRune('{')
+	for propName, prop := range coder.Meta {
+		if propName == names || propName == data {
+			continue
+		}
+		bb, err = json.Marshal(propName)
+		if err != nil {
+			return
+		}
+		buf.Write(bb)
+		buf.WriteRune(':')
+		bb, err = json.Marshal(prop)
+		if err != nil {
+			return
+		}
+		buf.Write(bb)
+		buf.WriteRune(',')
+	}
 	bb, err = json.Marshal(names)
 	if err != nil {
 		return
