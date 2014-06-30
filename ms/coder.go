@@ -211,6 +211,26 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 				w.WriteByte(byte(v))
 			case byte:
 				w.WriteByte(v)
+			case int16:
+				w.WriteByte(byte(v))
+			case uint16:
+				w.WriteByte(byte(v))
+			case int32:
+				w.WriteByte(byte(v))
+			case uint32:
+				w.WriteByte(byte(v))
+			case int64:
+				w.WriteByte(byte(v))
+			case uint64:
+				w.WriteByte(byte(v))
+			case int:
+				w.WriteByte(byte(v))
+			case uint:
+				w.WriteByte(byte(v))
+			case float32:
+				w.WriteByte(byte(v))
+			case float64:
+				w.WriteByte(byte(v))
 			default:
 				return fmt.Errorf("Need byte or smaller for param @%s", param.Name)
 			}
@@ -223,6 +243,22 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			case int16:
 				w.WriteUint16(uint16(v))
 			case uint16:
+				w.WriteUint16(uint16(v))
+			case int32:
+				w.WriteUint16(uint16(v))
+			case uint32:
+				w.WriteUint16(uint16(v))
+			case int64:
+				w.WriteUint16(uint16(v))
+			case uint64:
+				w.WriteUint16(uint16(v))
+			case int:
+				w.WriteUint16(uint16(v))
+			case uint:
+				w.WriteUint16(uint16(v))
+			case float32:
+				w.WriteUint16(uint16(v))
+			case float64:
 				w.WriteUint16(uint16(v))
 			default:
 				return fmt.Errorf("Need uint16 or smaller for param @%s", param.Name)
@@ -241,9 +277,17 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 				w.WriteUint32(uint32(v))
 			case uint32:
 				w.WriteUint32(uint32(v))
+			case int64:
+				w.WriteUint32(uint32(v))
+			case uint64:
+				w.WriteUint32(uint32(v))
 			case int:
 				w.WriteUint32(uint32(v))
 			case uint:
+				w.WriteUint32(uint32(v))
+			case float32:
+				w.WriteUint32(uint32(v))
+			case float64:
 				w.WriteUint32(uint32(v))
 			default:
 				return fmt.Errorf("Need uint32 or smaller for param @%s", param.Name)
@@ -269,6 +313,10 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			case int:
 				w.WriteUint64(uint64(v))
 			case uint:
+				w.WriteUint64(uint64(v))
+			case float32:
+				w.WriteUint64(uint64(v))
+			case float64:
 				w.WriteUint64(uint64(v))
 			default:
 				return fmt.Errorf("Need uint64 or smaller for param @%s", param.Name)
