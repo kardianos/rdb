@@ -399,7 +399,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 				w.WriteBuffer(filler)
 			}
 		default:
-			return fmt.Errorf("Need bool for param @%s", param.Name)
+			return fmt.Errorf("Need *big.Rat for param @%s", param.Name)
 		}
 		return nil
 	}
