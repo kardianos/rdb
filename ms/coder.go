@@ -491,11 +491,14 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		default:
 			return fmt.Errorf("Need time.Time for param @%s", param.Name)
 		}
+		if (info.Dt & dtZone) == 0 {
+			// If no zone, convert to UTC.
+			v = v.UTC()
+		}
 
 		if (info.Dt & dtTime) != 0 {
 			var nano time.Duration
 			if dur == 0 {
-				v = v.UTC()
 				nano += time.Duration(v.Hour()) * time.Hour
 				nano += time.Duration(v.Minute()) * time.Minute
 				nano += time.Duration(v.Second()) * time.Second
