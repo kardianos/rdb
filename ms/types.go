@@ -131,7 +131,9 @@ type typeInfo struct {
 
 	MinVer *semver.Version // Minimum protocol version for type.
 
-	Generic rdb.Type
+	Specific    rdb.Type
+	Generic     rdb.Type
+	SpecificMap map[byte]rdb.Type
 }
 
 // Don't bother with anything before 72 (Server 2005).
@@ -146,52 +148,60 @@ var typeInfoLookup = map[driverType]typeInfo{
 	typeNull: {Name: "NULL", Fixed: true, Len: 0},
 
 	// Some or all of these may be obsolete, may now use the *N types.
-	typeByte:          {Name: "Byte", Fixed: true, Len: 1, Generic: rdb.Integer},
-	typeBool:          {Name: "Bool", Fixed: true, Len: 1, Generic: rdb.Bool},
-	typeInt16:         {Name: "Int16", Fixed: true, Len: 2, Generic: rdb.Integer},
-	typeInt32:         {Name: "Int32", Fixed: true, Len: 4, Generic: rdb.Integer},
-	typeDateTimeSmall: {Name: "DateTimeSmall", Fixed: true, Len: 4, Generic: rdb.Integer},
-	typeFloat32:       {Name: "Float32", Fixed: true, Len: 4, Generic: rdb.Float},
-	typeMoney:         {Name: "Money", Fixed: true, Len: 8, Generic: rdb.Decimal},
-	typeDateTime:      {Name: "DateTime", Fixed: true, Len: 4, Generic: rdb.Time},
-	typeFloat64:       {Name: "Float64", Fixed: true, Len: 8, Generic: rdb.Float},
-	typeMoneySmall:    {Name: "MoneySmall", Fixed: true, Len: 4, Generic: rdb.Decimal},
-	typeInt64:         {Name: "Int64", Fixed: true, Len: 8, Generic: rdb.Integer},
+	typeByte:          {Name: "Byte", Fixed: true, Len: 1, Specific: rdb.TypeInt8, Generic: rdb.Integer},
+	typeBool:          {Name: "Bool", Fixed: true, Len: 1, Specific: rdb.TypeBool, Generic: rdb.Bool},
+	typeInt16:         {Name: "Int16", Fixed: true, Len: 2, Specific: rdb.TypeInt16, Generic: rdb.Integer},
+	typeInt32:         {Name: "Int32", Fixed: true, Len: 4, Specific: rdb.TypeInt32, Generic: rdb.Integer},
+	typeDateTimeSmall: {Name: "DateTimeSmall", Fixed: true, Len: 4, Specific: rdb.TypeTimestamp, Generic: rdb.Integer},
+	typeFloat32:       {Name: "Float32", Fixed: true, Len: 4, Specific: rdb.TypeFloat32, Generic: rdb.Float},
+	typeMoney:         {Name: "Money", Fixed: true, Len: 8, Specific: rdb.TypeDecimal, Generic: rdb.Decimal},
+	typeDateTime:      {Name: "DateTime", Fixed: true, Len: 4, Specific: rdb.TypeTimestamp, Generic: rdb.Time},
+	typeFloat64:       {Name: "Float64", Fixed: true, Len: 8, Specific: rdb.TypeFloat64, Generic: rdb.Float},
+	typeMoneySmall:    {Name: "MoneySmall", Fixed: true, Len: 4, Specific: rdb.TypeDecimal, Generic: rdb.Decimal},
+	typeInt64:         {Name: "Int64", Fixed: true, Len: 8, Specific: rdb.TypeInt64, Generic: rdb.Integer},
 
-	typeGuid:    {Name: "GUID", Len: 1, Generic: rdb.Other},
-	typeIntN:    {Name: "IntN", Len: 1, Generic: rdb.Integer},
-	typeBitN:    {Name: "BitN", Len: 1, Generic: rdb.Bool},
-	typeDecimal: {Name: "Decimal", IsPrSc: true, Len: 1, Generic: rdb.Decimal},
-	typeNumeric: {Name: "Numeric", IsPrSc: true, Len: 1, Generic: rdb.Decimal},
+	typeGuid: {Name: "GUID", Len: 1, Specific: rdb.TypeUUID, Generic: rdb.Other},
+	typeIntN: {Name: "IntN", Len: 1, SpecificMap: map[byte]rdb.Type{
+		1: rdb.TypeInt8,
+		2: rdb.TypeInt16,
+		4: rdb.TypeInt32,
+		8: rdb.TypeInt64,
+	}, Generic: rdb.Integer},
+	typeBitN:    {Name: "BitN", Len: 1, Specific: rdb.TypeBool, Generic: rdb.Bool},
+	typeDecimal: {Name: "Decimal", IsPrSc: true, Len: 1, Specific: rdb.TypeDecimal, Generic: rdb.Decimal},
+	typeNumeric: {Name: "Numeric", IsPrSc: true, Len: 1, Specific: rdb.TypeDecimal, Generic: rdb.Decimal},
 
-	typeFloatN:          {Name: "FloatN", Len: 1, Generic: rdb.Float},
-	typeMoneyN:          {Name: "MoneyN", Len: 1, Generic: rdb.Decimal},
-	typeDateTimeN:       {Name: "DateTimeN", Len: 1, MinVer: protoVer72, Generic: rdb.Time},
-	typeDateN:           {Name: "DateN", Len: 0, Dt: dtDate, MinVer: protoVer73A, Generic: rdb.Time},
-	typeTimeN:           {Name: "TimeN", Len: 1, Dt: dtTime, MinVer: protoVer73A, Generic: rdb.Time},
-	typeDateTime2N:      {Name: "DateTime2N", Len: 1, Dt: dtDate | dtTime, MinVer: protoVer73A, Generic: rdb.Time},
-	typeDateTimeOffsetN: {Name: "DateTimeOffsetN", Len: 1, Dt: dtDate | dtTime | dtZone, MinVer: protoVer73A, Generic: rdb.Time},
+	typeFloatN: {Name: "FloatN", Len: 1, SpecificMap: map[byte]rdb.Type{
+		4: rdb.TypeFloat32,
+		8: rdb.TypeFloat64,
+	}, Generic: rdb.Float},
+	typeMoneyN:          {Name: "MoneyN", Len: 1, Specific: rdb.TypeDecimal, Generic: rdb.Decimal},
+	typeDateTimeN:       {Name: "DateTimeN", Len: 1, Specific: rdb.TypeTimestamp, MinVer: protoVer72, Generic: rdb.Time},
+	typeDateN:           {Name: "DateN", Len: 0, Specific: rdb.TypeDate, Dt: dtDate, MinVer: protoVer73A, Generic: rdb.Time},
+	typeTimeN:           {Name: "TimeN", Len: 1, Specific: rdb.TypeTime, Dt: dtTime, MinVer: protoVer73A, Generic: rdb.Time},
+	typeDateTime2N:      {Name: "DateTime2N", Len: 1, Specific: rdb.TypeTimestamp, Dt: dtDate | dtTime, MinVer: protoVer73A, Generic: rdb.Time},
+	typeDateTimeOffsetN: {Name: "DateTimeOffsetN", Len: 1, Specific: rdb.TypeTimestampz, Dt: dtDate | dtTime | dtZone, MinVer: protoVer73A, Generic: rdb.Time},
 
 	// Probably don't worry about these.
-	typeDecimalOld:   {Name: "DecimalOld", Len: 1, Generic: rdb.Decimal},
-	typeNumericOld:   {Name: "NumericOld", Len: 1, Generic: rdb.Decimal},
-	typeCharOld:      {Name: "CharOld", Len: 1, Generic: rdb.Text},
-	typeVarCharOld:   {Name: "VarCharOld", Len: 1, Generic: rdb.Text},
-	typeBinaryOld:    {Name: "BinaryOld", Len: 1, Generic: rdb.Binary},
-	typeVarBinaryOld: {Name: "VarBinaryOld", Len: 1, Generic: rdb.Binary},
+	typeDecimalOld:   {Name: "DecimalOld", Len: 1, Specific: rdb.TypeDecimal, Generic: rdb.Decimal},
+	typeNumericOld:   {Name: "NumericOld", Len: 1, Specific: rdb.TypeDecimal, Generic: rdb.Decimal},
+	typeCharOld:      {Name: "CharOld", Len: 1, Specific: rdb.TypeAnsiChar, Generic: rdb.Text},
+	typeVarCharOld:   {Name: "VarCharOld", Len: 1, Specific: rdb.TypeAnsiVarChar, Generic: rdb.Text},
+	typeBinaryOld:    {Name: "BinaryOld", Len: 1, Specific: rdb.TypeBinary, Generic: rdb.Binary},
+	typeVarBinaryOld: {Name: "VarBinaryOld", Len: 1, Specific: rdb.TypeBinary, Generic: rdb.Binary},
 
-	typeVarBinary: {Name: "VarBinary(Big)", Bytes: true, Max: true, Len: 2, Generic: rdb.Binary},
-	typeVarChar:   {Name: "VarChar(Big)", Bytes: true, IsText: true, Max: true, Len: 2, Generic: rdb.Text},
-	typeBinary:    {Name: "Binary(Big)", Bytes: true, Max: true, Len: 2, Generic: rdb.Binary},
-	typeChar:      {Name: "Char(Big)", Bytes: true, IsText: true, Len: 2, Generic: rdb.Text},
-	typeNVarChar:  {Name: "NVarChar", Bytes: true, NChar: true, IsText: true, Max: true, Len: 2, Generic: rdb.Text},
-	typeNChar:     {Name: "NChar", Bytes: true, NChar: true, IsText: true, Len: 2, Generic: rdb.Text},
-	typeText:      {Name: "Text", Bytes: true, IsText: true, Len: 4, Generic: rdb.Text},
-	typeImage:     {Name: "Image", Bytes: true, Len: 4, Generic: rdb.Binary},
-	typeNText:     {Name: "NText", Bytes: true, NChar: true, IsText: true, Len: 4, Generic: rdb.Text},
+	typeVarBinary: {Name: "VarBinary(Big)", Bytes: true, Max: true, Len: 2, Specific: rdb.TypeBinary, Generic: rdb.Binary},
+	typeVarChar:   {Name: "VarChar(Big)", Bytes: true, IsText: true, Max: true, Len: 2, Specific: rdb.TypeAnsiVarChar, Generic: rdb.Text},
+	typeBinary:    {Name: "Binary(Big)", Bytes: true, Max: true, Len: 2, Specific: rdb.TypeBinary, Generic: rdb.Binary},
+	typeChar:      {Name: "Char(Big)", Bytes: true, IsText: true, Len: 2, Specific: rdb.TypeAnsiChar, Generic: rdb.Text},
+	typeNVarChar:  {Name: "NVarChar", Bytes: true, NChar: true, IsText: true, Max: true, Len: 2, Specific: rdb.TypeVarChar, Generic: rdb.Text},
+	typeNChar:     {Name: "NChar", Bytes: true, NChar: true, IsText: true, Len: 2, Specific: rdb.TypeChar, Generic: rdb.Text},
+	typeText:      {Name: "Text", Bytes: true, IsText: true, Len: 4, Specific: rdb.TypeAnsiText, Generic: rdb.Text},
+	typeImage:     {Name: "Image", Bytes: true, Len: 4, Specific: rdb.TypeBinary, Generic: rdb.Binary},
+	typeNText:     {Name: "NText", Bytes: true, NChar: true, IsText: true, Len: 4, Specific: rdb.TypeText, Generic: rdb.Text},
 
 	// The following will be unsupported for a time.
-	typeXml:     {Name: "Xml", Max: true, Len: 4, Generic: rdb.Other},
+	typeXml:     {Name: "Xml", Max: true, Len: 4, Specific: rdb.TypeXml, Generic: rdb.Other},
 	typeUDT:     {Name: "UDT", Max: true, Len: 0, Generic: rdb.Other},
 	typeVariant: {Name: "Varient", Len: 4, Generic: rdb.Other},
 }
@@ -321,35 +331,4 @@ var sqlTypeLookup = map[rdb.Type]*typeWidth{
 	rdb.TypeTimestamp:  {T: typeDateTime2N, W: 8, SqlName: "datetime2"},
 	rdb.TypeTimestampz: {T: typeDateTimeOffsetN, W: 10, SqlName: "datetimeoffset"},
 	rdb.Time:           {T: typeDateTimeOffsetN, W: 10, SqlName: "datetimeoffset"},
-}
-
-type driverTypeWidth struct {
-	T driverType
-	W uint8
-}
-
-var driverTypeLookup = map[driverType]map[uint8]rdb.Type{}
-
-func init() {
-	for st, tw := range sqlTypeLookup {
-		wLookup, found := driverTypeLookup[tw.T]
-		if !found {
-			wLookup = make(map[uint8]rdb.Type)
-			driverTypeLookup[tw.T] = wLookup
-		}
-		wLookup[tw.W] = st
-	}
-}
-
-func lookupSqlType(dt driverType, w uint8) (specific rdb.Type, err error) {
-	wLookup, found := driverTypeLookup[dt]
-	if !found {
-		err = fmt.Errorf("Unknown driver type: 0x%X", uint8(dt))
-		return
-	}
-	specific, found = wLookup[w]
-	if !found {
-		specific = wLookup[0]
-	}
-	return
 }
