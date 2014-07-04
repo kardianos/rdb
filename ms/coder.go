@@ -28,7 +28,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 	collation := []byte{0x09, 0x04, 0xD0, 0x00, 0x34}
 
 	nullValue := false
-	if value == rdb.Null {
+	if value == rdb.Null || value == nil {
 		nullValue = true
 	}
 
@@ -156,6 +156,10 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			w.WriteUint32(0)
 			return nil
 
+		}
+		if nullValue {
+			w.WriteUint16(0xFFFF) // Field length.
+			return nil
 		}
 
 		// A non-max value.
