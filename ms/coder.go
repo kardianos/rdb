@@ -579,10 +579,9 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 			column.Length = int(binary.LittleEndian.Uint32(read(4)))
 		}
 	}
-	var err error
-	column.Column.Type, err = lookupSqlType(driverType, byte(column.Length))
-	if err != nil {
-		panic(err)
+	column.Column.Type = info.Specific
+	if column.Column.Type == 0 && info.SpecificMap != nil {
+		column.Column.Type = info.SpecificMap[byte(column.Length)]
 	}
 	column.Column.Generic = info.Generic
 
