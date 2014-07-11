@@ -164,6 +164,7 @@ func LargerQuery(db must.ConnPool, t *testing.T) {
 				987.654 as Val,
 				cast('fox' as varchar(7)) as dock,
 				box = cast(@animal as nvarchar(max))
+			order by ID
 			;
 			`,
 		Arity: rdb.OneMust,

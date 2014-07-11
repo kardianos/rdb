@@ -35,6 +35,8 @@ const (
 	tokenDoneInProc     = 0xFF
 	tokenColumnMetaData = 0x81
 	tokenRow            = 0xD1
+
+	tokenOrder = 0xA9
 )
 
 // Document the highest version this driver can handle.
