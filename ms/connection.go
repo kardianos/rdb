@@ -197,10 +197,6 @@ func (tds *Connection) Scan(reportRow bool) error {
 				cc[i] = &dsc.Column
 			}
 			tds.val.Columns(cc)
-			if tds.peek != tokenRow {
-				continue
-			}
-			return nil
 		case *SqlRow:
 			if debugToken {
 				fmt.Println("TOKEN ROW")
@@ -210,9 +206,6 @@ func (tds *Connection) Scan(reportRow bool) error {
 			// The prior prep values are no longer valid as they are filled
 			// during the row scan.
 			tds.val.RowScanned()
-			if tds.peek == tokenRow {
-				return nil
-			}
 		case SqlRpcResult:
 			tds.inTokenStream = false
 			if debugToken {
@@ -234,6 +227,9 @@ func (tds *Connection) Scan(reportRow bool) error {
 			}
 		default:
 			panic(fmt.Sprintf("Unknown response: %v", res))
+		}
+		if tds.peek == tokenRow {
+			return nil
 		}
 	}
 }
@@ -475,6 +471,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		for i := uint16(0); i < length; i++ {
 			order[i] = binary.LittleEndian.Uint16(read(2))
 		}
+		tds.peek = read(1)[0]
 		return order, nil
 	default:
 		return nil, fmt.Errorf("Unknown response code: 0x%X", token)
