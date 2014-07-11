@@ -66,6 +66,8 @@ type SqlRow struct{}
 
 type SqlRpcResult int32
 
+type SqlOrder []uint16
+
 type recoverError struct {
 	err error
 }

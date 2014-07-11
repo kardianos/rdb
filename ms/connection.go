@@ -228,6 +228,10 @@ func (tds *Connection) Scan(reportRow bool) error {
 			if debugToken {
 				fmt.Println("TOKEN DONE")
 			}
+		case SqlOrder:
+			if debugToken {
+				fmt.Println("TOKEN ORDER")
+			}
 		default:
 			panic(fmt.Sprintf("Unknown response: %v", res))
 		}
@@ -464,8 +468,16 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 
 		tds.peek = read(1)[0]
 		return &SqlRow{}, nil
+	case tokenOrder:
+		// Just read the token.
+		length := binary.LittleEndian.Uint16(read(2)) / 2
+		var order SqlOrder = make([]uint16, length)
+		for i := uint16(0); i < length; i++ {
+			order[i] = binary.LittleEndian.Uint16(read(2))
+		}
+		return order, nil
 	default:
-		return nil, fmt.Errorf("Unknown response code: 0x%X", bb[0])
+		return nil, fmt.Errorf("Unknown response code: 0x%X", token)
 	}
 }
 
