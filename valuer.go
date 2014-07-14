@@ -260,6 +260,10 @@ func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assig
 			*out = uint64(in)
 		case *int64:
 			*out = int64(in)
+		case *uint:
+			*out = uint(in)
+		case *int:
+			*out = int(in)
 		default:
 			return errorTypeNotSupported(in, out, c)
 		}
@@ -281,6 +285,10 @@ func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assig
 			*out = uint64(in)
 		case *int64:
 			*out = int64(in)
+		case *uint:
+			*out = uint(in)
+		case *int:
+			*out = int(in)
 		default:
 			return errorTypeNotSupported(in, out, c)
 		}
@@ -298,6 +306,10 @@ func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assig
 			*out = uint64(in)
 		case *int64:
 			*out = int64(in)
+		case *uint:
+			*out = uint(in)
+		case *int:
+			*out = int(in)
 		default:
 			return errorTypeNotSupported(in, out, c)
 		}
@@ -315,6 +327,10 @@ func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assig
 			*out = uint64(in)
 		case *int64:
 			*out = int64(in)
+		case *uint:
+			*out = uint(in)
+		case *int:
+			*out = int(in)
 		default:
 			return errorTypeNotSupported(in, out, c)
 		}
