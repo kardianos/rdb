@@ -34,6 +34,11 @@ type Connection struct {
 	val rdb.DriverValuer
 	col []*SqlColumn
 
+	allHeaders            []byte
+	allHeaderNumberOffset int
+
+	currentTransaction uint64
+
 	// Next token type.
 	peek byte
 }
@@ -46,11 +51,18 @@ func NewConnection(c io.ReadWriteCloser) *Connection {
 	}
 }
 
+func (tds *Connection) getAllHeaders() []byte {
+	binary.LittleEndian.PutUint64(tds.allHeaders[tds.allHeaderNumberOffset:], tds.currentTransaction)
+	return tds.allHeaders
+}
+
 func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 	if tds.open {
 		return nil, connectionOpenError
 	}
 	var err error
+
+	tds.allHeaders, tds.allHeaderNumberOffset = getHeaderTemplate()
 
 	err = tds.pw.PreLogin(config.Instance)
 	if err != nil {
@@ -127,22 +139,120 @@ func (tds *Connection) Unprepare(preparedStatementToken interface{}) (err error)
 	return rdb.NotImplemented
 }
 
-func (tds *Connection) Begin() error {
-	return rdb.NotImplemented
+/*
+0 = TM_GET_DTC_ADDRESS. Returns DTC network address as a result set with a single-column, single-row binary value.
+1 = TM_PROPAGATE_XACT. Imports DTC transaction into the server and returns a local transaction descriptor as a varbinary result set.
+5 = TM_BEGIN_XACT. Begins a transaction and returns the descriptor in an ENVCHANGE type 8.
+6 = TM_PROMOTE_XACT. Converts an active local transaction into a distributed transaction and returns an opaque buffer in an ENVCHANGE type 15.
+7 = TM_COMMIT_XACT. Commits a transaction. Depending on the payload of the request, it can additionally request that another local transaction be started.
+8 = TM_ROLLBACK_XACT. Rolls back a transaction. Depending on the payload of the request, it can indicate that after the rollback, a local transaction is to be started.
+9 = TM_SAVE_XACT. Sets a savepoint within the active transaction. This request MUST specify a nonempty name for the savepoint.
+The request types 5 - 9 were introduced in TDS 7.2.
+*/
+const (
+	tranBegin     = 5
+	tranCommit    = 7
+	tranRollback  = 8
+	tranSavepoint = 9
+)
+
+const (
+	levelDefault         = 0x00
+	levelReadUncommitted = 0x01
+	levelReadCommited    = 0x02
+	levelRepeatableRead  = 0x03
+	levelSerializable    = 0x04
+	levelSnapshot        = 0x05
+)
+
+func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationLevel) error {
+	if !tds.open {
+		return connectionNotOpenError
+	}
+	if tds.inUse {
+		return connectionInUseError
+	}
+	err := tds.pw.BeginMessage(packetTransaction)
+	if err != nil {
+		return err
+	}
+
+	var level byte
+	switch iso {
+	case rdb.LevelDefault:
+		level = levelDefault
+	case rdb.LevelReadUncommited:
+		level = levelReadUncommitted
+	case rdb.LevelReadCommited:
+		level = levelReadCommited
+	case rdb.LevelRepeatableRead:
+		level = levelRepeatableRead
+	case rdb.LevelSerializable:
+		level = levelSerializable
+	case rdb.LevelSnapshot:
+		level = levelSnapshot
+	}
+
+	if len(label) > 254 {
+		label = label[:254]
+	}
+	labelLen := byte(len(label))
+	tds.pw.WriteBuffer(tds.getAllHeaders())
+	tds.pw.WriteUint16(tran)
+	switch tran {
+	case tranBegin:
+		tds.pw.WriteByte(level)
+		tds.pw.WriteByte(labelLen)
+		if labelLen != 0 {
+			tds.pw.Write([]byte(label))
+		}
+	case tranCommit:
+		tds.pw.WriteByte(labelLen)
+		if labelLen != 0 {
+			tds.pw.Write([]byte(label))
+		}
+		tds.pw.WriteByte(0) // Don't start another transaction.
+	case tranRollback:
+		tds.pw.WriteByte(labelLen)
+		if labelLen != 0 {
+			tds.pw.Write([]byte(label))
+		}
+		tds.pw.WriteByte(0) // Don't start another transaction.
+	case tranSavepoint:
+		tds.pw.WriteByte(labelLen)
+		if labelLen != 0 {
+			tds.pw.Write([]byte(label))
+		}
+	default:
+		panic("Unknown transaction request.")
+	}
+
+	err = tds.pw.EndMessage()
+	if err != nil {
+		return err
+	}
+	return tds.Scan(false)
+	if err != nil {
+		return err
+	}
+	return tds.Scan(false)
+}
+func (tds *Connection) Begin(iso rdb.IsolationLevel) error {
+	return tds.transaction(tranBegin, "", iso)
 }
 func (tds *Connection) Rollback(savepoint string) error {
-	return rdb.NotImplemented
+	return tds.transaction(tranRollback, savepoint, rdb.LevelDefault)
 }
 func (tds *Connection) Commit() error {
-	return rdb.NotImplemented
+	return tds.transaction(tranCommit, "", rdb.LevelDefault)
 }
 func (tds *Connection) SavePoint(name string) error {
-	return rdb.NotImplemented
+	return tds.transaction(tranSavepoint, name, rdb.LevelDefault)
 }
 
 func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, valuer rdb.DriverValuer) error {
 	if tds.inUse {
-		panic("Connection in use still!")
+		return connectionInUseError
 	}
 	tds.val = valuer
 
@@ -167,7 +277,13 @@ func (tds *Connection) done() error {
 	return err
 }
 
+const (
+	scanStateNormal byte = iota
+	scanStateEnvChange
+)
+
 func (tds *Connection) Scan(reportRow bool) error {
+	state := scanStateNormal
 	for {
 		res, err := tds.getSingleResponse(tds.mr, reportRow)
 		if err != nil {
@@ -188,6 +304,7 @@ func (tds *Connection) Scan(reportRow bool) error {
 			}
 			tds.val.Message(v)
 		case []*SqlColumn:
+			state = scanStateNormal
 			if debugToken {
 				fmt.Println("TOKEN COLUMN")
 			}
@@ -198,6 +315,7 @@ func (tds *Connection) Scan(reportRow bool) error {
 			}
 			tds.val.Columns(cc)
 		case *SqlRow:
+			state = scanStateNormal
 			if debugToken {
 				fmt.Println("TOKEN ROW")
 			}
@@ -212,9 +330,15 @@ func (tds *Connection) Scan(reportRow bool) error {
 				fmt.Println("TOKEN RPC RESULT")
 			}
 		case *SqlDone:
+			if state == scanStateEnvChange {
+				if debugToken {
+					fmt.Println("TOKEN DONE - ENV CHANGE")
+				}
+				continue
+			}
 			if v.StatusCode == 0 {
 				if debugToken {
-					fmt.Println("TOKEN FINAL DONE")
+					fmt.Println("TOKEN DONE - FINAL")
 				}
 				return tds.done()
 			}
@@ -224,6 +348,11 @@ func (tds *Connection) Scan(reportRow bool) error {
 		case SqlOrder:
 			if debugToken {
 				fmt.Println("TOKEN ORDER")
+			}
+		case EnvChange:
+			state = scanStateEnvChange
+			if debugToken {
+				fmt.Println("TOKEN ENV CHANGE")
 			}
 		default:
 			panic(fmt.Sprintf("Unknown response: %v", res))
@@ -323,7 +452,7 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) 
 			[%xFF BatchFlag]
 	*/
 
-	w.WriteBuffer(sqlRequestHeader)
+	w.WriteBuffer(tds.getAllHeaders())
 	w.WriteUint16(0xffff) // ProcIDSwitch
 	w.WriteUint16(procID)
 	w.WriteUint16(options) // 16 bits (2 bytes) - Options: fWithRecomp, fNoMetaData, fReuseMetaData, 13FRESERVEDBIT
@@ -363,11 +492,7 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) 
 	}
 	w.WriteByte(0xFF)
 
-	err = w.EndMessage()
-	if err != nil {
-		return err
-	}
-	return nil
+	return w.EndMessage()
 }
 
 func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (response interface{}, err error) {
@@ -473,12 +598,36 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		}
 		tds.peek = read(1)[0]
 		return order, nil
+	case tokenEnvChange:
+		length := int(binary.LittleEndian.Uint16(read(2)) - 1)
+		tokenType := read(1)[0] // Token Type
+		switch tokenType {
+		case 8, 9, 10: // 8: begin, 9: commit, 10: rollback.
+			buf := read(length)
+			switch buf[0] {
+			case 0:
+				tds.currentTransaction = 0
+			case 8:
+				tds.currentTransaction = binary.LittleEndian.Uint64(buf[1:])
+			default:
+				return nil, fmt.Errorf("Unknown length: %d", buf[0])
+			}
+		case 15:
+			// Type 15 doesn't obey the length.
+			return nil, fmt.Errorf("Un-handled env-change type: %d", tokenType)
+		default:
+			read(length)
+		}
+		// Currently ignore all the data.
+
+		tds.peek = read(1)[0]
+		return EnvChange{}, nil
 	default:
 		return nil, fmt.Errorf("Unknown response code: 0x%X", token)
 	}
 }
 
-var sqlRequestHeader = func() []byte {
+func getHeaderTemplate() ([]byte, int) {
 	/*
 		type ALL_HEADER struct {
 			TotalLength uint32 // Includes length.
@@ -510,11 +659,12 @@ var sqlRequestHeader = func() []byte {
 	binary.LittleEndian.PutUint16(bb[at:], 0x0002)
 	at += 2
 
+	tranNumberOffset := at
 	binary.LittleEndian.PutUint64(bb[at:], 0)
 	at += 8
 
 	binary.LittleEndian.PutUint32(bb[at:], 1)
 	at += 4
 
-	return bb
-}()
+	return bb, tranNumberOffset
+}

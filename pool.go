@@ -67,7 +67,7 @@ func (cp *ConnPool) Ping() error {
 func (cp *ConnPool) ConnectionInfo() (*ConnectionInfo, error) {
 	cmd := cp.dr.PingCommand()
 	ci := &ConnectionInfo{}
-	res, err := cp.query(nil, cmd, &ci)
+	res, err := cp.query(false, nil, cmd, &ci)
 	if err != nil {
 		return nil, err
 	}
@@ -106,10 +106,10 @@ func (cp *ConnPool) getConn() (DriverConn, error) {
 // may be specified in the Value. Order may be used to match the
 // existing parameters if the Value.N name is omitted.
 func (cp *ConnPool) Query(cmd *Command, params ...Param) (*Result, error) {
-	return cp.query(nil, cmd, nil, params...)
+	return cp.query(false, nil, cmd, nil, params...)
 }
 
-func (cp *ConnPool) query(conn DriverConn, cmd *Command, ci **ConnectionInfo, params ...Param) (*Result, error) {
+func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **ConnectionInfo, params ...Param) (*Result, error) {
 	var err error
 	if conn == nil {
 		conn, err = cp.getConn()
@@ -124,6 +124,7 @@ func (cp *ConnPool) query(conn DriverConn, cmd *Command, ci **ConnectionInfo, pa
 		val: valuer{
 			cmd: cmd,
 		},
+		keepOnClose: inTran,
 	}
 
 	if cmd.Converter != nil {
@@ -176,7 +177,7 @@ func (cp *ConnPool) BeginLevel(level IsolationLevel) (*Transaction, error) {
 		conn:  conn,
 		level: level,
 	}
-	err = conn.Begin()
+	err = conn.Begin(level)
 	if err != nil {
 		cp.releaseConn(conn, true)
 		return nil, err

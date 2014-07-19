@@ -24,7 +24,7 @@ func (tran *Transaction) Query(cmd *Command, params ...Param) (*Result, error) {
 	if tran.done {
 		return nil, transactionClosed
 	}
-	return tran.cp.query(tran.conn, cmd, nil, params...)
+	return tran.cp.query(true, tran.conn, cmd, nil, params...)
 }
 
 // Commit commits a one or more queries. If no queries have been run this
@@ -51,9 +51,11 @@ func (tran *Transaction) RollbackTo(savepoint string) error {
 	if tran.done {
 		return transactionClosed
 	}
-	tran.done = true
 	err := tran.conn.Rollback(savepoint)
-	tran.cp.releaseConn(tran.conn, tran.conn.Status() != StatusReady)
+	if len(savepoint) == 0 {
+		tran.done = true
+		tran.cp.releaseConn(tran.conn, tran.conn.Status() != StatusReady)
+	}
 	return err
 }
 

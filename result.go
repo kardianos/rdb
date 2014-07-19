@@ -11,6 +11,9 @@ type Result struct {
 	conn DriverConn
 	val  valuer
 	cp   *ConnPool
+
+	// If true do not return to the connection pool when closed.
+	keepOnClose bool
 }
 
 // Results should automatically close when all rows have been read.
@@ -38,14 +41,18 @@ loop:
 				return err
 			}
 		case StatusReady:
-			// Don't close the connection, just return to pool.
-			err = r.cp.releaseConn(r.conn, false)
-			r.cp = nil
-			r.conn = nil
+			if r.keepOnClose == false {
+				// Don't close the connection, just return to pool.
+				err = r.cp.releaseConn(r.conn, false)
+				r.cp = nil
+				r.conn = nil
+			}
 			break loop
 		default:
-			// Not sure what the state is, close the entire connection.
-			err = r.cp.releaseConn(r.conn, true)
+			if r.keepOnClose == false {
+				// Not sure what the state is, close the entire connection.
+				err = r.cp.releaseConn(r.conn, true)
+			}
 			break loop
 		}
 	}

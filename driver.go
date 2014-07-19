@@ -107,7 +107,7 @@ type DriverConn interface {
 	Prepare(*Command) (preparedToken interface{}, err error)
 	Unprepare(preparedToken interface{}) (err error)
 
-	Begin() error
+	Begin(iso IsolationLevel) error
 	Rollback(savepoint string) error
 	Commit() error
 	SavePoint(name string) error
