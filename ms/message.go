@@ -35,6 +35,7 @@ const (
 	tokenDoneInProc     = 0xFF
 	tokenColumnMetaData = 0x81
 	tokenRow            = 0xD1
+	tokenEnvChange      = 0xE3
 
 	tokenOrder = 0xA9
 )
