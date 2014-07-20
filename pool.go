@@ -25,6 +25,9 @@ func Open(config *Config) (*ConnPool, error) {
 	if err != nil {
 		return nil, err
 	}
+	if config.Secure && dr.DriverInfo().SecureConnection == false {
+		return nil, fmt.Errorf("Driver %s does not support secure connections.", config.DriverName)
+	}
 	factory := func() (pools.Resource, error) {
 		if debugConnectionReuse {
 			fmt.Println("Conn.Open() NEW")
