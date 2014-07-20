@@ -187,7 +187,7 @@ func (r *Result) scan(reportRow bool) error {
 			}
 		}
 		if err == nil && r.val.cmd.Arity&ArityMust != 0 && r.val.rowCount > 1 {
-			err = arityError
+			err = ArityError
 		}
 	}
 

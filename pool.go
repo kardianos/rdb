@@ -8,6 +8,11 @@ import (
 
 const debugConnectionReuse = false
 
+// Queryer allows passing either a ConnPool or a Transaction.
+type Queryer interface {
+	Query(cmd *Command, params ...Param) (*Result, error)
+}
+
 // Represents a connection or connection configuration to a database.
 type ConnPool struct {
 	dr   Driver
@@ -155,7 +160,7 @@ func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **Conne
 			err = serr
 		}
 		if err == nil && res.val.rowCount != 0 && !res.val.eof && res.val.cmd.Arity&ArityMust != 0 {
-			err = arityError
+			err = ArityError
 		}
 	}
 
