@@ -40,6 +40,13 @@ type Config struct {
 	// Valid range is (0 < max).
 	PoolMaxCapacity int
 
+	// Require the driver to establish a secure connection.
+	Secure bool
+
+	// Do not require the secure connection to verify the remote host name.
+	// Ignored if Secure is false.
+	InsecureSkipVerify bool
+
 	KV map[string]interface{}
 }
 
