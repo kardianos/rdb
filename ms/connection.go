@@ -23,9 +23,9 @@ type Connection struct {
 
 	wc io.ReadWriteCloser
 
-	open          bool
-	inUse         bool
-	inTokenStream bool
+	open  bool
+	inUse bool
+	// inTokenStream bool
 
 	ProductVersion  *semver.Version
 	ProtocolVersion *semver.Version
@@ -172,6 +172,12 @@ func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationL
 	if tds.inUse {
 		return connectionInUseError
 	}
+	if tds.mr != nil && tds.mr.packetEOM == false {
+		panic("Connection not ready to be re-used yet for transaction.")
+	}
+	tds.inUse = true
+
+	tds.mr = tds.pr.BeginMessage(packetTabularResult)
 	err := tds.pw.BeginMessage(packetTransaction)
 	if err != nil {
 		return err
@@ -231,11 +237,13 @@ func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationL
 	if err != nil {
 		return err
 	}
-	return tds.Scan(false)
-	if err != nil {
-		return err
+	for tds.mr.packetEOM == false {
+		err = tds.Scan(false)
+		if err != nil {
+			return err
+		}
 	}
-	return tds.Scan(false)
+	return nil
 }
 func (tds *Connection) Begin(iso rdb.IsolationLevel) error {
 	return tds.transaction(tranBegin, "", iso)
@@ -256,10 +264,10 @@ func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken
 	}
 	tds.val = valuer
 
-	if !tds.inTokenStream {
-		tds.mr = tds.pr.BeginMessage(packetTabularResult)
-		tds.inTokenStream = true
+	if tds.mr != nil && tds.mr.packetEOM == false {
+		panic("Connection not ready to be re-used yet for query.")
 	}
+	tds.mr = tds.pr.BeginMessage(packetTabularResult)
 	err := tds.execute(cmd.Sql, cmd.TruncLongText, cmd.Arity, params)
 	if err != nil {
 		return err
@@ -277,23 +285,21 @@ func (tds *Connection) done() error {
 	return err
 }
 
-const (
-	scanStateNormal byte = iota
-	scanStateEnvChange
-)
-
 func (tds *Connection) Scan(reportRow bool) error {
-	state := scanStateNormal
 	for {
+		if tds.inUse == false {
+			return nil
+		}
 		res, err := tds.getSingleResponse(tds.mr, reportRow)
 		if err != nil {
-			tds.val.Done()
+			tds.done()
 			return err
 		}
 		if res == nil {
 			if debugToken {
-				fmt.Println("TOKEN io.EOF")
+				fmt.Println("TOKEN io.EOF (EOM)")
 			}
+			// tds.inTokenStream = false
 			// TODO: Determine why io.EOF is being returned (see getSingleResponse recover()).
 			return tds.done()
 		}
@@ -304,7 +310,6 @@ func (tds *Connection) Scan(reportRow bool) error {
 			}
 			tds.val.Message(v)
 		case []*SqlColumn:
-			state = scanStateNormal
 			if debugToken {
 				fmt.Println("TOKEN COLUMN")
 			}
@@ -315,7 +320,6 @@ func (tds *Connection) Scan(reportRow bool) error {
 			}
 			tds.val.Columns(cc)
 		case *SqlRow:
-			state = scanStateNormal
 			if debugToken {
 				fmt.Println("TOKEN ROW")
 			}
@@ -325,32 +329,24 @@ func (tds *Connection) Scan(reportRow bool) error {
 			// during the row scan.
 			tds.val.RowScanned()
 		case SqlRpcResult:
-			tds.inTokenStream = false
 			if debugToken {
-				fmt.Println("TOKEN RPC RESULT")
+				fmt.Printf("TOKEN RPC RESULT: %#v\n", v)
 			}
 		case *SqlDone:
-			if state == scanStateEnvChange {
-				if debugToken {
-					fmt.Println("TOKEN DONE - ENV CHANGE")
-				}
-				continue
-			}
 			if v.StatusCode == 0 {
 				if debugToken {
-					fmt.Println("TOKEN DONE - FINAL")
+					fmt.Printf("TOKEN DONE - FINAL: %#v\n", v)
 				}
 				return tds.done()
 			}
 			if debugToken {
-				fmt.Println("TOKEN DONE")
+				fmt.Printf("TOKEN DONE: %#v\n", v)
 			}
 		case SqlOrder:
 			if debugToken {
 				fmt.Println("TOKEN ORDER")
 			}
 		case EnvChange:
-			state = scanStateEnvChange
 			if debugToken {
 				fmt.Println("TOKEN ENV CHANGE")
 			}
@@ -371,8 +367,12 @@ func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, par
 		return connectionInUseError
 	}
 	tds.inUse = true
-
-	err := tds.sendRpc(sql, truncValue, params)
+	var err error
+	if len(params) == 0 {
+		err = tds.sendSimpleQuery(sql)
+	} else {
+		err = tds.sendRpc(sql, truncValue, params)
+	}
 	if err != nil {
 		return err
 	}
@@ -387,6 +387,18 @@ const (
 var rpcHeaderParam = &rdb.Param{
 	Type:   rdb.Text,
 	Length: 0,
+}
+
+func (tds *Connection) sendSimpleQuery(sql string) error {
+	w := tds.pw
+	err := w.BeginMessage(packetSqlBatch)
+	if err != nil {
+		return err
+	}
+
+	w.WriteBuffer(tds.getAllHeaders())
+	w.WriteBuffer(uconv.Encode.FromString(sql))
+	return w.EndMessage()
 }
 
 func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) error {
@@ -411,46 +423,6 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) 
 	if withRecomp {
 		options = 1
 	}
-	/*
-		ParameterData is repeated once for each parameter in the request.
-
-		Stream Definition:
-
-		RPCRequest =
-			ALL_HEADERS
-			(
-				(
-					US_VARCHAR ProcName
-					OR (
-						%xFF %xFF
-						USHORT ProcID
-					)
-				) NameLenProcID
-				(
-					BIT fWithRecomp
-					BIT fNoMetaData
-					BIT fReuseMetaData
-					13 BIT 13FRESERVEDBIT
-				) OptionFlags
-				*(
-					(
-						B_VARCHAR
-						(
-							BIT fByRefValue
-							BIT fDefaultValue
-							6 BIT 6FRESERVEDBIT
-						)StatusFlags
-						TYPE_INFO
-					) ParamMetaData
-					TYPE_VARBYTE ParamLenData
-				)ParameterData
-			) RPCReqBatch
-			*(
-				%xFF BatchFlag
-				RPCReqBatch
-			)
-			[%xFF BatchFlag]
-	*/
 
 	w.WriteBuffer(tds.getAllHeaders())
 	w.WriteUint16(0xffff) // ProcIDSwitch
@@ -528,7 +500,6 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 
 	switch token {
 	// TODO: case tokenReturnValue (0xAC):
-	// TODO: case tokenOrder (0xA9):
 	case tokenInfo:
 		fallthrough
 	case tokenError:
