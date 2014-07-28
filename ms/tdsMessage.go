@@ -276,7 +276,6 @@ func (mr *MessageReader) Close() error {
 func (r *MessageReader) Fetch(n int) (ret []byte, err error) {
 	if n == 0 {
 		if r.packetEOM && len(r.current) == 0 {
-			r.packetEOM = false
 			return nil, io.EOF
 		}
 		return nil, nil
@@ -287,7 +286,6 @@ func (r *MessageReader) Fetch(n int) (ret []byte, err error) {
 		return ret, nil
 	}
 	if r.packetEOM {
-		r.packetEOM = false
 		return nil, io.EOF
 	}
 	var next []byte
