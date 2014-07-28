@@ -36,7 +36,6 @@ func TestTransaction(t *testing.T) {
 	params := []rdb.Param{
 		{Name: "v1", Type: rdb.Text, Value: "Hello"},
 	}
-
 	tran := db.Begin()
 
 	var v1 string
