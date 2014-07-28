@@ -495,10 +495,8 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		default:
 			return fmt.Errorf("Need time.Time for param @%s", param.Name)
 		}
-		if (info.Dt & dtZone) == 0 {
-			// If no zone, convert to UTC.
-			v = v.UTC()
-		}
+		_, sec := v.Zone()
+		v = v.UTC()
 
 		if (info.Dt & dtTime) != 0 {
 			var nano time.Duration
@@ -540,7 +538,6 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			w.WriteBuffer(bb[:3])
 		}
 		if (info.Dt & dtZone) != 0 {
-			_, sec := v.Zone()
 			w.WriteUint16(uint16(sec / 60))
 		}
 		return nil
@@ -893,14 +890,14 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Driv
 		}
 		dt = dt.Add(tm)
 		// TODO: set offset.
-		_ = offset
+
 		loc := time.UTC
 		if offset != 0 {
 			hrs := offset / 60
-			mins := offset - (hrs * 60)
+			mins := offset % 60
 			loc = time.FixedZone(fmt.Sprintf("UTC %d:%02d", hrs, mins), int(offset)*60)
 		}
-		dt = time.Date(dt.Year(), dt.Month(), dt.Day(), dt.Hour(), dt.Minute(), dt.Second(), dt.Nanosecond(), loc)
+		dt = time.Date(dt.Year(), dt.Month(), dt.Day(), dt.Hour(), dt.Minute(), dt.Second(), dt.Nanosecond(), time.UTC).In(loc)
 		wf(&rdb.DriverValue{
 			Value: dt,
 		})
