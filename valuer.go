@@ -22,6 +22,7 @@ type DriverValuer interface {
 	RowScanned()
 	Message(*Message)
 	WriteField(c *Column, reportRow bool, value *DriverValue, assign Assigner) error
+	RowsAffected(count uint64)
 }
 
 type valuer struct {
@@ -39,7 +40,8 @@ type valuer struct {
 
 	convert []ColumnConverter
 
-	rowCount uint64
+	rowCount     uint64
+	rowsAffected uint64
 }
 
 func (v *valuer) clearBuffer() {
@@ -118,6 +120,10 @@ func (v *valuer) Done() error {
 		return v.errorList
 	}
 	return nil
+}
+
+func (v *valuer) RowsAffected(count uint64) {
+	v.rowsAffected = count
 }
 
 /*

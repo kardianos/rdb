@@ -134,6 +134,10 @@ func RowsQuerySimple(db must.ConnPool, t *testing.T) {
 		i++
 		t.Logf("Animal_2: %s\n", myFav)
 	}
+
+	if res.RowsAffected() != 3 {
+		t.Errorf("Invalid number of rows affected. Want 3 got %d.", res.RowsAffected())
+	}
 }
 func RowsQueryNull(db must.ConnPool, t *testing.T) {
 	var colA string

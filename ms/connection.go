@@ -25,7 +25,6 @@ type Connection struct {
 
 	open  bool
 	inUse bool
-	// inTokenStream bool
 
 	ProductVersion  *semver.Version
 	ProtocolVersion *semver.Version
@@ -296,11 +295,10 @@ func (tds *Connection) Scan(reportRow bool) error {
 			return err
 		}
 		if res == nil {
+			// END OF (TDS) MESSAGE.
 			if debugToken {
 				fmt.Println("TOKEN io.EOF (EOM)")
 			}
-			// tds.inTokenStream = false
-			// TODO: Determine why io.EOF is being returned (see getSingleResponse recover()).
 			return tds.done()
 		}
 		switch v := res.(type) {
@@ -333,6 +331,9 @@ func (tds *Connection) Scan(reportRow bool) error {
 				fmt.Printf("TOKEN RPC RESULT: %#v\n", v)
 			}
 		case *SqlDone:
+			if v.StatusCode&0x10 != 0 {
+				tds.val.RowsAffected(v.Rows)
+			}
 			if v.StatusCode == 0 {
 				if debugToken {
 					fmt.Printf("TOKEN DONE - FINAL: %#v\n", v)

@@ -79,7 +79,7 @@ func (r result) LastInsertId() (int64, error) {
 	return 0, nil
 }
 func (r result) RowsAffected() (int64, error) {
-	return 0, nil
+	return int64(r.res.RowsAffected()), nil
 }
 
 func prepParams(args []interface{}) []rdb.Param {
