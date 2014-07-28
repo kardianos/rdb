@@ -187,6 +187,10 @@ func (must Result) Close() {
 	}
 }
 
+func (r *Result) RowsAffected() uint64 {
+	return r.norm.RowsAffected()
+}
+
 func (must Result) Next() (more bool) {
 	return must.norm.Next()
 }

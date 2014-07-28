@@ -21,6 +21,10 @@ func (r *Result) Close() error {
 	return r.close(true)
 }
 
+func (r *Result) RowsAffected() uint64 {
+	return r.val.rowsAffected
+}
+
 func (r *Result) close(explicit bool) error {
 	if r == nil {
 		return nil
