@@ -31,11 +31,24 @@ func TestDateTime(t *testing.T) {
 	d := time.Now().Truncate(time.Hour * 24).UTC()
 	tm := time.Now().Sub(time.Now().Truncate(time.Hour * 24))
 	dt2 := time.Now()
-	dto := time.Now()
+
+	locName := "America/Los_Angeles"
+	loc, err := time.LoadLocation(locName)
+	if err != nil {
+		t.Fatalf("Could not load location: %s, %v", locName, err)
+	}
+	dto := time.Date(2000, 1, 1, 22, 45, 01, 0, loc)
+	dto2 := time.Date(2000, 1, 1, 11, 45, 01, 0, loc)
 	dtS := time.Now()
 
 	cmd := &rdb.Command{
 		Sql: `
+			if object_id('tempdb..##timeTemp') is not null begin
+				truncate table ##timeTemp
+				
+				insert into ##timeTemp (Name, TM)
+				values ('DTO', @dto), ('DTO2', @dto2)
+			end
 			select
 				dtV = cast(@dtS as datetime),
 				dtS = cast(@dtS as nvarchar(max)),
@@ -46,7 +59,8 @@ func TestDateTime(t *testing.T) {
 				d = @d,
 				t = @t,
 				dt2 = @dt2,
-				dto = @dto
+				dto = @dto,
+				dto2 = @dto2
 		`,
 		Arity: rdb.OneMust,
 	}
@@ -59,6 +73,7 @@ func TestDateTime(t *testing.T) {
 		{Name: "t", Type: rdb.TypeTime, Value: tm},
 		{Name: "dt2", Type: rdb.TypeTimestamp, Value: dt2},
 		{Name: "dto", Type: rdb.TypeTimestampz, Value: dto},
+		{Name: "dto2", Type: rdb.TypeTimestampz, Value: dto2},
 		{Name: "dtS", Type: TypeOldTD, Value: dtS},
 		{Name: "dt2S", Type: rdb.TypeTimestamp, Value: dtS},
 	}
@@ -73,12 +88,14 @@ func TestDateTime(t *testing.T) {
 	res.Scan()
 
 	dto = res.Get("dto").(time.Time)
+	dto2 = res.Get("dto2").(time.Time)
 
 	dt = dt.Round(truncTo)
 
 	t.Logf("D: %v", d)
 	t.Logf("DT2: %v", dt2)
 	t.Logf("DTO: %v", dto)
+	t.Logf("DTO2: %v", dto2)
 
 	t.Logf("DTV: %v", res.Get("dtV").(time.Time))
 	t.Logf("DTS: %s", res.Get("dtS").([]byte))
@@ -86,7 +103,7 @@ func TestDateTime(t *testing.T) {
 	t.Logf("DT2S: %s", res.Get("dt2S").([]byte))
 	t.Logf("dtoS: %s", res.Get("dtoS").([]byte))
 
-	compare := []interface{}{dt, d, tm, dt2, dto}
+	compare := []interface{}{dt, d, tm, dt2, dto, dto2}
 
 	for i := range compare {
 		if i >= len(params) {
