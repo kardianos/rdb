@@ -42,27 +42,22 @@ end
 		Arity: rdb.ZeroMust,
 	}
 
-	// TODO: Cheat for now, alter when native output param support is added.
 	callProc := &rdb.Command{
-		Sql: `
-declare @val int
-exec AddTen @p1=5, @p2 = @val output
-select Val = @val
-		`,
-		Arity: rdb.OneMust,
+		Sql:   `AddTen`,
+		Arity: rdb.ZeroMust,
 	}
 
 	openConnPool()
 	db.Query(createProcDrop)
 	db.Query(createProc)
-	res := db.Query(callProc)
-	var val int
-	if res.Next() == false {
-		t.Fatalf("No rows from proc.")
-	}
-	res.Scan(&val)
 
+	var val int
+	db.Query(callProc,
+		rdb.Param{Name: "p1", Value: 5, Type: rdb.TypeInt32},
+		rdb.Param{Name: "p2", Out: true, Value: &val, Type: rdb.TypeInt32},
+	)
 	if val != 15 {
 		t.Fatalf("Incorrect value. Want 15 was %v", val)
 	}
+	assertFreeConns(t)
 }

@@ -11,19 +11,6 @@ import (
 	"bitbucket.org/kardianos/rdb/must"
 )
 
-const testConnectionString = "ms://TESTU@localhost/SqlExpress?db=master&dial_timeout=3s"
-
-var config *rdb.Config
-var db must.ConnPool
-
-func openConnPool() {
-	if db.Normal() != nil {
-		return
-	}
-	config = must.Config(rdb.ParseConfigURL(testConnectionString))
-	db = must.Open(config)
-}
-
 func TestSimpleQuery(t *testing.T) {
 	err := QueryTest(t)
 	if err != nil {
@@ -49,11 +36,7 @@ func QueryTest(t *testing.T) (ferr error) {
 	RowsQueryNull(db, t)
 	LargerQuery(db, t)
 
-	capacity, available := db.Normal().PoolAvailable()
-	t.Logf("Pool capacity: %v, available: %v.", capacity, available)
-	if capacity != available {
-		t.Errorf("Not all connections returned to pool.")
-	}
+	assertFreeConns(t)
 	return nil
 }
 

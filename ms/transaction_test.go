@@ -77,9 +77,5 @@ func TestTransaction(t *testing.T) {
 		}
 	}
 
-	capacity, available := db.Normal().PoolAvailable()
-	t.Logf("Pool capacity: %v, available: %v.", capacity, available)
-	if capacity != available {
-		t.Errorf("Not all connections returned to pool.")
-	}
+	assertFreeConns(t)
 }
