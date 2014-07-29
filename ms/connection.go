@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"strings"
 
 	"bitbucket.org/kardianos/rdb"
 	"bitbucket.org/kardianos/rdb/ms/uconv"
@@ -29,9 +30,10 @@ type Connection struct {
 	ProductVersion  *semver.Version
 	ProtocolVersion *semver.Version
 
-	mr  *MessageReader
-	val rdb.DriverValuer
-	col []*SqlColumn
+	mr     *MessageReader
+	val    rdb.DriverValuer
+	col    []*SqlColumn
+	params []rdb.Param
 
 	allHeaders            []byte
 	allHeaderNumberOffset int
@@ -276,6 +278,7 @@ func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken
 
 func (tds *Connection) done() error {
 	mrCloseErr := tds.mr.Close()
+	tds.params = nil
 	tds.inUse = false
 	err := tds.val.Done()
 	if err == nil {
@@ -351,6 +354,11 @@ func (tds *Connection) Scan(reportRow bool) error {
 			if debugToken {
 				fmt.Println("TOKEN ENV CHANGE")
 			}
+		case ParamValue:
+			if debugToken {
+				fmt.Println("TOKEN PARAM VALUE")
+			}
+			// Param handled in decoder for now.
 		default:
 			panic(fmt.Sprintf("Unknown response: %v", res))
 		}
@@ -383,6 +391,7 @@ func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, par
 
 const (
 	sp_ExecuteSql = 10
+	sp_Execute    = 12
 )
 
 var rpcHeaderParam = &rdb.Param{
@@ -410,9 +419,13 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) 
 	// * RPC Param 4 = {Name: "@Foo", Type: VarChar, Field: value}
 	// Simple! Once figured out.
 
-	var procID uint16 = sp_ExecuteSql
+	tds.params = params
+	isProc := strings.IndexAny(sql, " \t\r\n") < 0
 	withRecomp := false
+
 	// collation := []byte{0x09, 0x04, 0xD0, 0x00, 0x34}
+
+	var procID uint16 = sp_ExecuteSql
 
 	w := tds.pw
 	err := w.BeginMessage(packetRpc)
@@ -426,33 +439,40 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) 
 	}
 
 	w.WriteBuffer(tds.getAllHeaders())
-	w.WriteUint16(0xffff) // ProcIDSwitch
-	w.WriteUint16(procID)
-	w.WriteUint16(options) // 16 bits (2 bytes) - Options: fWithRecomp, fNoMetaData, fReuseMetaData, 13FRESERVEDBIT
 
-	paramNames := &bytes.Buffer{}
-	for i := range params {
-		param := &params[i]
-		if i != 0 {
-			paramNames.WriteRune(',')
-		}
-		if len(param.Name) == 0 {
-			return fmt.Errorf("Missing parameter name at index: %d", i)
-		}
+	if !isProc {
+		w.WriteUint16(0xffff) // ProcIDSwitch
+		w.WriteUint16(procID)
+		w.WriteUint16(options) // 16 bits (2 bytes) - Options: fWithRecomp, fNoMetaData, fReuseMetaData, 13FRESERVEDBIT
 
-		st, found := sqlTypeLookup[param.Type]
-		if !found {
-			panic(fmt.Sprintf("SqlType not found: %d", param.Type))
+		paramNames := &bytes.Buffer{}
+		for i := range params {
+			param := &params[i]
+			if i != 0 {
+				paramNames.WriteRune(',')
+			}
+			if len(param.Name) == 0 {
+				return fmt.Errorf("Missing parameter name at index: %d", i)
+			}
+
+			st, found := sqlTypeLookup[param.Type]
+			if !found {
+				panic(fmt.Sprintf("SqlType not found: %d", param.Type))
+			}
+			fmt.Fprintf(paramNames, "@%s %s", param.Name, st.TypeString(param))
 		}
-		fmt.Fprintf(paramNames, "@%s %s", param.Name, st.TypeString(param))
-	}
-	err = encodeParam(w, truncValue, tds.ProtocolVersion, rpcHeaderParam, []byte(sql))
-	if err != nil {
-		return err
-	}
-	err = encodeParam(w, truncValue, tds.ProtocolVersion, rpcHeaderParam, paramNames.Bytes())
-	if err != nil {
-		return err
+		err = encodeParam(w, truncValue, tds.ProtocolVersion, rpcHeaderParam, []byte(sql))
+		if err != nil {
+			return err
+		}
+		err = encodeParam(w, truncValue, tds.ProtocolVersion, rpcHeaderParam, paramNames.Bytes())
+		if err != nil {
+			return err
+		}
+	} else {
+		w.WriteUint16(uint16(len(sql))) // ProcIDSwitch
+		w.WriteBuffer(uconv.Encode.FromString(sql))
+		w.WriteUint16(options)
 	}
 
 	// Other parameters.
@@ -500,7 +520,6 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 	}
 
 	switch token {
-	// TODO: case tokenReturnValue (0xAC):
 	case tokenInfo:
 		fallthrough
 	case tokenError:
@@ -535,6 +554,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			count := int(binary.LittleEndian.Uint16(bb))
 			for i := 0; i < count; i++ {
 				column := decodeColumnInfo(read)
+				_, column.Name = uconv.Decode.Prefix1(read)
 				column.Index = i
 				columns = append(columns, column)
 			}
@@ -556,7 +576,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		}, nil
 	case tokenRow:
 		for _, column := range tds.col {
-			decodeFieldValue(read, column, tds.val, reportRow)
+			decodeFieldValue(read, column, tds.val.WriteField, reportRow)
 		}
 
 		tds.peek = read(1)[0]
@@ -594,6 +614,51 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 
 		tds.peek = read(1)[0]
 		return EnvChange{}, nil
+	case tokenReturnValue:
+		//ParamOrdinal ushort
+		//ParamName B_VARCHAR
+		//Status BYTE
+		//UserType ULONG
+		//Flags 2 BYTES
+		//TypeInfo TYPE_INFO
+		//Value TYPE_VARBYTE
+
+		paramIndex := binary.LittleEndian.Uint16(read(2))
+		_, paramName := uconv.Decode.Prefix1(read)
+		status := read(1)[0]
+		switch status {
+		case 0x01:
+		// Output param.
+		case 0x02:
+		// User defined function.
+		default:
+			panic(fmt.Errorf("Unknown status value: 0x%X", status))
+		}
+
+		col := decodeColumnInfo(read)
+		col.Name = paramName
+		col.Index = int(paramIndex)
+
+		outValue := rdb.Nullable{}
+
+		wf := func(col *rdb.Column, reportRow bool, value *rdb.DriverValue, assign rdb.Assigner) error {
+			outValue.Value = value.Value
+			outValue.Null = value.Null
+			return nil
+		}
+		decodeFieldValue(read, col, wf, true)
+
+		tds.peek = read(1)[0]
+
+		//tds.params[col.Index].Value
+		//pv.Value.Value
+
+		err := rdb.AssignValue(&col.Column, outValue, tds.params[col.Index].Value, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		return ParamValue{}, nil
 	default:
 		return nil, fmt.Errorf("Unknown response code: 0x%X", token)
 	}

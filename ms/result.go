@@ -66,6 +66,8 @@ type SqlRow struct{}
 
 type EnvChange struct{}
 
+type ParamValue struct{}
+
 type SqlRpcResult int32
 
 type SqlOrder []uint16

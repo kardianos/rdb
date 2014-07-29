@@ -31,6 +31,7 @@ const (
 	tokenDone     = 0xFD
 
 	tokenReturnStatus   = 0x79
+	tokenReturnValue    = 0xAC
 	tokenDoneProc       = 0xFE
 	tokenDoneInProc     = 0xFF
 	tokenColumnMetaData = 0x81

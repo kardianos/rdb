@@ -24,7 +24,6 @@ var zeroDateN = time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC)
 
 func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, param *rdb.Param, value interface{}) error {
 	// TODO: Handle collation.
-	// TODO: Check input value length.
 	collation := []byte{0x09, 0x04, 0xD0, 0x00, 0x34}
 
 	nullValue := false
@@ -40,7 +39,12 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		w.WriteByte(byte(len(nameUtf16) / 2))
 		w.WriteBuffer(nameUtf16)
 	}
-	w.WriteByte(0) // Status flag.
+	// Status flag. 0 = normal, 1 = output parameter.
+	if param.Out {
+		w.WriteByte(1)
+	} else {
+		w.WriteByte(0)
+	}
 
 	st, found := sqlTypeLookup[param.Type]
 	if !found {
@@ -235,6 +239,31 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 				w.WriteByte(byte(v))
 			case float64:
 				w.WriteByte(byte(v))
+
+			case *int8:
+				w.WriteByte(byte(*v))
+			case *byte:
+				w.WriteByte(*v)
+			case *int16:
+				w.WriteByte(byte(*v))
+			case *uint16:
+				w.WriteByte(byte(*v))
+			case *int32:
+				w.WriteByte(byte(*v))
+			case *uint32:
+				w.WriteByte(byte(*v))
+			case *int64:
+				w.WriteByte(byte(*v))
+			case *uint64:
+				w.WriteByte(byte(*v))
+			case *int:
+				w.WriteByte(byte(*v))
+			case *uint:
+				w.WriteByte(byte(*v))
+			case *float32:
+				w.WriteByte(byte(*v))
+			case *float64:
+				w.WriteByte(byte(*v))
 			default:
 				return fmt.Errorf("Need byte or smaller for param @%s", param.Name)
 			}
@@ -264,6 +293,31 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 				w.WriteUint16(uint16(v))
 			case float64:
 				w.WriteUint16(uint16(v))
+
+			case *int8:
+				w.WriteUint16(uint16(*v))
+			case *byte:
+				w.WriteUint16(uint16(*v))
+			case *int16:
+				w.WriteUint16(uint16(*v))
+			case *uint16:
+				w.WriteUint16(uint16(*v))
+			case *int32:
+				w.WriteUint16(uint16(*v))
+			case *uint32:
+				w.WriteUint16(uint16(*v))
+			case *int64:
+				w.WriteUint16(uint16(*v))
+			case *uint64:
+				w.WriteUint16(uint16(*v))
+			case *int:
+				w.WriteUint16(uint16(*v))
+			case *uint:
+				w.WriteUint16(uint16(*v))
+			case *float32:
+				w.WriteUint16(uint16(*v))
+			case *float64:
+				w.WriteUint16(uint16(*v))
 			default:
 				return fmt.Errorf("Need uint16 or smaller for param @%s", param.Name)
 			}
@@ -293,6 +347,31 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 				w.WriteUint32(uint32(v))
 			case float64:
 				w.WriteUint32(uint32(v))
+
+			case *int8:
+				w.WriteUint32(uint32(*v))
+			case *byte:
+				w.WriteUint32(uint32(*v))
+			case *int16:
+				w.WriteUint32(uint32(*v))
+			case *uint16:
+				w.WriteUint32(uint32(*v))
+			case *int32:
+				w.WriteUint32(uint32(*v))
+			case *uint32:
+				w.WriteUint32(uint32(*v))
+			case *int64:
+				w.WriteUint32(uint32(*v))
+			case *uint64:
+				w.WriteUint32(uint32(*v))
+			case *int:
+				w.WriteUint32(uint32(*v))
+			case *uint:
+				w.WriteUint32(uint32(*v))
+			case *float32:
+				w.WriteUint32(uint32(*v))
+			case *float64:
+				w.WriteUint32(uint32(*v))
 			default:
 				return fmt.Errorf("Need uint32 or smaller for param @%s", param.Name)
 			}
@@ -322,6 +401,31 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 				w.WriteUint64(uint64(v))
 			case float64:
 				w.WriteUint64(uint64(v))
+
+			case *int8:
+				w.WriteUint64(uint64(*v))
+			case *byte:
+				w.WriteUint64(uint64(*v))
+			case *int16:
+				w.WriteUint64(uint64(*v))
+			case *uint16:
+				w.WriteUint64(uint64(*v))
+			case *int32:
+				w.WriteUint64(uint64(*v))
+			case *uint32:
+				w.WriteUint64(uint64(*v))
+			case *int64:
+				w.WriteUint64(uint64(*v))
+			case *uint64:
+				w.WriteUint64(uint64(*v))
+			case *int:
+				w.WriteUint64(uint64(*v))
+			case *uint:
+				w.WriteUint64(uint64(*v))
+			case *float32:
+				w.WriteUint64(uint64(*v))
+			case *float64:
+				w.WriteUint64(uint64(*v))
 			default:
 				return fmt.Errorf("Need uint64 or smaller for param @%s", param.Name)
 			}
@@ -597,11 +701,12 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 		column.Scale = int(read(1)[0])
 	}
 
-	_, column.Name = uconv.Decode.Prefix1(read)
 	return column
 }
 
-func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.DriverValuer, reportRow bool) {
+type writeField func(c *rdb.Column, reportRow bool, value *rdb.DriverValue, assign rdb.Assigner) error
+
+func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, resultWf writeField, reportRow bool) {
 	sc := &column.Column
 	var err error
 	defer func() {
@@ -611,7 +716,7 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Driv
 	}()
 
 	var wf = func(val *rdb.DriverValue) {
-		err = result.WriteField(sc, reportRow, val, nil)
+		err = resultWf(sc, reportRow, val, nil)
 	}
 
 	if column.Unlimit {
@@ -889,7 +994,6 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, result rdb.Driv
 			offset = int16(binary.LittleEndian.Uint16(read(2)))
 		}
 		dt = dt.Add(tm)
-		// TODO: set offset.
 
 		loc := time.UTC
 		if offset != 0 {

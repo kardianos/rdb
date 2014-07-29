@@ -201,6 +201,10 @@ func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assig
 	if convert != nil {
 		convert(c, &outValue)
 	}
+	return AssignValue(c, outValue, prep, assign)
+}
+
+func AssignValue(c *Column, outValue Nullable, prep interface{}, assign Assigner) error {
 	if nullable, is := prep.(*Nullable); is {
 		*nullable = outValue
 		return nil
