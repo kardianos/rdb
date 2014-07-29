@@ -40,7 +40,4 @@ Simple example:
 		return err
 	}
 */
-/*
-Usage examples at: https://bitbucket.org/kardianos/rdb/src/default/example/
-*/
 package rdb
