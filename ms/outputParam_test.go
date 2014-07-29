@@ -5,6 +5,7 @@
 package ms
 
 import (
+	"math/big"
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
@@ -31,12 +32,12 @@ if object_id('AddTen') is not null drop proc AddTen
 	createProc := &rdb.Command{
 		Sql: `
 create proc dbo.AddTen (
-   @p1 int,
-   @p2 int output
+	@p1 int,
+	@p2 int output
 )
 as
 begin
-   select @p2 = @p1 + 10
+	select @p2 = @p1 + 10
 end
 		`,
 		Arity: rdb.ZeroMust,
@@ -58,6 +59,68 @@ end
 	)
 	if val != 15 {
 		t.Fatalf("Incorrect value. Want 15 was %v", val)
+	}
+	assertFreeConns(t)
+}
+
+func TestOutputParamTypes(t *testing.T) {
+	defer func() {
+		if re := recover(); re != nil {
+			if localError, is := re.(must.Error); is {
+				t.Errorf("SQL Error: %v", localError)
+				return
+			}
+			panic(re)
+		}
+	}()
+
+	createProcDrop := &rdb.Command{
+		Sql: `
+if object_id('DataTypes') is not null drop proc DataTypes
+		`,
+		Arity: rdb.ZeroMust,
+	}
+	createProc := &rdb.Command{
+		Sql: `
+create proc dbo.DataTypes (
+	@p1 nvarchar(max) output,
+	@p2 int output,
+	@p3 decimal(38,7) output
+)
+as
+begin
+	select @p1 = 'Hello', @p2 = 42, @p3 = 45.678
+end
+		`,
+		Arity: rdb.ZeroMust,
+	}
+
+	callProc := &rdb.Command{
+		Sql:   `DataTypes`,
+		Arity: rdb.ZeroMust,
+	}
+
+	openConnPool()
+	db.Query(createProcDrop)
+	db.Query(createProc)
+
+	var val1 string
+	var val2 int
+	var val3 = big.NewRat(5, 1)
+
+	db.Query(callProc,
+		rdb.Param{Name: "p1", Out: true, Value: &val1, Type: rdb.Text},
+		rdb.Param{Name: "p2", Out: true, Value: &val2, Type: rdb.Integer},
+		rdb.Param{Name: "p3", Out: true, Value: &val3, Precision: 38, Scale: 7, Type: rdb.Decimal},
+	)
+	if val1 != "Hello" {
+		t.Fatalf("Incorrect value. Want 'Hello' was %v", val1)
+	}
+	if val2 != 42 {
+		t.Fatalf("Incorrect value. Want 42 was %v", val2)
+	}
+	if val3.FloatString(3) != "45.678" {
+		t.Fatalf("Incorrect value. Want 45.678 was %v", val3)
 	}
 	assertFreeConns(t)
 }

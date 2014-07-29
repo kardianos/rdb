@@ -95,6 +95,12 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		// Start ParamLenData.
 		// This uses type info, but lengths refer to the actual field value.
 
+		switch v := value.(type) {
+		case *string:
+			value = *v
+		case *[]byte:
+			value = *v
+		}
 		if writeMaxValue {
 			if reader, ok := value.(io.Reader); ok {
 				// Size Unknown.
@@ -441,6 +447,11 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			return nil
 		}
 		w.WriteByte(st.W) // Row field width.
+
+		switch v := value.(type) {
+		case *bool:
+			value = *v
+		}
 		switch v := value.(type) {
 		case bool:
 			writeValue := byte(0)
@@ -470,6 +481,10 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		w.WriteByte(typeLength) // TYPE_INFO width.
 		w.WriteByte(byte(param.Precision))
 		w.WriteByte(byte(param.Scale))
+		switch v := value.(type) {
+		case **big.Rat:
+			value = *v
+		}
 		switch v := value.(type) {
 		case *big.Rat:
 			sign := byte(0)
@@ -544,6 +559,29 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			writeValue = float64(v)
 		case *big.Rat:
 			writeValue, _ = v.Float64()
+
+		case *float32:
+			writeValue = float64(*v)
+		case *float64:
+			writeValue = float64(*v)
+		case *byte:
+			writeValue = float64(*v)
+		case *int8:
+			writeValue = float64(*v)
+		case *uint16:
+			writeValue = float64(*v)
+		case *int16:
+			writeValue = float64(*v)
+		case *uint32:
+			writeValue = float64(*v)
+		case *int32:
+			writeValue = float64(*v)
+		case *uint64:
+			writeValue = float64(*v)
+		case *int64:
+			writeValue = float64(*v)
+		case **big.Rat:
+			writeValue, _ = v.Float64()
 		default:
 			return fmt.Errorf("Need numeric for param @%s", param.Name)
 		}
@@ -563,6 +601,10 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		}
 		w.WriteByte(st.W) // Row field width.
 
+		switch v := value.(type) {
+		case *time.Time:
+			value = *v
+		}
 		switch v := value.(type) {
 		case time.Time:
 			if v.Before(minDateTime) {
@@ -589,6 +631,10 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		}
 		w.WriteByte(st.W) // Row field width.
 
+		switch v := value.(type) {
+		case *time.Time:
+			value = *v
+		}
 		var v time.Time
 		var dur time.Duration
 		switch input := value.(type) {
