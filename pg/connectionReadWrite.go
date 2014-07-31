@@ -12,9 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 )
 
-const debug = true
+const debug = false
 
 type panicError struct {
 	err error
@@ -107,20 +108,15 @@ func (r *reader) Bytea(length int32) []byte {
 	}
 	return buf
 }
-func (r *reader) MsgDone() error {
-	for r.Length > 0 {
-		n := int(r.Length)
-		if n > len(r.buf) {
-			n = len(r.buf)
-		}
-		var readN int
-		readN, err := r.Read(r.buf[:n])
-		r.Length -= int32(readN)
-		if err != nil {
-			return err
-		}
+func (r *reader) MsgDone() {
+	if r.Length <= 0 {
+		return
 	}
-	return nil
+	_, err := io.CopyN(ioutil.Discard, r.Reader, int64(r.Length))
+	if err != nil {
+		panic(panicError{err})
+	}
+	r.Length = 0
 }
 
 // Used to debug a server message read.

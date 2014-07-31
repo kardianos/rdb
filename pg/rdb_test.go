@@ -25,9 +25,9 @@ func TestBasicQuery(t *testing.T) {
 
 	res, err := db.Query(&rdb.Command{
 		Sql: `
-select 1 as "foo", 2 as "fii", 'Hello' as "fox"
+select 1 as "foo", cast(2 as int8) as "fii", 'Hello' as "fox", cast(E'\\xDEADBEEF' as bytea) as "BN"
 union all
-select 1 as "foo", 2 as "fii", 'World' as "fox"
+select 5, 7, 'World', E'\\xDEAD0123'
 ; 
 		`,
 	})
@@ -45,12 +45,12 @@ select 1 as "foo", 2 as "fii", 'World' as "fox"
 	}
 	res.Close()
 
-	if foo != 1 && fii != 2 && fox != "Hello" {
+	if foo != 5 && fii != 7 && fox != "World" {
 		t.Logf("foo: %d, fii: %d, fox: %s", foo, fii, fox)
 		t.Errorf("Failed to get correct values.")
 	}
 
-	if len(schema) != 3 {
+	if len(schema) < 3 {
 		t.Fatalf("Not enough schema columns.")
 	}
 

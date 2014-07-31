@@ -64,10 +64,24 @@ type MsgCopyBothResponse struct {
 }
 type MsgDataRow struct {
 	ColumnCount int16
+	FieldRead   *reader
+
 	// For each column:
 	//	int32, bytea
 	//  Value is null if int32 == -1.
 }
+
+func (msg *MsgDataRow) NextField() (null bool) {
+	msg.FieldRead.MsgDone()
+	msg.FieldRead.Length = 4
+	length := msg.FieldRead.Int32()
+	if length < 0 {
+		return true
+	}
+	msg.FieldRead.Length = length
+	return false
+}
+
 type MsgEmptyQueryResponse struct{}
 type MsgErrorResponse struct {
 	Messages []*StatusMessage
@@ -108,7 +122,4 @@ type MsgPortalSuspended struct{}
 type MsgReadyForQuery struct {
 	TransactionStatus transactionStatus
 }
-type MsgRowDescription struct {
-	// Count int16
-	// TODO: Each column.
-}
+type MsgRowDescription struct{} // Parse on message.

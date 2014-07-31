@@ -56,10 +56,21 @@ func (pg *connection) Scan(reportRow bool) error {
 		case MsgDataRow:
 			columnCount := int(msg.ColumnCount)
 			for i := 0; i < columnCount; i++ {
-				// TODO: Fetch each row into a row buffer or wrap into a reader.
 				rCol := &pg.columns[i].Column
-				pg.valuer.WriteField(rCol, reportRow, &rdb.DriverValue{Null: true}, nil)
+				col := &pg.columns[i]
+				if isNull := msg.NextField(); isNull {
+					pg.valuer.WriteField(rCol, reportRow, &rdb.DriverValue{Null: true}, nil)
+					continue
+				}
+				// Read from msg.FieldRead each field.
+				// Decode field from field bytes.
+				val, err := decodeField(col, msg.FieldRead)
+				if err != nil {
+					return err
+				}
+				pg.valuer.WriteField(rCol, reportRow, val, nil)
 			}
+			msg.FieldRead.MsgDone()
 		default:
 			return errUnhandledMessage("Scan", msg)
 		}
