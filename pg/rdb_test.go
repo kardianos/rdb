@@ -11,7 +11,7 @@ import (
 	"bitbucket.org/kardianos/rdb/must"
 )
 
-var connectionString = "pg2://postgres:letmein@localhost:5432?db=postgres"
+var connectionString = "pg://postgres:letmein@localhost:5432?db=postgres"
 
 func TestBasicQuery(t *testing.T) {
 	conf := must.Config(rdb.ParseConfigURL(connectionString))

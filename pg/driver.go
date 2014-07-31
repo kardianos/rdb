@@ -187,5 +187,5 @@ func (d *driver) PingCommand() *rdb.Command {
 }
 
 func init() {
-	rdb.Register("pg2", &driver{})
+	rdb.Register("pg", &driver{})
 }
