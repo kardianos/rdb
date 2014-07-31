@@ -6,8 +6,7 @@ package pg
 
 import (
 	"fmt"
-	"io"
-	"io/ioutil"
+
 	"time"
 
 	"bitbucket.org/kardianos/rdb"
@@ -127,10 +126,15 @@ func (pg *connection) getMessage() (_ interface{}, err error) {
 			}
 		}
 	case tokenDataRow:
-		// TODO: Need a reader for rest of columns, or just deal with in-line.
 		value = MsgDataRow{
 			ColumnCount: read.Int16(),
+			FieldRead: &reader{
+				Reader: read.Reader,
+				buf:    read.buf,
+				Length: 0,
+			},
 		}
+		read.Length = 0
 	case tokenEmptyQueryResponse:
 		value = MsgEmptyQueryResponse{}
 	case tokenErrorResponse:
@@ -216,8 +220,8 @@ func (pg *connection) getMessage() (_ interface{}, err error) {
 	case tokenRowDescription:
 		value = MsgRowDescription{}
 
-		// fmt.Printf("Row Description:\n%v", read.HexDump())
-		// break
+		//fmt.Printf("Row Description:\n%v", read.HexDump())
+		//break
 
 		count := read.Int16()
 		schema := make([]Column, count)
@@ -243,6 +247,7 @@ func (pg *connection) getMessage() (_ interface{}, err error) {
 			schema[i] = Column{
 				Column: rdb.Column{
 					Name:    name,
+					Index:   i,
 					Length:  int(colLength),
 					Type:    columnType.Type,
 					Generic: columnType.Generic,
@@ -263,10 +268,7 @@ func (pg *connection) getMessage() (_ interface{}, err error) {
 	}
 
 	// Read message length.
-	for read.Length > 0 {
-		_, err = io.CopyN(ioutil.Discard, pg.readBuffer, int64(read.Length))
-		read.Length = 0
-	}
+	read.MsgDone()
 
-	return value, err
+	return value, nil
 }
