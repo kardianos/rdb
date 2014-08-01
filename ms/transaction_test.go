@@ -31,8 +31,6 @@ func TestTransaction(t *testing.T) {
 		Arity: rdb.OneMust,
 	}
 
-	openConnPool()
-
 	params := []rdb.Param{
 		{Name: "v1", Type: rdb.Text, Value: "Hello"},
 	}
