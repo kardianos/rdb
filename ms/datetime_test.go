@@ -65,8 +65,6 @@ func TestDateTime(t *testing.T) {
 		Arity: rdb.OneMust,
 	}
 
-	openConnPool()
-
 	params := []rdb.Param{
 		{Name: "dt", Type: TypeOldTD, Value: dt},
 		{Name: "d", Type: rdb.TypeDate, Value: d},

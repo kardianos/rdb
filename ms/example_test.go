@@ -28,7 +28,6 @@ func QueryTest(t *testing.T) (ferr error) {
 			panic(re)
 		}
 	}()
-	openConnPool()
 
 	ErrorQuery(db, t)
 	SimpleQuery(db, t)
@@ -67,7 +66,8 @@ func SimpleQuery(db must.ConnPool, t *testing.T) {
 	var myFav string
 	db.Query(&rdb.Command{
 		Sql: `
-			select @animal as 'MyAnimal';`,
+			select @animal as 'MyAnimal';
+		`,
 		Arity:         rdb.OneMust,
 		TruncLongText: true,
 	}, []rdb.Param{
@@ -80,6 +80,7 @@ func SimpleQuery(db must.ConnPool, t *testing.T) {
 	}...).Prep("MyAnimal", &myFav).Scan()
 	t.Logf("Animal_1: %s\n", myFav)
 }
+
 func RowsQuerySimple(db must.ConnPool, t *testing.T) {
 	var myFav string
 	res := db.Query(&rdb.Command{

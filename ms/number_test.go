@@ -37,8 +37,6 @@ func TestNumber(t *testing.T) {
 		Arity: rdb.OneMust,
 	}
 
-	openConnPool()
-
 	var bt, bf bool
 	var i8 byte
 	var i16 int16
