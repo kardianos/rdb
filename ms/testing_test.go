@@ -16,7 +16,7 @@ const testConnectionString = "ms://TESTU@localhost/SqlExpress?db=master&dial_tim
 var config *rdb.Config
 var db must.ConnPool
 
-func openConnPool() {
+func init() {
 	if db.Normal() != nil {
 		return
 	}

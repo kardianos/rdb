@@ -48,7 +48,6 @@ end
 		Arity: rdb.ZeroMust,
 	}
 
-	openConnPool()
 	db.Query(createProcDrop)
 	db.Query(createProc)
 
@@ -100,7 +99,6 @@ end
 		Arity: rdb.ZeroMust,
 	}
 
-	openConnPool()
 	db.Query(createProcDrop)
 	db.Query(createProc)
 
