@@ -155,6 +155,10 @@ func (r *Result) Next() (more bool) {
 	return !r.val.eof
 }
 
+func (r *Result) NextResult() (more bool, err error) {
+	return r.conn.NextResult()
+}
+
 // Scans the row into a buffer that can be fetched with Get and scans
 // directly into any prepared values.
 // Return value "more" is false if no more rows.

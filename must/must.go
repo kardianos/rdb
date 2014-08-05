@@ -195,6 +195,10 @@ func (must Result) Next() (more bool) {
 	return must.norm.Next()
 }
 
+func (must Result) NextResult() (more bool, err error) {
+	return must.norm.NextResult()
+}
+
 // For each needed field, call Prep() or PrepAll() to prepare
 // value pointers for scanning. To scan prepared fields call Scan().
 // Call Scan() before using Get() or Getx().

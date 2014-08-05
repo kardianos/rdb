@@ -15,6 +15,7 @@ const (
 	StatusDisconnected DriverConnStatus = iota
 	StatusReady
 	StatusQuery
+	StatusResultDone
 	StatusBulkCopy
 )
 
@@ -86,6 +87,12 @@ type DriverConn interface {
 	// Read the next row from the connection. For each field in the row
 	// call the Valuer.WriteField(...) method. Propagate the reportRow field.
 	Scan(reportRow bool) error
+
+	// Proceed to the next result.
+	NextResult() (more bool, err error)
+
+	// Finish any active query and get connection ready for a new query.
+	NextQuery() (err error)
 
 	// The isolation level is set by the command.
 	// Should return "PreparedTokenNotValid" if the preparedToken was not recognized.
