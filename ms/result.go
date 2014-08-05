@@ -11,13 +11,24 @@ import (
 	"bitbucket.org/kardianos/rdb"
 )
 
-type SqlDone struct {
+type MsgEom struct{}
+type MsgRow struct{}
+type MsgColumn struct{}
+type MsgFinalDone struct{}
+type MsgRowCount struct {
+	Count uint64
+}
+type MsgOther struct {
+	Other interface{}
+}
+
+type MsgDone struct {
 	StatusCode uint16
 	CurrentCmd uint16
 	Rows       uint64
 }
 
-func (done *SqlDone) Status() string {
+func (done *MsgDone) Status() string {
 	if done.StatusCode == 0 {
 		return "Final"
 	}
@@ -46,10 +57,10 @@ func (done *SqlDone) Status() string {
 	}
 	return strings.Join(codes, " & ")
 }
-func (done *SqlDone) String() string {
+func (done *MsgDone) String() string {
 	return fmt.Sprintf("Done Cmd=%d Status=%s", done.CurrentCmd, done.Status())
 }
-func (done *SqlDone) Error() string {
+func (done *MsgDone) Error() string {
 	return done.Status()
 }
 
@@ -62,15 +73,13 @@ type SqlColumn struct {
 	info typeInfo
 }
 
-type SqlRow struct{}
+type MsgEnvChange struct{}
 
-type EnvChange struct{}
+type MsgParamValue struct{}
 
-type ParamValue struct{}
+type MsgRpcResult int32
 
-type SqlRpcResult int32
-
-type SqlOrder []uint16
+type MsgOrder []uint16
 
 type recoverError struct {
 	err error
