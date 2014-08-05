@@ -24,8 +24,7 @@ type Connection struct {
 
 	wc io.ReadWriteCloser
 
-	open  bool
-	inUse bool
+	status rdb.DriverConnStatus
 
 	ProductVersion  *semver.Version
 	ProtocolVersion *semver.Version
@@ -42,6 +41,9 @@ type Connection struct {
 
 	// Next token type.
 	peek byte
+
+	resultNumberRead uint16
+	resultNumberAt   uint16
 }
 
 func NewConnection(c io.ReadWriteCloser) *Connection {
@@ -58,7 +60,7 @@ func (tds *Connection) getAllHeaders() []byte {
 }
 
 func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
-	if tds.open {
+	if tds.status != rdb.StatusDisconnected {
 		return nil, connectionOpenError
 	}
 	var err error
@@ -99,7 +101,7 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 		InHex:   true,
 	}
 
-	tds.open = true
+	tds.status = rdb.StatusReady
 
 	return si, err
 }
@@ -112,25 +114,19 @@ func (tds *Connection) ConnectionInfo() *rdb.ConnectionInfo {
 }
 
 func (tds *Connection) Close() {
-	if !tds.open {
+	if tds.status == rdb.StatusDisconnected {
 		return
 	}
 	tds.done()
 	tds.wc.Close()
 	tds.val = nil
 	tds.mr = nil
-	tds.open = false
+	tds.status = rdb.StatusDisconnected
 	return
 }
 
 func (tds *Connection) Status() rdb.DriverConnStatus {
-	if tds.open == false {
-		return rdb.StatusDisconnected
-	}
-	if tds.inUse == false {
-		return rdb.StatusReady
-	}
-	return rdb.StatusQuery
+	return tds.status
 }
 
 func (tds *Connection) Prepare(*rdb.Command) (preparedStatementToken interface{}, err error) {
@@ -167,16 +163,16 @@ const (
 )
 
 func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationLevel) error {
-	if !tds.open {
+	if tds.status == rdb.StatusDisconnected {
 		return connectionNotOpenError
 	}
-	if tds.inUse {
+	if tds.status != rdb.StatusReady {
 		return connectionInUseError
 	}
 	if tds.mr != nil && tds.mr.packetEOM == false {
 		panic("Connection not ready to be re-used yet for transaction.")
 	}
-	tds.inUse = true
+	tds.status = rdb.StatusQuery
 
 	tds.mr = tds.pr.BeginMessage(packetTabularResult)
 	err := tds.pw.BeginMessage(packetTransaction)
@@ -260,7 +256,7 @@ func (tds *Connection) SavePoint(name string) error {
 }
 
 func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, valuer rdb.DriverValuer) error {
-	if tds.inUse {
+	if tds.status != rdb.StatusReady {
 		return connectionInUseError
 	}
 	tds.val = valuer
@@ -276,10 +272,21 @@ func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken
 	return nil
 }
 
+func (tds *Connection) NextResult() (more bool, err error) {
+	more = (tds.status == rdb.StatusResultDone)
+	if more {
+		tds.status = rdb.StatusQuery
+	}
+	return more, nil
+}
+func (tds *Connection) NextQuery() (err error) {
+	return nil
+}
+
 func (tds *Connection) done() error {
 	mrCloseErr := tds.mr.Close()
 	tds.params = nil
-	tds.inUse = false
+	tds.status = rdb.StatusReady
 	err := tds.val.Done()
 	if err == nil {
 		err = mrCloseErr
@@ -288,79 +295,45 @@ func (tds *Connection) done() error {
 }
 
 func (tds *Connection) Scan(reportRow bool) error {
+	if tds.status == rdb.StatusResultDone {
+		return io.EOF
+	}
+	if tds.status != rdb.StatusQuery {
+		return nil
+	}
 	for {
-		if tds.inUse == false {
-			return nil
-		}
 		res, err := tds.getSingleResponse(tds.mr, reportRow)
 		if err != nil {
 			tds.done()
 			return err
 		}
-		if res == nil {
-			// END OF (TDS) MESSAGE.
-			if debugToken {
-				fmt.Println("TOKEN io.EOF (EOM)")
-			}
-			return tds.done()
-		}
 		switch v := res.(type) {
+		case MsgEom:
+			// END OF (TDS) MESSAGE.
+			return tds.done()
 		case *rdb.Message:
-			if debugToken {
-				fmt.Println("TOKEN MESSAGE")
-			}
 			tds.val.Message(v)
 		case []*SqlColumn:
-			if debugToken {
-				fmt.Println("TOKEN COLUMN")
-			}
 			tds.col = v
 			cc := make([]*rdb.Column, len(v))
 			for i, dsc := range v {
 				cc[i] = &dsc.Column
 			}
 			tds.val.Columns(cc)
-		case *SqlRow:
-			if debugToken {
-				fmt.Println("TOKEN ROW")
-			}
+		case MsgRow:
 			// Sent after the row is scanned.
 			// Prep values must be cleared after the initial fill.
 			// The prior prep values are no longer valid as they are filled
 			// during the row scan.
 			tds.val.RowScanned()
-		case SqlRpcResult:
-			if debugToken {
-				fmt.Printf("TOKEN RPC RESULT: %#v\n", v)
-			}
-		case *SqlDone:
-			if v.StatusCode&0x10 != 0 {
-				tds.val.RowsAffected(v.Rows)
-			}
-			if v.StatusCode == 0 {
-				if debugToken {
-					fmt.Printf("TOKEN DONE - FINAL: %#v\n", v)
-				}
-				return tds.done()
-			}
-			if debugToken {
-				fmt.Printf("TOKEN DONE: %#v\n", v)
-			}
-		case SqlOrder:
-			if debugToken {
-				fmt.Println("TOKEN ORDER")
-			}
-		case EnvChange:
-			if debugToken {
-				fmt.Println("TOKEN ENV CHANGE")
-			}
-		case ParamValue:
-			if debugToken {
-				fmt.Println("TOKEN PARAM VALUE")
-			}
-			// Param handled in decoder for now.
-		default:
-			panic(fmt.Sprintf("Unknown response: %v", res))
+		case MsgRowCount:
+			tds.val.RowsAffected(v.Count)
+		case MsgFinalDone:
+			return tds.done()
+		}
+		if tds.peek == tokenColumnMetaData {
+			tds.status = rdb.StatusResultDone
+			return nil
 		}
 		if tds.peek == tokenRow {
 			return nil
@@ -369,13 +342,13 @@ func (tds *Connection) Scan(reportRow bool) error {
 }
 
 func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, params []rdb.Param) error {
-	if !tds.open {
+	if tds.status == rdb.StatusDisconnected {
 		return connectionNotOpenError
 	}
-	if tds.inUse {
+	if tds.status != rdb.StatusReady {
 		return connectionInUseError
 	}
-	tds.inUse = true
+	tds.status = rdb.StatusQuery
 	var err error
 	if len(params) == 0 {
 		err = tds.sendSimpleQuery(sql)
@@ -491,10 +464,17 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) 
 func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (response interface{}, err error) {
 	var bb []byte
 
+	if debugToken {
+		defer func() {
+			fmt.Printf("MSG %[1]T : %[1]v\n", response)
+		}()
+	}
+
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			if re, is := recovered.(recoverError); is {
 				if re.err == io.EOF {
+					response = MsgEom{}
 					return
 				}
 				err = re.err
@@ -563,28 +543,35 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			return columns, nil
 		}
 	case tokenReturnStatus:
-		return SqlRpcResult(binary.LittleEndian.Uint32(read(4))), nil
+		return MsgRpcResult(binary.LittleEndian.Uint32(read(4))), nil
 	case tokenDoneProc:
 		fallthrough
 	case tokenDoneInProc:
 		fallthrough
 	case tokenDone:
-		return &SqlDone{
+		msg := MsgDone{
 			StatusCode: binary.LittleEndian.Uint16(read(2)),
 			CurrentCmd: binary.LittleEndian.Uint16(read(2)),
 			Rows:       binary.LittleEndian.Uint64(read(8)),
-		}, nil
+		}
+		if msg.StatusCode == 0 {
+			return MsgFinalDone{}, nil
+		}
+		if msg.StatusCode&0x10 != 0 {
+			return MsgRowCount{Count: msg.Rows}, nil
+		}
+		return &msg, nil
 	case tokenRow:
 		for _, column := range tds.col {
 			decodeFieldValue(read, column, tds.val.WriteField, reportRow)
 		}
 
 		tds.peek = read(1)[0]
-		return &SqlRow{}, nil
+		return MsgRow{}, nil
 	case tokenOrder:
 		// Just read the token.
 		length := binary.LittleEndian.Uint16(read(2)) / 2
-		var order SqlOrder = make([]uint16, length)
+		var order MsgOrder = make([]uint16, length)
 		for i := uint16(0); i < length; i++ {
 			order[i] = binary.LittleEndian.Uint16(read(2))
 		}
@@ -613,7 +600,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		// Currently ignore all the data.
 
 		tds.peek = read(1)[0]
-		return EnvChange{}, nil
+		return MsgEnvChange{}, nil
 	case tokenReturnValue:
 		//ParamOrdinal ushort
 		//ParamName B_VARCHAR
@@ -658,7 +645,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			return nil, err
 		}
 
-		return ParamValue{}, nil
+		return MsgParamValue{}, nil
 	default:
 		return nil, fmt.Errorf("Unknown response code: 0x%X", token)
 	}
