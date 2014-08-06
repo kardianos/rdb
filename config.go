@@ -28,6 +28,10 @@ type Config struct {
 	// Zero for no timeout.
 	DialTimeout time.Duration
 
+	// Default timeout for each query if no timeout is
+	// specified in the Command structure.
+	QueryTimeout time.Duration
+
 	// Time for an idle connection to be closed.
 	// Zero if there should be no timeout.
 	PoolIdleTimeout time.Duration

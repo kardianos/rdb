@@ -2,6 +2,7 @@ package rdb
 
 import (
 	"fmt"
+	"time"
 
 	"bitbucket.org/kardianos/rdb/third_party/vitess/pools"
 )
@@ -83,6 +84,10 @@ func (cp *ConnPool) ConnectionInfo() (*ConnectionInfo, error) {
 }
 
 func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
+	if !kill && conn.Status() != StatusReady {
+		panic("Bad connection status.")
+		kill = true
+	}
 	if kill {
 		if debugConnectionReuse {
 			fmt.Println("Result.Close() CLOSE")
@@ -144,8 +149,28 @@ func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **Conne
 		}
 	}
 
-	err = conn.Query(cmd, params, nil, &res.val)
-
+	timeout := cmd.QueryTimeout
+	if timeout == 0 {
+		timeout = cp.conf.QueryTimeout
+	}
+	if timeout != 0 {
+		done := make(chan struct{})
+		tm := time.NewTimer(timeout)
+		go func() {
+			err = conn.Query(cmd, params, nil, &res.val)
+			tm.Stop()
+			close(done)
+		}()
+		select {
+		case <-tm.C:
+			// TODO: There should be a method for aborting an active command.
+			cp.releaseConn(conn, true)
+			return nil, fmt.Errorf("Query timed out after %v.", timeout)
+		case <-done:
+		}
+	} else {
+		err = conn.Query(cmd, params, nil, &res.val)
+	}
 	if ci != nil {
 		*ci = conn.ConnectionInfo()
 	}

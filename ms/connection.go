@@ -306,12 +306,19 @@ func (tds *Connection) NextQuery() (err error) {
 }
 
 func (tds *Connection) done() error {
+	if tds == nil {
+		return nil
+	}
 	mrCloseErr := tds.mr.Close()
 	tds.params = nil
 	tds.status = rdb.StatusReady
-	err := tds.val.Done()
-	if err == nil {
-		err = mrCloseErr
+
+	var err error
+	if tds.val != nil {
+		err = tds.val.Done()
+		if err == nil {
+			err = mrCloseErr
+		}
 	}
 	return err
 }
