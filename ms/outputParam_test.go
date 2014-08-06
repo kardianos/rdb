@@ -9,19 +9,10 @@ import (
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/must"
 )
 
 func TestOutputParam(t *testing.T) {
-	defer func() {
-		if re := recover(); re != nil {
-			if localError, is := re.(must.Error); is {
-				t.Errorf("SQL Error: %v", localError)
-				return
-			}
-			panic(re)
-		}
-	}()
+	defer recoverTest(t)
 
 	createProcDrop := &rdb.Command{
 		Sql: `
@@ -63,15 +54,7 @@ end
 }
 
 func TestOutputParamTypes(t *testing.T) {
-	defer func() {
-		if re := recover(); re != nil {
-			if localError, is := re.(must.Error); is {
-				t.Errorf("SQL Error: %v", localError)
-				return
-			}
-			panic(re)
-		}
-	}()
+	defer recoverTest(t)
 
 	createProcDrop := &rdb.Command{
 		Sql: `

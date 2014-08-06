@@ -750,7 +750,7 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 	return column
 }
 
-type writeField func(c *rdb.Column, reportRow bool, value *rdb.DriverValue, assign rdb.Assigner) error
+type writeField func(c *rdb.Column, value *rdb.DriverValue, assign rdb.Assigner) error
 
 func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, resultWf writeField, reportRow bool) {
 	sc := &column.Column
@@ -762,7 +762,10 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, resultWf writeF
 	}()
 
 	var wf = func(val *rdb.DriverValue) {
-		err = resultWf(sc, reportRow, val, nil)
+		if reportRow == false {
+			return
+		}
+		err = resultWf(sc, val, nil)
 	}
 
 	if column.Unlimit {
