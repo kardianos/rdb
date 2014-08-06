@@ -195,8 +195,12 @@ func (must Result) Next() (more bool) {
 	return must.norm.Next()
 }
 
-func (must Result) NextResult() (more bool, err error) {
-	return must.norm.NextResult()
+func (must Result) NextResult() (more bool) {
+	more, err := must.norm.NextResult()
+	if err != nil {
+		panic(Error{Err: err})
+	}
+	return more
 }
 
 // For each needed field, call Prep() or PrepAll() to prepare

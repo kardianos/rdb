@@ -33,32 +33,21 @@ func (r *Result) close(explicit bool) error {
 		r.val.clearBuffer()
 	}
 	var err error
-loop:
-	for {
-		if r.conn == nil {
-			return nil
-		}
-		switch r.conn.Status() {
-		case StatusQuery:
-			err = r.scan(false)
-			if err != nil {
-				return err
-			}
-		case StatusReady:
-			if r.keepOnClose == false {
-				// Don't close the connection, just return to pool.
-				err = r.cp.releaseConn(r.conn, false)
-				r.cp = nil
-				r.conn = nil
-			}
-			break loop
-		default:
-			if r.keepOnClose == false {
-				// Not sure what the state is, close the entire connection.
-				err = r.cp.releaseConn(r.conn, true)
-			}
-			break loop
-		}
+
+	if r.conn == nil {
+		return nil
+	}
+
+	err = r.conn.NextQuery()
+	if err != nil {
+		r.cp.releaseConn(r.conn, true)
+		return err
+	}
+
+	if r.keepOnClose == false {
+		err = r.cp.releaseConn(r.conn, false)
+		r.cp = nil
+		r.conn = nil
 	}
 	if err == nil && len(r.val.errorList) != 0 {
 		err = r.val.errorList
@@ -152,10 +141,19 @@ func (r *Result) GetRowN() []Nullable {
 // Optional to call. Determine if there is another row.
 // Scan actually advances to the next row.
 func (r *Result) Next() (more bool) {
+	if r.conn == nil {
+		return false
+	}
+	if r.conn.Status() == StatusResultDone {
+		return false
+	}
 	return !r.val.eof
 }
 
 func (r *Result) NextResult() (more bool, err error) {
+	if r.conn == nil {
+		return false, nil
+	}
 	return r.conn.NextResult()
 }
 
@@ -170,14 +168,9 @@ func (r *Result) Scan(values ...interface{}) error {
 		}
 		r.val.prep[i] = values[i]
 	}
-	return r.scan(true)
-}
 
-func (r *Result) scan(reportRow bool) error {
-	if reportRow {
-		r.val.clearBuffer()
-	}
-	err := r.conn.Scan(reportRow)
+	r.val.clearBuffer()
+	err := r.conn.Scan()
 	r.val.clearPrep()
 
 	// Only show SQL errors if no connection errors,
@@ -189,7 +182,7 @@ func (r *Result) scan(reportRow bool) error {
 	if r.val.cmd.Arity&One != 0 {
 		r.val.eof = true
 		if r.val.rowCount == 1 {
-			serr := r.conn.Scan(false)
+			serr := r.conn.NextQuery()
 			if err == nil {
 				err = serr
 			}

@@ -158,7 +158,7 @@ func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **Conne
 	if res.val.cmd.Arity&Zero != 0 {
 		defer res.close(false)
 
-		serr := res.conn.Scan(false)
+		serr := res.conn.NextQuery()
 		if err == nil {
 			err = serr
 		}

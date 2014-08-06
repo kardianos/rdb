@@ -86,12 +86,12 @@ type DriverConn interface {
 
 	// Read the next row from the connection. For each field in the row
 	// call the Valuer.WriteField(...) method. Propagate the reportRow field.
-	Scan(reportRow bool) error
+	Scan() error
 
-	// Proceed to the next result.
+	// NextResult advances to the next result if there are multiple results.
 	NextResult() (more bool, err error)
 
-	// Finish any active query and get connection ready for a new query.
+	// NextQuery stops the active query and gets the connection for the next one.
 	NextQuery() (err error)
 
 	// The isolation level is set by the command.
