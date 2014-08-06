@@ -36,9 +36,17 @@ type connection struct {
 // Return version information regarding the currently connected server.
 func (pg *connection) ConnectionInfo() *rdb.ConnectionInfo { return nil }
 
+func (pg *connection) NextQuery() error {
+	return nil
+}
+
+func (pg *connection) NextResult() (bool, error) {
+	return false, nil
+}
+
 // Read the next row from the connection. For each field in the row
 // call the Valuer.WriteField(...) method. Propagate the reportRow field.
-func (pg *connection) Scan(reportRow bool) error {
+func (pg *connection) Scan() error {
 	var value interface{}
 	var err error
 
@@ -59,7 +67,7 @@ func (pg *connection) Scan(reportRow bool) error {
 				rCol := &pg.columns[i].Column
 				col := &pg.columns[i]
 				if isNull := msg.NextField(); isNull {
-					pg.valuer.WriteField(rCol, reportRow, &rdb.DriverValue{Null: true}, nil)
+					pg.valuer.WriteField(rCol, &rdb.DriverValue{Null: true}, nil)
 					continue
 				}
 				// Read from msg.FieldRead each field.
@@ -68,7 +76,7 @@ func (pg *connection) Scan(reportRow bool) error {
 				if err != nil {
 					return err
 				}
-				pg.valuer.WriteField(rCol, reportRow, val, nil)
+				pg.valuer.WriteField(rCol, val, nil)
 			}
 			msg.FieldRead.MsgDone()
 		default:
