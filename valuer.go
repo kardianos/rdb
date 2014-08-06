@@ -21,7 +21,7 @@ type DriverValuer interface {
 	Done() error
 	RowScanned()
 	Message(*Message)
-	WriteField(c *Column, reportRow bool, value *DriverValue, assign Assigner) error
+	WriteField(c *Column, value *DriverValue, assign Assigner) error
 	RowsAffected(count uint64)
 }
 
@@ -142,12 +142,8 @@ func (v *valuer) RowsAffected(count uint64) {
 	If there is no prepped value, put it in a buffer.
 	If using a buffer, append any value
 */
-func (v *valuer) WriteField(c *Column, reportRow bool, value *DriverValue, assign Assigner) error {
+func (v *valuer) WriteField(c *Column, value *DriverValue, assign Assigner) error {
 	// TODO: Respect value.MustCopy.
-	if !reportRow {
-		return nil
-	}
-
 	var convert ColumnConverter
 	if v.convert != nil {
 		convert = v.convert[c.Index]
