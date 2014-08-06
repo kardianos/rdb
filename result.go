@@ -18,6 +18,9 @@ type Result struct {
 
 // Results should automatically close when all rows have been read.
 func (r *Result) Close() error {
+	if r == nil {
+		return nil
+	}
 	return r.close(true)
 }
 

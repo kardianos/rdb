@@ -4,38 +4,17 @@
 
 package ms
 
-import (
-	"testing"
-
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/must"
-)
+import "testing"
 
 func TestPing(t *testing.T) {
-	config := must.Config(rdb.ParseConfigURL(testConnectionString))
-
-	db, err := rdb.Open(config)
-	if err != nil {
-		t.Fatalf("Failed to open DB: %v", err)
-	}
-	defer db.Close()
-
-	err = db.Ping()
+	err := db.Normal().Ping()
 	if err != nil {
 		t.Fatalf("Ping error: %v", err)
 	}
 }
 
 func TestVersion(t *testing.T) {
-	config := must.Config(rdb.ParseConfigURL(testConnectionString))
-
-	db, err := rdb.Open(config)
-	if err != nil {
-		t.Fatalf("Failed to open DB: %v", err)
-	}
-	defer db.Close()
-
-	connInfo, err := db.ConnectionInfo()
+	connInfo, err := db.Normal().ConnectionInfo()
 	if err != nil {
 		t.Fatalf("ConnectionInfo error: %v", err)
 	}

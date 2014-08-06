@@ -262,6 +262,9 @@ func (mr *MessageReader) Next() ([]byte, error) {
 	return bb, err
 }
 func (mr *MessageReader) Close() error {
+	if mr == nil || mr.packet == nil {
+		return nil
+	}
 	buf := mr.packet.buffer
 	if mr.length != 0 {
 		buf.Used(mr.length)
