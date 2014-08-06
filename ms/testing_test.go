@@ -31,3 +31,13 @@ func assertFreeConns(t *testing.T) {
 		t.Errorf("Not all connections returned to pool.")
 	}
 }
+
+func recoverTest(t *testing.T) {
+	if re := recover(); re != nil {
+		if localError, is := re.(must.Error); is {
+			t.Errorf("SQL Error: %v", localError)
+			return
+		}
+		panic(re)
+	}
+}

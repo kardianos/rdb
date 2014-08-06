@@ -16,7 +16,11 @@ import (
 	"bitbucket.org/kardianos/rdb/semver"
 )
 
-const debugToken = false
+const (
+	debugToken = false
+	debugAPI   = false
+	debugProto = false
+)
 
 type Connection struct {
 	pw *PacketWriter
@@ -41,9 +45,6 @@ type Connection struct {
 
 	// Next token type.
 	peek byte
-
-	resultNumberRead uint16
-	resultNumberAt   uint16
 }
 
 func NewConnection(c io.ReadWriteCloser) *Connection {
@@ -234,13 +235,7 @@ func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationL
 	if err != nil {
 		return err
 	}
-	for tds.mr.packetEOM == false {
-		err = tds.Scan(false)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return tds.NextQuery()
 }
 func (tds *Connection) Begin(iso rdb.IsolationLevel) error {
 	return tds.transaction(tranBegin, "", iso)
@@ -256,6 +251,9 @@ func (tds *Connection) SavePoint(name string) error {
 }
 
 func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, valuer rdb.DriverValuer) error {
+	if debugAPI {
+		fmt.Printf("API Query\n")
+	}
 	if tds.status != rdb.StatusReady {
 		return connectionInUseError
 	}
@@ -269,17 +267,41 @@ func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken
 	if err != nil {
 		return err
 	}
+	if err == nil {
+		_, err = tds.NextResult()
+	}
 	return nil
 }
 
 func (tds *Connection) NextResult() (more bool, err error) {
+	if debugAPI {
+		fmt.Printf("API NextResult\n")
+	}
 	more = (tds.status == rdb.StatusResultDone)
 	if more {
 		tds.status = rdb.StatusQuery
+		return true, tds.Scan()
 	}
-	return more, nil
+	return false, nil
 }
 func (tds *Connection) NextQuery() (err error) {
+	if debugAPI {
+		fmt.Printf("API NextQuery\n")
+	}
+	for tds.status != rdb.StatusReady {
+		res, err := tds.getSingleResponse(tds.mr, false)
+		if err != nil {
+			tds.done()
+			return err
+		}
+		switch res.(type) {
+		case MsgEom:
+			// END OF (TDS) MESSAGE.
+			return tds.done()
+		case MsgFinalDone:
+			return tds.done()
+		}
+	}
 	return nil
 }
 
@@ -294,7 +316,10 @@ func (tds *Connection) done() error {
 	return err
 }
 
-func (tds *Connection) Scan(reportRow bool) error {
+func (tds *Connection) Scan() error {
+	if debugAPI {
+		fmt.Printf("API Scan\n")
+	}
 	if tds.status == rdb.StatusResultDone {
 		return io.EOF
 	}
@@ -302,7 +327,7 @@ func (tds *Connection) Scan(reportRow bool) error {
 		return nil
 	}
 	for {
-		res, err := tds.getSingleResponse(tds.mr, reportRow)
+		res, err := tds.getSingleResponse(tds.mr, true)
 		if err != nil {
 			tds.done()
 			return err
@@ -313,13 +338,7 @@ func (tds *Connection) Scan(reportRow bool) error {
 			return tds.done()
 		case *rdb.Message:
 			tds.val.Message(v)
-		case []*SqlColumn:
-			tds.col = v
-			cc := make([]*rdb.Column, len(v))
-			for i, dsc := range v {
-				cc[i] = &dsc.Column
-			}
-			tds.val.Columns(cc)
+		case MsgColumn:
 		case MsgRow:
 			// Sent after the row is scanned.
 			// Prep values must be cleared after the initial fill.
@@ -359,7 +378,7 @@ func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, par
 		return err
 	}
 
-	return tds.Scan(true)
+	return tds.Scan()
 }
 
 const (
@@ -466,7 +485,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 
 	if debugToken {
 		defer func() {
-			fmt.Printf("MSG %[1]T : %[1]v\n", response)
+			fmt.Printf("MSG %[1]T : %[1]v (peek: 0x%[2]X)\n", response, tds.peek)
 		}()
 	}
 
@@ -521,27 +540,31 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		_, sqlMsg.ProcName = uconv.Decode.Prefix1(read)
 		sqlMsg.LineNumber = int32(binary.LittleEndian.Uint32(read(4)))
 
+		tds.peek = read(1)[0]
 		return sqlMsg, nil
 	case tokenColumnMetaData:
-		bb = read(2)
-		if bb[0] == 0xff && bb[1] == 0xff {
-
-			tds.peek = read(1)[0]
-			return []*SqlColumn{}, nil
+		var columns []*SqlColumn
+		count := int(binary.LittleEndian.Uint16(read(2)))
+		if count == 0xffff {
+			count = 0
 		}
-		{
-			var columns []*SqlColumn
-			count := int(binary.LittleEndian.Uint16(bb))
-			for i := 0; i < count; i++ {
-				column := decodeColumnInfo(read)
-				_, column.Name = uconv.Decode.Prefix1(read)
-				column.Index = i
-				columns = append(columns, column)
-			}
-
-			tds.peek = read(1)[0]
-			return columns, nil
+		for i := 0; i < count; i++ {
+			column := decodeColumnInfo(read)
+			_, column.Name = uconv.Decode.Prefix1(read)
+			column.Index = i
+			columns = append(columns, column)
 		}
+
+		tds.peek = read(1)[0]
+
+		tds.col = columns
+		cc := make([]*rdb.Column, len(tds.col))
+		for i, dsc := range tds.col {
+			cc[i] = &dsc.Column
+		}
+		tds.val.Columns(cc)
+
+		return MsgColumn{}, nil
 	case tokenReturnStatus:
 		return MsgRpcResult(binary.LittleEndian.Uint32(read(4))), nil
 	case tokenDoneProc:
@@ -557,6 +580,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		if msg.StatusCode == 0 {
 			return MsgFinalDone{}, nil
 		}
+		tds.peek = read(1)[0]
 		if msg.StatusCode&0x10 != 0 {
 			return MsgRowCount{Count: msg.Rows}, nil
 		}
@@ -628,14 +652,12 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 
 		outValue := rdb.Nullable{}
 
-		wf := func(col *rdb.Column, reportRow bool, value *rdb.DriverValue, assign rdb.Assigner) error {
+		wf := func(col *rdb.Column, value *rdb.DriverValue, assign rdb.Assigner) error {
 			outValue.Value = value.Value
 			outValue.Null = value.Null
 			return nil
 		}
 		decodeFieldValue(read, col, wf, true)
-
-		tds.peek = read(1)[0]
 
 		//tds.params[col.Index].Value
 		//pv.Value.Value
@@ -644,6 +666,8 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		if err != nil {
 			return nil, err
 		}
+
+		tds.peek = read(1)[0]
 
 		return MsgParamValue{}, nil
 	default:

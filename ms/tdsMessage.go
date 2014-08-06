@@ -16,9 +16,6 @@ import (
 )
 
 const (
-	debug = false
-)
-const (
 	// TDS Versions. There are older versions but anything before 7.2 is junk.
 	// Many fields were expanded on 7.2 so it is simpler to ignore very old versions.
 	version72  = 0x02000972 // SQL Server 2005
@@ -174,7 +171,7 @@ func (tds *PacketWriter) writeClose(bb []byte, closeMessage bool) (int, error) {
 		// PacketData
 		copy(buf[8:], tds.buffer.Next(l))
 
-		if debug {
+		if debugProto {
 			fmt.Println("Client -> Server")
 			fmt.Println(hex.Dump(buf))
 		}
@@ -243,7 +240,7 @@ func (mr *MessageReader) Next() ([]byte, error) {
 	if MsgStatus(bb[1]) == statusEOM {
 		packetEOM = true
 	}
-	if debug {
+	if debugProto {
 		debugMessage = make([]byte, 8)
 		copy(debugMessage, bb)
 	}
@@ -251,7 +248,7 @@ func (mr *MessageReader) Next() ([]byte, error) {
 	buf.Used(8)
 
 	bb, err = buf.Next(mr.length)
-	if debug {
+	if debugProto {
 		fmt.Println("Server -> Client")
 		debugMessage = append(debugMessage, bb...)
 		fmt.Println(hex.Dump(debugMessage))
