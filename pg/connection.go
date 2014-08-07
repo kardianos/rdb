@@ -36,12 +36,47 @@ type connection struct {
 // Return version information regarding the currently connected server.
 func (pg *connection) ConnectionInfo() *rdb.ConnectionInfo { return nil }
 
+func (pg *connection) done() error {
+	pg.inUse = false
+	if pg.valuer == nil {
+		return nil
+	}
+	return pg.valuer.Done()
+}
+
 func (pg *connection) NextQuery() error {
-	return nil
+	if pg.inUse == false {
+		return nil
+	}
+	var value interface{}
+	var err error
+
+	for {
+		value, err = pg.getMessage()
+		if err != nil {
+			return err
+		}
+		switch msg := value.(type) {
+		case MsgCommandComplete:
+		case MsgReadyForQuery:
+			return pg.done()
+		case MsgErrorResponse:
+			return msg
+		case MsgDataRow:
+			columnCount := int(msg.ColumnCount)
+			for i := 0; i < columnCount; i++ {
+				msg.NextField()
+				msg.FieldRead.MsgDone()
+			}
+			pg.valuer.RowScanned()
+		default:
+			return errUnhandledMessage("NextQuery", msg)
+		}
+	}
 }
 
 func (pg *connection) NextResult() (bool, error) {
-	return false, nil
+	return false, pg.NextQuery()
 }
 
 // Read the next row from the connection. For each field in the row
@@ -58,7 +93,7 @@ func (pg *connection) Scan() error {
 		switch msg := value.(type) {
 		case MsgCommandComplete:
 		case MsgReadyForQuery:
-			return pg.valuer.Done()
+			return pg.done()
 		case MsgErrorResponse:
 			return msg
 		case MsgDataRow:
@@ -79,6 +114,7 @@ func (pg *connection) Scan() error {
 				pg.valuer.WriteField(rCol, val, nil)
 			}
 			msg.FieldRead.MsgDone()
+			pg.valuer.RowScanned()
 		default:
 			return errUnhandledMessage("Scan", msg)
 		}
@@ -122,16 +158,10 @@ func (pg *connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken 
 	pg.valuer = val
 	pg.inUse = true
 
-	write := pg.writer()
+	// 	write := pg.writer()
 
 	if len(params) == 0 {
-		write.Msg(tokenQuery)
-		write.String(cmd.Sql)
-		write.MsgDone()
-		err := write.Send()
-		if err != nil {
-			return err
-		}
+		return pg.textOnlyQuery(cmd.Sql)
 	} else {
 		// TODO: Prepare and add parameters.
 		/*
@@ -155,7 +185,7 @@ func (pg *connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken 
 		switch msg := value.(type) {
 		case MsgCommandComplete:
 		case MsgReadyForQuery:
-			return pg.valuer.Done()
+			return pg.done()
 		case MsgErrorResponse:
 			return msg
 		case MsgRowDescription:
@@ -166,11 +196,12 @@ func (pg *connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken 
 	}
 }
 
-func (pg *connection) textOnlyQuery(cmd *rdb.Command, val rdb.DriverValuer) error {
+func (pg *connection) textOnlyQuery(sql string) error {
 	write := pg.writer()
 	write.Msg(tokenQuery)
-	write.String(cmd.Sql)
+	write.String(sql)
 	write.MsgDone()
+
 	err := write.Send()
 	if err != nil {
 		return err
@@ -185,7 +216,7 @@ func (pg *connection) textOnlyQuery(cmd *rdb.Command, val rdb.DriverValuer) erro
 		switch msg := value.(type) {
 		case MsgCommandComplete:
 		case MsgReadyForQuery:
-			return pg.valuer.Done()
+			return pg.done()
 		case MsgErrorResponse:
 			return msg
 		case MsgRowDescription:
