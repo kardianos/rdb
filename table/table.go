@@ -38,30 +38,58 @@ type Buffer struct {
 	Row             []Row
 	schema          []*rdb.Column
 	nameIndexLookup map[string]int
+
+	// Result set, which should include current buffer if not nil.
+	Set []*Buffer
 }
 
 func (b *Buffer) Len() int {
 	return len(b.Row)
 }
-
 func Fill(res *rdb.Result) (*Buffer, error) {
-	tb := &Buffer{}
-
-	err := tb.SetSchema(res.Schema())
+	set, err := FillSet(res)
 	if err != nil {
 		return nil, err
 	}
-	for res.Next() {
-		err = res.Scan()
+	if len(set) == 0 {
+		return nil, nil
+	}
+	return set[0], nil
+}
+
+func FillSet(res *rdb.Result) ([]*Buffer, error) {
+	set := make([]*Buffer, 0, 1)
+	for {
+		tb := &Buffer{}
+
+		err := tb.SetSchema(res.Schema())
 		if err != nil {
 			return nil, err
 		}
-		tb.Row = append(tb.Row, Row{
-			buffer: tb,
-			Field:  res.GetRowN(),
-		})
+		for res.Next() {
+			err = res.Scan()
+			if err != nil {
+				return nil, err
+			}
+			tb.Row = append(tb.Row, Row{
+				buffer: tb,
+				Field:  res.GetRowN(),
+			})
+		}
+		set = append(set, tb)
+
+		nextRes, err := res.NextResult()
+		if err != nil {
+			return nil, err
+		}
+		if !nextRes {
+			break
+		}
 	}
-	return tb, nil
+	for _, tb := range set {
+		tb.Set = set
+	}
+	return set, nil
 }
 func FillCommand(cp *rdb.ConnPool, cmd *rdb.Command, params ...rdb.Param) (*Buffer, error) {
 	res, err := cp.Query(cmd, params...)

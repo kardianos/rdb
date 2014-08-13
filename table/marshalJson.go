@@ -15,6 +15,7 @@ import (
 // type Converter func(value *rdb.Nullable) error
 
 // Serialize table buffer as an array of JSON objects.
+// When multiple results are returned, turns into an array of arrays.
 type JsonRowObject struct {
 	*Buffer
 	FlushAt int
@@ -26,11 +27,56 @@ func (coder *JsonRowObject) WriteTo(writer io.Writer) (n int64, err error) {
 		flushAt = 16 * 1024
 	}
 
+	// 	var bb []byte
+	buf := &bytes.Buffer{}
+	var bbLen int
+
+	if len(coder.Set) > 1 {
+		set := coder.Set
+
+		buf.WriteRune('[')
+
+		for i, tableBuffer := range set {
+			if i != 0 {
+				buf.WriteRune(',')
+			}
+			bbLen, err = writer.Write(buf.Bytes())
+			buf.Reset()
+			n += int64(bbLen)
+			if err != nil {
+				return
+			}
+
+			var nextN int64
+			nextN, err = coder.writeToSingle(writer, tableBuffer)
+			n += nextN
+			if err != nil {
+				return
+			}
+		}
+
+		buf.WriteRune(']')
+		bbLen, err = writer.Write(buf.Bytes())
+		buf.Reset()
+		n += int64(bbLen)
+		return
+	}
+
+	return coder.writeToSingle(writer, coder.Buffer)
+}
+
+func (coder *JsonRowObject) writeToSingle(writer io.Writer, table *Buffer) (n int64, err error) {
+	flushAt := coder.FlushAt
+	if flushAt == 0 {
+		flushAt = 16 * 1024
+	}
+
 	var bb []byte
 	buf := &bytes.Buffer{}
 	var bbLen int
+
 	buf.WriteRune('[')
-	for i, row := range coder.Buffer.Row {
+	for i, row := range table.Row {
 		if i != 0 {
 			buf.WriteRune(',')
 		}
@@ -39,7 +85,7 @@ func (coder *JsonRowObject) WriteTo(writer io.Writer) (n int64, err error) {
 			if j != 0 {
 				buf.WriteRune(',')
 			}
-			col := coder.Buffer.schema[j]
+			col := table.schema[j]
 			bb, err = json.Marshal(col.Name)
 			if err != nil {
 				return
@@ -81,6 +127,7 @@ func (coder *JsonRowObject) WriteTo(writer io.Writer) (n int64, err error) {
 
 // Serialize the table buffer as an object with a column name array and an
 // an array of rows. Each row is an array of values.
+// Supports many result sets by chaining them together.
 type JsonRowArray struct {
 	*Buffer
 	FlushAt int
@@ -88,11 +135,54 @@ type JsonRowArray struct {
 	// Additional properties to add to the output.
 	Meta map[string]interface{}
 
-	ColumnHeadersName string
-	DataRowsName      string
+	ColumnHeadersName string // Default field name is "Names".
+	DataRowsName      string // Default field name is "Data".
 }
 
 func (coder *JsonRowArray) WriteTo(writer io.Writer) (n int64, err error) {
+	flushAt := coder.FlushAt
+	if flushAt == 0 {
+		flushAt = 16 * 1024
+	}
+
+	buf := &bytes.Buffer{}
+	var bbLen int
+
+	if len(coder.Set) > 1 {
+		set := coder.Set
+
+		buf.WriteRune('[')
+
+		for i, tableBuffer := range set {
+			if i != 0 {
+				buf.WriteRune(',')
+			}
+			bbLen, err = writer.Write(buf.Bytes())
+			buf.Reset()
+			n += int64(bbLen)
+			if err != nil {
+				return
+			}
+
+			var nextN int64
+			nextN, err = coder.writeToSingle(writer, tableBuffer)
+			n += nextN
+			if err != nil {
+				return
+			}
+		}
+
+		buf.WriteRune(']')
+		bbLen, err = writer.Write(buf.Bytes())
+		buf.Reset()
+		n += int64(bbLen)
+		return
+	}
+
+	return coder.writeToSingle(writer, coder.Buffer)
+}
+
+func (coder *JsonRowArray) writeToSingle(writer io.Writer, table *Buffer) (n int64, err error) {
 	flushAt := coder.FlushAt
 	if flushAt == 0 {
 		flushAt = 16 * 1024
@@ -137,7 +227,7 @@ func (coder *JsonRowArray) WriteTo(writer io.Writer) (n int64, err error) {
 	buf.WriteRune(':')
 	// Write headers array.
 	buf.WriteRune('[')
-	schema := coder.Buffer.Schema()
+	schema := table.Schema()
 	for i, col := range schema {
 		if i != 0 {
 			buf.WriteRune(',')
@@ -158,7 +248,7 @@ func (coder *JsonRowArray) WriteTo(writer io.Writer) (n int64, err error) {
 	buf.WriteRune(':')
 	// Write data array.
 	buf.WriteRune('[')
-	for i, row := range coder.Buffer.Row {
+	for i, row := range table.Row {
 		if i != 0 {
 			buf.WriteRune(',')
 		}
