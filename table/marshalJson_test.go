@@ -6,14 +6,13 @@ package table
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
 )
 
-func TestJsonMarshal(t *testing.T) {
-	checkRowObject := `[{"ColA":"Hello","ColB":123.524},{"ColA":"Hi","ColB":null}]`
-	checkRowArray := `{"T1":"HI","Names":["ColA","ColB"],"Data":[["Hello",123.524],["Hi",null]]}`
+func getTable(single bool) *Buffer {
 	table := &Buffer{}
 	table.SetSchema([]*rdb.Column{
 		&rdb.Column{Name: "ColA"},
@@ -33,32 +32,84 @@ func TestJsonMarshal(t *testing.T) {
 			},
 		},
 	}
+	if single {
+		return table
+	}
+	tableNext := &Buffer{}
+	tableNext.SetSchema([]*rdb.Column{
+		&rdb.Column{Name: "Col1"},
+	})
+	tableNext.Row = []Row{
+		{
+			Field: []rdb.Nullable{
+				{Value: "ABC"},
+			},
+		},
+		{
+			Field: []rdb.Nullable{
+				{Value: "XYZ"},
+			},
+		},
+	}
+	table.Set = []*Buffer{
+		table,
+		tableNext,
+	}
+	tableNext.Set = table.Set
+	return table
+}
+
+func TestJsonMarshal(t *testing.T) {
+	type jsonTest struct {
+		name   string
+		result string
+		writer io.WriterTo
+	}
+	testTable := []jsonTest{
+		jsonTest{
+			name:   "Single Result JSON Row Object",
+			result: `[{"ColA":"Hello","ColB":123.524},{"ColA":"Hi","ColB":null}]`,
+			writer: &JsonRowObject{Buffer: getTable(true)},
+		},
+		jsonTest{
+			name:   "Multiple Result JSON Row Object",
+			result: `[[{"ColA":"Hello","ColB":123.524},{"ColA":"Hi","ColB":null}],[{"Col1":"ABC"},{"Col1":"XYZ"}]]`,
+			writer: &JsonRowObject{Buffer: getTable(false)},
+		},
+		jsonTest{
+			name:   "Single Result JSON Row Array",
+			result: `{"T1":"HI","Names":["ColA","ColB"],"Data":[["Hello",123.524],["Hi",null]]}`,
+			writer: &JsonRowArray{
+				Buffer: getTable(true),
+				Meta: map[string]interface{}{
+					"Names": "Ignored",
+					"T1":    "HI",
+				},
+			},
+		},
+		jsonTest{
+			name:   "Multiple Result JSON Row Array",
+			result: `[{"T1":"HI","Names":["ColA","ColB"],"Data":[["Hello",123.524],["Hi",null]]},{"T1":"HI","Names":["Col1"],"Data":[["ABC"],["XYZ"]]}]`,
+			writer: &JsonRowArray{
+				Buffer: getTable(false),
+				Meta: map[string]interface{}{
+					"Names": "Ignored",
+					"T1":    "HI",
+				},
+			},
+		},
+	}
 
 	var err error
 	buf := &bytes.Buffer{}
-
-	coderObj := JsonRowObject{Buffer: table}
-	_, err = coderObj.WriteTo(buf)
-	if err != nil {
-		t.Error(err)
-	}
-	if buf.String() != checkRowObject {
-		t.Errorf("Doesn't match: want <%s> got <%s>", checkRowObject, buf.String())
-	}
-	buf.Reset()
-
-	coderArray := JsonRowArray{
-		Buffer: table,
-		Meta: map[string]interface{}{
-			"Names": "Ignored",
-			"T1":    "HI",
-		},
-	}
-	_, err = coderArray.WriteTo(buf)
-	if err != nil {
-		t.Error(err)
-	}
-	if buf.String() != checkRowArray {
-		t.Errorf("Doesn't match:\nwant\n\t%s\ngot\n\t%s", checkRowArray, buf.String())
+	for _, jt := range testTable {
+		_, err = jt.writer.WriteTo(buf)
+		if err != nil {
+			t.Error(err)
+		}
+		if buf.String() != jt.result {
+			t.Errorf("Test failed: %s\nDoesn't match:\nwant\n\t%s\ngot\n\t%s", jt.name, jt.result, buf.String())
+		}
+		buf.Reset()
 	}
 }
