@@ -13,7 +13,9 @@ import (
 )
 
 func getTable(single bool) *Buffer {
-	table := &Buffer{}
+	table := &Buffer{
+		Name: "res1",
+	}
 	table.SetSchema([]*rdb.Column{
 		&rdb.Column{Name: "ColA"},
 		&rdb.Column{Name: "ColB"},
@@ -35,7 +37,9 @@ func getTable(single bool) *Buffer {
 	if single {
 		return table
 	}
-	tableNext := &Buffer{}
+	tableNext := &Buffer{
+		Name: "res2",
+	}
 	tableNext.SetSchema([]*rdb.Column{
 		&rdb.Column{Name: "Col1"},
 	})
@@ -78,23 +82,25 @@ func TestJsonMarshal(t *testing.T) {
 		},
 		jsonTest{
 			name:   "Single Result JSON Row Array",
-			result: `{"T1":"HI","Names":["ColA","ColB"],"Data":[["Hello",123.524],["Hi",null]]}`,
+			result: `{"T1":"HI","Name":"res1","Column":["ColA","ColB"],"Data":[["Hello",123.524],["Hi",null]]}`,
 			writer: &JsonRowArray{
 				Buffer: getTable(true),
 				Meta: map[string]interface{}{
-					"Names": "Ignored",
-					"T1":    "HI",
+					"Column": "Ignored",
+					"Name":   "Ignored Also",
+					"T1":     "HI",
 				},
 			},
 		},
 		jsonTest{
 			name:   "Multiple Result JSON Row Array",
-			result: `[{"T1":"HI","Names":["ColA","ColB"],"Data":[["Hello",123.524],["Hi",null]]},{"T1":"HI","Names":["Col1"],"Data":[["ABC"],["XYZ"]]}]`,
+			result: `[{"T1":"HI","Name":"res1","Column":["ColA","ColB"],"Data":[["Hello",123.524],["Hi",null]]},{"T1":"HI","Name":"res2","Column":["Col1"],"Data":[["ABC"],["XYZ"]]}]`,
 			writer: &JsonRowArray{
 				Buffer: getTable(false),
 				Meta: map[string]interface{}{
-					"Names": "Ignored",
-					"T1":    "HI",
+					"Column": "Ignored",
+					"Name":   "Ignored Also",
+					"T1":     "HI",
 				},
 			},
 		},
