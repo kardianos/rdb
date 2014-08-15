@@ -10,12 +10,12 @@ import (
 
 type Oid int32
 
-type typeValue struct {
+type rdbTypeValue struct {
 	rdb.Type
 	Generic rdb.Type
 }
 
-var typeLookup = map[Oid]typeValue{
+var typeLookup = map[Oid]rdbTypeValue{
 	T_unknown: {rdb.TypeUnknown, rdb.TypeUnknown},
 	T_bool:    {rdb.TypeBool, rdb.Bool},
 	T_bit:     {rdb.TypeBool, rdb.Bool},
@@ -40,6 +40,42 @@ var typeLookup = map[Oid]typeValue{
 	T_uuid: {rdb.TypeUUID, rdb.Other},
 	T_xml:  {rdb.TypeXml, rdb.Other},
 	T_json: {rdb.TypeJson, rdb.Other},
+}
+
+type typeValue struct {
+	Oid Oid
+}
+
+var rdbTypeLookup = map[rdb.Type]typeValue{
+	rdb.TypeUnknown:     typeValue{Oid: T_unknown},
+	rdb.Bool:            typeValue{Oid: T_bool},
+	rdb.TypeBool:        typeValue{Oid: T_bool},
+	rdb.Binary:          typeValue{Oid: T_bytea},
+	rdb.TypeBinary:      typeValue{Oid: T_bytea},
+	rdb.TypeText:        typeValue{Oid: T_text},
+	rdb.Text:            typeValue{Oid: T_text},
+	rdb.TypeVarChar:     typeValue{Oid: T_text},
+	rdb.TypeAnsiVarChar: typeValue{Oid: T_text},
+	rdb.TypeAnsiText:    typeValue{Oid: T_text},
+	rdb.TypeChar:        typeValue{Oid: T_char},
+	rdb.TypeInt8:        typeValue{Oid: T_char},
+	rdb.TypeInt16:       typeValue{Oid: T_int2},
+	rdb.TypeInt32:       typeValue{Oid: T_int4},
+	rdb.TypeInt64:       typeValue{Oid: T_int8},
+	rdb.Integer:         typeValue{Oid: T_int8},
+	rdb.TypeFloat32:     typeValue{Oid: T_float4},
+	rdb.TypeFloat64:     typeValue{Oid: T_float8},
+	rdb.Float:           typeValue{Oid: T_float8},
+	rdb.TypeDecimal:     typeValue{Oid: T_numeric},
+	rdb.Decimal:         typeValue{Oid: T_numeric},
+	rdb.TypeTime:        typeValue{Oid: T_time},
+	rdb.TypeDate:        typeValue{Oid: T_date},
+	rdb.TypeTimestamp:   typeValue{Oid: T_timestamp},
+	rdb.TypeTimestampz:  typeValue{Oid: T_timestamptz},
+	rdb.Time:            typeValue{Oid: T_timestamptz},
+	rdb.TypeUUID:        typeValue{Oid: T_uuid},
+	rdb.TypeXml:         typeValue{Oid: T_xml},
+	rdb.TypeJson:        typeValue{Oid: T_json},
 }
 
 const (
