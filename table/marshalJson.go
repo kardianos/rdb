@@ -135,7 +135,8 @@ type JsonRowArray struct {
 	// Additional properties to add to the output.
 	Meta map[string]interface{}
 
-	ColumnHeadersName string // Default field name is "Names".
+	ResultNameName    string // Default field name is "Name".
+	ColumnHeadersName string // Default field name is "Column".
 	DataRowsName      string // Default field name is "Data".
 }
 
@@ -187,8 +188,12 @@ func (coder *JsonRowArray) writeToSingle(writer io.Writer, table *Buffer) (n int
 	if flushAt == 0 {
 		flushAt = 16 * 1024
 	}
-	names := "Names"
+	resultName := "Name"
+	names := "Column"
 	data := "Data"
+	if len(coder.ResultNameName) != 0 {
+		resultName = coder.ResultNameName
+	}
 	if len(coder.ColumnHeadersName) != 0 {
 		names = coder.ColumnHeadersName
 	}
@@ -203,7 +208,7 @@ func (coder *JsonRowArray) writeToSingle(writer io.Writer, table *Buffer) (n int
 	// Write header.
 	buf.WriteRune('{')
 	for propName, prop := range coder.Meta {
-		if propName == names || propName == data {
+		if propName == names || propName == data || propName == resultName {
 			continue
 		}
 		bb, err = json.Marshal(propName)
@@ -219,6 +224,21 @@ func (coder *JsonRowArray) writeToSingle(writer io.Writer, table *Buffer) (n int
 		buf.Write(bb)
 		buf.WriteRune(',')
 	}
+	_ = resultName
+	// Write result name.
+	bb, err = json.Marshal(resultName)
+	if err != nil {
+		return
+	}
+	buf.Write(bb)
+	buf.WriteRune(':')
+	bb, err = json.Marshal(table.Name)
+	if err != nil {
+		return
+	}
+	buf.Write(bb)
+	buf.WriteRune(',')
+
 	bb, err = json.Marshal(names)
 	if err != nil {
 		return

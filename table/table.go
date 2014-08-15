@@ -35,6 +35,7 @@ func (row Row) GetN(name string) (rdb.Nullable, error) {
 }
 
 type Buffer struct {
+	Name            string
 	Row             []Row
 	schema          []*rdb.Column
 	nameIndexLookup map[string]int
