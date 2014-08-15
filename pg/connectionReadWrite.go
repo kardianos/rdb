@@ -172,6 +172,10 @@ func (w *writer) String(value string) {
 	w.Length += len(value)
 	w.Byte(0)
 }
+func (w *writer) StringNoTerm(value string) {
+	copy(w.buf[w.Length:], value)
+	w.Length += len(value)
+}
 func (w *writer) Bytea(value []byte) {
 	copy(w.buf[w.Length:], value)
 	w.Length += len(value)
@@ -181,7 +185,7 @@ func (w *writer) MsgDone() {
 	binary.BigEndian.PutUint32(w.buf[w.LengthAt:], msgLen)
 
 	if debug {
-		fmt.Printf("Client -> Server (0x%X)\n%s\n", msgLen, hex.Dump(w.buf[w.StartAt:w.Length]))
+		fmt.Printf("Client -> Server '%s' len(%d)\n%s\n", string(w.buf[w.StartAt]), msgLen, hex.Dump(w.buf[w.StartAt:w.Length]))
 	}
 	w.StartAt = w.Length
 }

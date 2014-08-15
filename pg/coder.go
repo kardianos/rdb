@@ -7,6 +7,7 @@ package pg
 import (
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"strconv"
 
 	"bitbucket.org/kardianos/rdb"
@@ -59,4 +60,86 @@ func decodeField(col *Column, read *reader) (*rdb.DriverValue, error) {
 		fmt.Printf("Field Value (%s): %v\n", col.Name, val.Value)
 	}
 	return val, err
+}
+
+func encodeField(param *rdb.Param, write *writer) error {
+	// Encode int32 length, then body.
+
+	switch param.Type {
+	case rdb.TypeInt8, rdb.TypeInt16, rdb.TypeInt32, rdb.TypeInt64, rdb.Integer,
+		rdb.TypeFloat32, rdb.TypeFloat64, rdb.Float,
+		rdb.TypeDecimal, rdb.Decimal:
+		var eval int64
+		var sval string
+		switch val := param.Value.(type) {
+		case int8:
+			eval = int64(val)
+		case int16:
+			eval = int64(val)
+		case int32:
+			eval = int64(val)
+		case int64:
+			eval = int64(val)
+		case float32:
+			eval = int64(val)
+		case float64:
+			eval = int64(val)
+		case *big.Rat:
+			sval = val.String()
+
+		case *int8:
+			eval = int64(*val)
+		case *int16:
+			eval = int64(*val)
+		case *int32:
+			eval = int64(*val)
+		case *int64:
+			eval = int64(*val)
+		case *float32:
+			eval = int64(*val)
+		case *float64:
+			eval = int64(*val)
+		case **big.Rat:
+			sval = val.String()
+		default:
+			return fmt.Errorf("Unsupported value type: %T", param.Value)
+		}
+		if len(sval) == 0 {
+			sval = strconv.FormatInt(eval, 10)
+		}
+		write.Int32(int32(len(sval)))
+		write.StringNoTerm(sval)
+	case rdb.TypeText, rdb.TypeAnsiText, rdb.Text,
+		rdb.TypeVarChar, rdb.TypeAnsiVarChar, rdb.TypeChar, rdb.TypeAnsiChar,
+		rdb.TypeBinary, rdb.Binary:
+		switch val := param.Value.(type) {
+		case string:
+			write.Int32(int32(len(val)))
+			write.StringNoTerm(val)
+		case []byte:
+			write.Int32(int32(len(val)))
+			write.Bytea(val)
+		case rune:
+			sval := string(val)
+			write.Int32(int32(len(sval)))
+			write.StringNoTerm(sval)
+
+		case *string:
+			write.Int32(int32(len(*val)))
+			write.StringNoTerm(*val)
+		case *[]byte:
+			write.Int32(int32(len(*val)))
+			write.Bytea(*val)
+		case *rune:
+			sval := string(*val)
+			write.Int32(int32(len(sval)))
+			write.StringNoTerm(sval)
+		default:
+			return fmt.Errorf("Unsupported value type: %T", param.Value)
+		}
+	default:
+		return fmt.Errorf("Unsupported type: %v", param.Type)
+	}
+
+	return nil
 }
