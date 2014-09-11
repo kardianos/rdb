@@ -398,7 +398,6 @@ func (tds *PacketReader) LoginAck() (*ServerInfo, error) {
 		}
 		return nil, fmt.Errorf("Expected type %X but got %X", tokenLoginAck, bb[at])
 	}
-	at += 1
 
 	si := &ServerInfo{}
 
