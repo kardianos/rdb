@@ -359,7 +359,43 @@ func (tds *PacketReader) LoginAck() (*ServerInfo, error) {
 	defer read.Close()
 
 	at := 0
-	if bb[at] != tokenLoginAck {
+	token := bb[at]
+	at++
+	if token != tokenLoginAck {
+		if token == tokenError {
+			tp := rdb.SqlError
+			sqlMsg := &rdb.Message{
+				Type: tp,
+			}
+			// tokenLen := int(binary.LittleEndian.Uint16(bb[at:])) // length
+			at += 2
+			sqlMsg.Number = int32(binary.LittleEndian.Uint32(bb[at:]))
+			at += 4
+			state := bb[at]
+			at++
+			class := bb[at]
+			at++
+
+			msgLen := int(binary.LittleEndian.Uint16(bb[at:])) * 2
+			at += 2
+			msg := uconv.Decode.ToString(bb[at : at+msgLen])
+			at += msgLen
+			sqlMsg.Message = fmt.Sprintf("%s (%d, %d)", msg, state, class)
+
+			strLen := int(bb[at]) * 2
+			at++
+			sqlMsg.ServerName = uconv.Decode.ToString(bb[at : at+strLen])
+			at += strLen
+
+			strLen = int(bb[at]) * 2
+			at++
+			sqlMsg.ProcName = uconv.Decode.ToString(bb[at : at+strLen])
+			at += strLen
+
+			sqlMsg.LineNumber = int32(binary.LittleEndian.Uint32(bb[at:]))
+			at += 4
+			return nil, rdb.Errors{sqlMsg}
+		}
 		return nil, fmt.Errorf("Expected type %X but got %X", tokenLoginAck, bb[at])
 	}
 	at += 1
