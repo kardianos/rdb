@@ -171,7 +171,7 @@ func (v *valuer) WriteField(c *Column, value *DriverValue, assign Assigner) erro
 			}
 			switch in := value.Value.(type) {
 			case []byte:
-				bf.Value = append(bf.Value.([]byte), in...)
+				v.buffer[c.Index].Value = append(bf.Value.([]byte), in...)
 			default:
 				return fmt.Errorf("Type not supported for chunked read: %T", in)
 			}
