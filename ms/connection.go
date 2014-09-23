@@ -104,7 +104,17 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 
 	tds.status = rdb.StatusReady
 
-	return si, err
+	// SQL Server will not return a full field if this is not set.
+	err = tds.Query(&rdb.Command{
+		Sql: `
+SET TEXTSIZE -1
+	`}, nil, nil, nil)
+	if err != nil {
+		fmt.Printf("init err: %v\n", err)
+		return nil, err
+	}
+
+	return si, tds.NextQuery()
 }
 
 func (tds *Connection) ConnectionInfo() *rdb.ConnectionInfo {
