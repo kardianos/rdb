@@ -102,6 +102,10 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			value = *v
 		}
 		if writeMaxValue {
+			if nullValue {
+				w.WriteUint64(0xFFFFFFFFFFFFFFFF)
+				return nil
+			}
 			if reader, ok := value.(io.Reader); ok {
 				// Size Unknown.
 				var bb = make([]byte, 4000)
