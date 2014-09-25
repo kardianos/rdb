@@ -131,15 +131,6 @@ func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **Conne
 		}
 	}
 
-	res := &Result{
-		conn: conn,
-		cp:   cp,
-		val: valuer{
-			cmd: cmd,
-		},
-		keepOnClose: inTran,
-	}
-
 	if cmd.Converter != nil {
 		for i := range params {
 			err = cmd.Converter.ConvertParam(&params[i])
@@ -147,6 +138,15 @@ func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **Conne
 				return nil, err
 			}
 		}
+	}
+
+	res := &Result{
+		conn: conn,
+		cp:   cp,
+		val: valuer{
+			cmd: cmd,
+		},
+		keepOnClose: inTran,
 	}
 
 	timeout := cmd.QueryTimeout
@@ -190,6 +190,9 @@ func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **Conne
 		if err == nil && res.val.rowCount != 0 && !res.val.eof && res.val.cmd.Arity&ArityMust != 0 {
 			err = ArityError
 		}
+	}
+	if err != nil {
+		res.close(false)
 	}
 
 	return res, err
