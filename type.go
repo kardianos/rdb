@@ -4,7 +4,9 @@
 
 package rdb
 
-var Null byte = 0
+type NullType struct{}
+
+var Null NullType
 
 const (
 	TypeDriverThresh = 0x00010000
