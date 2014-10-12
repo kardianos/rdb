@@ -39,3 +39,13 @@
 	(TODO) Should be able to set default types based on native types for inputs.
 	(TODO) Should be able to set default for data type outputs.
 	(TODO) Custom marshal hooks.
+
+# Driver API TODO
+ * Array Parameters and columns, sub-types.
+ * Arity Must needs what?
+ * Make sure a connection is ready to have a new query sent.
+ * Prepared statements.
+ * Understand current limitations when using Oracle connections or TDS MARS
+	in light of transactions.
+ * 
+ 
