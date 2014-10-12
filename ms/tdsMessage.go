@@ -7,12 +7,11 @@ package ms
 import (
 	"bytes"
 	"encoding/binary"
-	"io"
-
-	"bitbucket.org/kardianos/rsync/sbuffer"
-
 	"encoding/hex"
 	"fmt"
+	"io"
+
+	"bitbucket.org/kardianos/rdb/ms/sbuffer"
 )
 
 const (
