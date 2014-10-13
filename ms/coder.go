@@ -756,7 +756,7 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 
 type writeField func(c *rdb.Column, value *rdb.DriverValue, assign rdb.Assigner) error
 
-func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, resultWf writeField, reportRow bool) {
+func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColumn, resultWf writeField, reportRow bool) {
 	sc := &column.Column
 	var err error
 	defer func() {
@@ -805,7 +805,33 @@ func decodeFieldValue(read uconv.PanicReader, column *SqlColumn, resultWf writeF
 
 			var value []byte
 			if column.info.NChar {
-				value = uconv.Decode.ToBytes(read(chunkSize))
+				// TODO: This could probably be cleaner.
+				// Data is chunked in a way that ignores UCS-2 runes.
+				// Before decoding to UTF-8, make sure a uint16 rune isn't split between two packets.
+				// If it is, save it for the next packet and append it.
+				split := (chunkSize+len(tds.ucs2Next))%2 == 1
+				if split {
+					if len(tds.ucs2Next) != 0 {
+						bb := read(chunkSize)
+						bb2 := append(tds.ucs2Next, bb[:len(bb)-1]...)
+						tds.ucs2Next = bb[len(bb)-1:]
+						value = uconv.Decode.ToBytes(bb2)
+						tds.ucs2Next = nil
+					} else {
+						bb := read(chunkSize)
+						value = uconv.Decode.ToBytes(bb[:len(bb)-1])
+						tds.ucs2Next = bb[len(bb)-1:]
+					}
+				} else {
+					if len(tds.ucs2Next) != 0 {
+						bb := read(chunkSize)
+						bb2 := append(tds.ucs2Next, bb...)
+						value = uconv.Decode.ToBytes(bb2)
+						tds.ucs2Next = nil
+					} else {
+						value = uconv.Decode.ToBytes(read(chunkSize))
+					}
+				}
 			} else {
 				value = make([]byte, chunkSize)
 				copy(value, read(chunkSize))

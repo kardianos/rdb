@@ -45,6 +45,9 @@ type Connection struct {
 
 	// Next token type.
 	peek byte
+
+	// The next byte of ucs2 if split between packets.
+	ucs2Next []byte
 }
 
 func NewConnection(c io.ReadWriteCloser) *Connection {
@@ -604,7 +607,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		return &msg, nil
 	case tokenRow:
 		for _, column := range tds.col {
-			decodeFieldValue(read, column, tds.val.WriteField, reportRow)
+			tds.decodeFieldValue(read, column, tds.val.WriteField, reportRow)
 		}
 
 		tds.peek = read(1)[0]
@@ -674,7 +677,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			outValue.Null = value.Null
 			return nil
 		}
-		decodeFieldValue(read, col, wf, true)
+		tds.decodeFieldValue(read, col, wf, true)
 
 		//tds.params[col.Index].Value
 		//pv.Value.Value
