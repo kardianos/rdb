@@ -5,6 +5,8 @@
 package ms
 
 import (
+	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,5 +54,63 @@ func TestTimeoutLive(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error with query: %v", err)
 	}
+}
 
+func TestError(t *testing.T) {
+	// Handle multiple result sets.
+	defer recoverTest(t)
+
+	// Packet size divided by 2 (utf-16) minus packet header.
+	var longText = strings.Repeat("Hello everyone in the world.\n", 100)[:4096/2-10] // -21
+
+	res1, err := db.Normal().Query(&rdb.Command{
+		Sql: `
+			select top 0 ID = 0;
+		`,
+		Arity: rdb.Any,
+	}, rdb.Param{Name: "Text", Type: rdb.Text, Value: longText})
+	res1.Close()
+	assertFreeConns(t)
+
+	if err != nil {
+		t.Errorf("Error with query: %v", err)
+	}
+
+	_, err = db.Normal().Query(&rdb.Command{
+		Sql: `
+			fooBad top 0 ID = 0;
+		`,
+		Arity: rdb.Any,
+	}, rdb.Param{Name: "Text", Type: rdb.Text, Value: longText})
+	// res2.Close()
+	assertFreeConns(t)
+
+	if err == nil {
+		t.Errorf("Expected error (res2).")
+	}
+
+	res3, err := db.Normal().Query(&rdb.Command{
+		Sql: `
+			select top 1 TX = @Text;
+		`,
+		Arity: rdb.Any,
+	}, rdb.Param{Name: "Text", Type: rdb.Text, Value: longText})
+
+	err = res3.Scan()
+	if err != nil {
+		t.Errorf("Error doing scan: %v", err)
+	}
+	tx := string(res3.Get("TX").([]byte))
+
+	res3.Close()
+	assertFreeConns(t)
+
+	if tx != longText {
+		txDump := hex.Dump([]byte(tx))
+		t.Errorf("Text does not match:\n\n%s\n\n", txDump)
+	}
+
+	if err != nil {
+		t.Errorf("Error with query: %v", err)
+	}
 }
