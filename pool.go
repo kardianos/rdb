@@ -124,19 +124,19 @@ func (cp *ConnPool) Query(cmd *Command, params ...Param) (*Result, error) {
 
 func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **ConnectionInfo, params ...Param) (*Result, error) {
 	var err error
-	if conn == nil {
-		conn, err = cp.getConn()
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	if cmd.Converter != nil {
 		for i := range params {
 			err = cmd.Converter.ConvertParam(&params[i])
 			if err != nil {
 				return nil, err
 			}
+		}
+	}
+
+	if conn == nil {
+		conn, err = cp.getConn()
+		if err != nil {
+			return nil, err
 		}
 	}
 
