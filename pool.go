@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"bitbucket.org/kardianos/rdb/third_party/vitess/pools"
+	"bitbucket.org/kardianos/rdb/internal/third_party/vitess/pools"
 )
 
 const debugConnectionReuse = false

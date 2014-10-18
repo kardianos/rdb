@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 
-	"bitbucket.org/kardianos/rdb/ms/sbuffer"
+	"bitbucket.org/kardianos/rdb/internal/sbuffer"
 )
 
 const (
