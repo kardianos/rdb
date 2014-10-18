@@ -81,6 +81,9 @@ type DriverConn interface {
 	// Close the underlying connection to the database.
 	Close()
 
+	Available() bool             // True if not currently in a connection pool.
+	SetAvailable(available bool) // Set when adding or removing from connection pool.
+
 	// Return version information regarding the currently connected server.
 	ConnectionInfo() *ConnectionInfo
 

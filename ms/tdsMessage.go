@@ -273,6 +273,9 @@ func (mr *MessageReader) Close() error {
 }
 
 func (r *MessageReader) Fetch(n int) (ret []byte, err error) {
+	if r == nil {
+		return nil, io.EOF
+	}
 	if n == 0 {
 		if r.packetEOM && len(r.current) == 0 {
 			return nil, io.EOF

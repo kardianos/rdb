@@ -17,8 +17,10 @@ import (
 type connection struct {
 	conn   net.Conn
 	config *rdb.Config
-	open   bool
-	inUse  bool
+
+	open      bool
+	inUse     bool
+	available bool
 
 	serverVersion  *semver.Version
 	serverLocation *time.Location
@@ -32,6 +34,13 @@ type connection struct {
 
 	tranStatus   transactionStatus
 	serverStatus map[string]string
+}
+
+func (pg *connection) SetAvailable(available bool) {
+	pg.available = available
+}
+func (pg *connection) Available() bool {
+	return pg.available
 }
 
 // Return version information regarding the currently connected server.

@@ -13,6 +13,7 @@ import (
 )
 
 func TestDateTime(t *testing.T) {
+	defer assertFreeConns(t)
 	defer recoverTest(t)
 
 	// Truncate as the round trip for DateTimeN is slightly lossy.
