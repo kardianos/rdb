@@ -12,6 +12,9 @@ import (
 )
 
 func TestOutputParam(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
 	defer recoverTest(t)
 
 	createProcDrop := &rdb.Command{
@@ -54,6 +57,9 @@ end
 }
 
 func TestOutputParamTypes(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
 	defer recoverTest(t)
 
 	createProcDrop := &rdb.Command{

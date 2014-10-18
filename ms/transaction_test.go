@@ -12,6 +12,9 @@ import (
 )
 
 func TestTransaction(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{

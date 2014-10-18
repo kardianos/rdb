@@ -5,13 +5,17 @@
 package ms
 
 import (
+	"fmt"
+	"runtime"
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
 	"bitbucket.org/kardianos/rdb/must"
 )
 
-const testConnectionString = "ms://TESTU:letmein@localhost/SqlExpress?db=master&dial_timeout=3s&init_cap=1"
+const parallel = true
+
+var testConnectionString = "ms://TESTU:letmein@localhost/SqlExpress?db=master&dial_timeout=3s&init_cap=%d"
 
 var config *rdb.Config
 var db must.ConnPool
@@ -20,6 +24,7 @@ func init() {
 	if db.Normal() != nil {
 		return
 	}
+	testConnectionString = fmt.Sprintf(testConnectionString, runtime.NumCPU())
 	config = must.Config(rdb.ParseConfigURL(testConnectionString))
 	db = must.Open(config)
 }

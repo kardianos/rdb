@@ -161,9 +161,13 @@ func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **Conne
 		timeout = cp.conf.QueryTimeout
 	}
 	if timeout != 0 {
+		// Give the driver time to stop it if possible.
+		timeout = timeout + (time.Second * 1)
+
 		done := make(chan struct{})
 		tm := time.NewTimer(timeout)
 		go func() {
+			// TODO: There is a data race here when it times out.
 			err = conn.Query(cmd, params, nil, &res.val)
 			tm.Stop()
 			close(done)
