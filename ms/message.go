@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/ms/uconv"
+	"bitbucket.org/kardianos/rdb/internal/uconv"
 )
 
 const (
