@@ -13,6 +13,9 @@ import (
 )
 
 func TestDateTime(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
 	defer assertFreeConns(t)
 	defer recoverTest(t)
 

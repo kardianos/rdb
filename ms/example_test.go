@@ -11,6 +11,9 @@ import (
 )
 
 func TestErrorQuery(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
 	defer recoverTest(t)
 	res, err := db.Normal().Query(&rdb.Command{
 		Sql: `
@@ -37,6 +40,9 @@ func TestErrorQuery(t *testing.T) {
 }
 
 func TestSimpleQuery(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
 	defer recoverTest(t)
 	var myFav string
 	db.Query(&rdb.Command{
@@ -59,6 +65,9 @@ func TestSimpleQuery(t *testing.T) {
 }
 
 func TestRowsQuerySimple(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
 	defer assertFreeConns(t)
 	defer recoverTest(t)
 	var myFav string
@@ -104,6 +113,9 @@ func TestRowsQuerySimple(t *testing.T) {
 
 }
 func TestRowsQueryNull(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
 	defer recoverTest(t)
 	var colA string
 	cmd := &rdb.Command{
@@ -128,6 +140,9 @@ func TestRowsQueryNull(t *testing.T) {
 	assertFreeConns(t)
 }
 func TestLargerQuery(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
 	defer recoverTest(t)
 	cmd := &rdb.Command{
 		Sql: `

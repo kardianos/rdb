@@ -14,7 +14,12 @@ import (
 )
 
 func TestTimeoutDie(t *testing.T) {
-	// t.Skip()
+	if testing.Short() {
+		t.Skip()
+	}
+	if parallel {
+		t.Parallel()
+	}
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
@@ -36,6 +41,12 @@ func TestTimeoutDie(t *testing.T) {
 }
 
 func TestTimeoutLive(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	if parallel {
+		t.Parallel()
+	}
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
@@ -57,6 +68,9 @@ func TestTimeoutLive(t *testing.T) {
 }
 
 func TestError(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
@@ -116,7 +130,9 @@ func TestError(t *testing.T) {
 }
 
 func TestMismatchTypeError(t *testing.T) {
-	// t.Skip()
+	if parallel {
+		t.Parallel()
+	}
 	// Handle multiple result sets.
 	defer recoverTest(t)
 

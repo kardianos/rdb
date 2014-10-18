@@ -11,6 +11,9 @@ import (
 )
 
 func TestMultiResult(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
@@ -44,6 +47,9 @@ func TestMultiResult(t *testing.T) {
 }
 
 func TestMultiResultHalt(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
@@ -74,6 +80,9 @@ func TestMultiResultHalt(t *testing.T) {
 }
 
 func TestMultiResultLoop(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
