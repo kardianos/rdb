@@ -8,30 +8,10 @@ import (
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/must"
 )
 
-func TestSimpleQuery(t *testing.T) {
-	err := QueryTest(t)
-	if err != nil {
-		t.Error(err)
-	}
-}
-
-func QueryTest(t *testing.T) (ferr error) {
+func TestErrorQuery(t *testing.T) {
 	defer recoverTest(t)
-
-	ErrorQuery(db, t)
-	SimpleQuery(db, t)
-	RowsQuerySimple(db, t)
-	RowsQueryNull(db, t)
-	LargerQuery(db, t)
-
-	assertFreeConns(t)
-	return nil
-}
-
-func ErrorQuery(db must.ConnPool, t *testing.T) {
 	res, err := db.Normal().Query(&rdb.Command{
 		Sql: `
 			s3l3c1 @animal as 'MyAnimal';`,
@@ -52,9 +32,12 @@ func ErrorQuery(db must.ConnPool, t *testing.T) {
 		t.Errorf("Expecting SqlErrors type.")
 	}
 	res.Close()
+
+	assertFreeConns(t)
 }
 
-func SimpleQuery(db must.ConnPool, t *testing.T) {
+func TestSimpleQuery(t *testing.T) {
+	defer recoverTest(t)
 	var myFav string
 	db.Query(&rdb.Command{
 		Sql: `
@@ -71,9 +54,13 @@ func SimpleQuery(db must.ConnPool, t *testing.T) {
 		},
 	}...).Prep("MyAnimal", &myFav).Scan()
 	t.Logf("Animal_1: %s\n", myFav)
+
+	assertFreeConns(t)
 }
 
-func RowsQuerySimple(db must.ConnPool, t *testing.T) {
+func TestRowsQuerySimple(t *testing.T) {
+	defer assertFreeConns(t)
+	defer recoverTest(t)
 	var myFav string
 	res := db.Query(&rdb.Command{
 		Sql: `
@@ -88,13 +75,13 @@ func RowsQuerySimple(db must.ConnPool, t *testing.T) {
 			{Null: "null-value"},
 		},
 		TruncLongText: true,
-	}, []rdb.Param{
-		{
+	},
+		rdb.Param{
 			Name:  "animal",
 			Type:  rdb.Text,
 			Value: "Dreaming boats.",
 		},
-	}...)
+	)
 	check := []string{
 		"Dreaming boats.",
 		"Hello again!",
@@ -114,8 +101,10 @@ func RowsQuerySimple(db must.ConnPool, t *testing.T) {
 	if res.RowsAffected() != 3 {
 		t.Errorf("Invalid number of rows affected. Want 3 got %d.", res.RowsAffected())
 	}
+
 }
-func RowsQueryNull(db must.ConnPool, t *testing.T) {
+func TestRowsQueryNull(t *testing.T) {
+	defer recoverTest(t)
 	var colA string
 	cmd := &rdb.Command{
 		Sql: `
@@ -135,8 +124,11 @@ func RowsQueryNull(db must.ConnPool, t *testing.T) {
 		}
 		i++
 	}
+
+	assertFreeConns(t)
 }
-func LargerQuery(db must.ConnPool, t *testing.T) {
+func TestLargerQuery(t *testing.T) {
+	defer recoverTest(t)
 	cmd := &rdb.Command{
 		Sql: `
 			select
@@ -170,4 +162,6 @@ func LargerQuery(db must.ConnPool, t *testing.T) {
 	_ = box
 	t.Logf("ID: %d\n", id)
 	t.Logf("Val: %f\n", val)
+
+	assertFreeConns(t)
 }

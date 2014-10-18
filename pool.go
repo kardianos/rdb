@@ -93,13 +93,19 @@ func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 			fmt.Println("Result.Close() CLOSE")
 		}
 		conn.Close()
-		cp.pool.Put(nil)
+		if conn.Available() {
+			conn.SetAvailable(false)
+			cp.pool.Put(nil)
+		}
 		return nil
 	}
 	if debugConnectionReuse {
 		fmt.Println("Result.Close() REUSE")
 	}
-	cp.pool.Put(conn)
+	if conn.Available() {
+		conn.SetAvailable(false)
+		cp.pool.Put(conn)
+	}
 	if debugConnectionReuse {
 		fmt.Println(cp.pool.StatsJSON())
 	}
@@ -110,6 +116,7 @@ func (cp *ConnPool) getConn() (DriverConn, error) {
 	connObj, err := cp.pool.Get()
 	if connObj != nil {
 		conn = connObj.(DriverConn)
+		conn.SetAvailable(true)
 	}
 	return conn, err
 }
@@ -192,7 +199,7 @@ func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **Conne
 		}
 	}
 	if err != nil {
-		res.close(false)
+		cp.releaseConn(conn, true)
 	}
 
 	return res, err

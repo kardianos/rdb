@@ -114,3 +114,39 @@ func TestError(t *testing.T) {
 		t.Errorf("Error with query: %v", err)
 	}
 }
+
+func TestMismatchTypeError(t *testing.T) {
+	// t.Skip()
+	// Handle multiple result sets.
+	defer recoverTest(t)
+
+	timeout(t, time.Second*2, func() {
+		res1, err := db.Normal().Query(&rdb.Command{
+			Sql: `
+			select MyString = @MyString;
+		`,
+			Arity: rdb.Any,
+		}, rdb.Param{Name: "Text", Type: rdb.TypeDate, Value: "my text"})
+		res1.Close()
+		assertFreeConns(t)
+
+		if err == nil {
+			t.Errorf("Error missing from query: %v", err)
+		}
+	})
+}
+
+func timeout(t *testing.T, d time.Duration, f func()) {
+	done := make(chan struct{})
+	tm := time.NewTimer(d)
+	go func() {
+		f()
+		tm.Stop()
+		close(done)
+	}()
+	select {
+	case <-tm.C:
+		t.Errorf("Query out after %v.", d)
+	case <-done:
+	}
+}

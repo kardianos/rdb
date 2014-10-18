@@ -28,7 +28,8 @@ type Connection struct {
 
 	wc io.ReadWriteCloser
 
-	status rdb.DriverConnStatus
+	status    rdb.DriverConnStatus
+	available bool
 
 	ProductVersion  *semver.Version
 	ProtocolVersion *semver.Version
@@ -56,6 +57,13 @@ func NewConnection(c io.ReadWriteCloser) *Connection {
 		pr: NewPacketReader(c),
 		wc: c,
 	}
+}
+
+func (tds *Connection) SetAvailable(available bool) {
+	tds.available = available
+}
+func (tds *Connection) Available() bool {
+	return tds.available
 }
 
 func (tds *Connection) getAllHeaders() []byte {
@@ -113,7 +121,6 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 SET TEXTSIZE -1
 	`}, nil, nil, nil)
 	if err != nil {
-		fmt.Printf("init err: %v\n", err)
 		return nil, err
 	}
 
