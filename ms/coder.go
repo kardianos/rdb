@@ -816,7 +816,6 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 						bb2 := append(tds.ucs2Next, bb[:len(bb)-1]...)
 						tds.ucs2Next = bb[len(bb)-1:]
 						value = uconv.Decode.ToBytes(bb2)
-						tds.ucs2Next = nil
 					} else {
 						bb := read(chunkSize)
 						value = uconv.Decode.ToBytes(bb[:len(bb)-1])
