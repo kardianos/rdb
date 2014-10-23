@@ -9,6 +9,7 @@ import (
 	"net"
 
 	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/ms/ssrp"
 )
 
 func init() {
@@ -18,15 +19,19 @@ func init() {
 type Driver struct{}
 
 func (dr *Driver) Open(c *rdb.Config) (rdb.DriverConn, error) {
-	port := 1433
-	if c.Port != 0 {
-		port = c.Port
-	}
-	hostname := "localhost"
-	if len(c.Hostname) != 0 && c.Hostname != "." {
-		hostname = c.Hostname
+	hostname := c.Hostname
+	if len(c.Hostname) == 0 || c.Hostname == "." {
+		hostname = "localhost"
 	}
 
+	port := c.Port
+	if c.Port == 0 {
+		ii, err := ssrp.FetchInstanceInfo(hostname, c.Instance)
+		if err != nil {
+			return nil, err
+		}
+		port = ii.Tcp
+	}
 	var conn net.Conn
 	var err error
 
