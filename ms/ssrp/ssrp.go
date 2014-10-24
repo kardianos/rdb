@@ -7,6 +7,7 @@ package ssrp
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"strconv"
 	"time"
@@ -22,7 +23,7 @@ func FetchInstanceInfo(server, instance string) (*InstanceInfo, error) {
 	list, err := fetch(server, instance, false)
 	if err != nil {
 		return nil, err
-		}
+	}
 	return &list[0], nil
 }
 
@@ -77,10 +78,12 @@ func fetch(server, instance string, all bool) ([]InstanceInfo, error) {
 		}
 		time.Sleep(time.Millisecond * 300)
 	}
-
+	if info == nil {
+		return nil, fmt.Errorf("Unable to fetch server connection information.")
+	}
 
 	return info, nil
-	}
+}
 
 type InstanceInfo struct {
 	IP        net.IP
