@@ -27,10 +27,11 @@ func (dr *Driver) Open(c *rdb.Config) (rdb.DriverConn, error) {
 	port := c.Port
 	if c.Port == 0 {
 		ii, err := ssrp.FetchInstanceInfo(hostname, c.Instance)
-		if err != nil {
-			return nil, err
+		if err == nil {
+			port = ii.Tcp
+		} else {
+			port = 1433
 		}
-		port = ii.Tcp
 	}
 	var conn net.Conn
 	var err error
