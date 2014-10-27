@@ -113,11 +113,15 @@ func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 }
 func (cp *ConnPool) getConn() (DriverConn, error) {
 	var conn DriverConn
-	connObj, err := cp.pool.Get()
+	connObj, err := cp.pool.Get(time.Millisecond * 40)
 	if connObj != nil {
 		conn = connObj.(DriverConn)
 		conn.SetAvailable(true)
 	}
+	// TODO: How should timeouts be handled?
+	//if err == pools.TIMEOUT_ERR {
+	//	err = nil
+	//}
 	return conn, err
 }
 
