@@ -790,10 +790,10 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 		for {
 			chunkSize := int(binary.LittleEndian.Uint32(read(4)))
 			if chunkSize == 0 {
-				if useChunks {
+				if useChunks || totalSize == 0 {
 					wf(&rdb.DriverValue{
 						More:    false,
-						Chunked: true,
+						Chunked: useChunks,
 						Value:   []byte{},
 					})
 				}
