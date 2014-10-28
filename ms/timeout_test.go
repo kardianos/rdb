@@ -195,6 +195,7 @@ func TestConnectionPoolExhaustion(t *testing.T) {
 			}
 			res.Close()
 		}()
+		time.Sleep(time.Millisecond * 20)
 	}
 	wait.Wait()
 	assertFreeConns(t)
