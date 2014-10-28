@@ -178,7 +178,7 @@ func TestConnectionPoolExhaustion(t *testing.T) {
 
 	wait := &sync.WaitGroup{}
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 200; i++ {
 		go func() {
 			wait.Add(1)
 			defer wait.Done()
