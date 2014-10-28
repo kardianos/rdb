@@ -924,19 +924,19 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 		switch dataLen {
 		case 1:
 			wf(&rdb.DriverValue{
-				Value: read(1)[0],
+				Value: int8(read(1)[0]),
 			})
 		case 2:
 			wf(&rdb.DriverValue{
-				Value: binary.LittleEndian.Uint16(read(2)),
+				Value: int16(binary.LittleEndian.Uint16(read(2))),
 			})
 		case 4:
 			wf(&rdb.DriverValue{
-				Value: binary.LittleEndian.Uint32(read(4)),
+				Value: int32(binary.LittleEndian.Uint32(read(4))),
 			})
 		case 8:
 			wf(&rdb.DriverValue{
-				Value: binary.LittleEndian.Uint64(read(8)),
+				Value: int64(binary.LittleEndian.Uint64(read(8))),
 			})
 		default:
 			panic("Proto Error IntN")
