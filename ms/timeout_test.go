@@ -7,6 +7,7 @@ package ms
 import (
 	"encoding/hex"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -165,4 +166,36 @@ func timeout(t *testing.T, d time.Duration, f func()) {
 		t.Errorf("Query out after %v.", d)
 	case <-done:
 	}
+}
+
+func TestConnectionPoolExhaustion(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
+	// Handle multiple result sets.
+	defer recoverTest(t)
+
+	wait := &sync.WaitGroup{}
+
+	for i := 0; i < 10; i++ {
+		go func() {
+			wait.Add(1)
+			defer wait.Done()
+
+			res, err := db.Normal().Query(&rdb.Command{
+				Sql: `
+			waitfor delay '00:00:01';
+			select ID = 1;
+		`,
+				Arity: rdb.Any,
+			})
+			if err != nil {
+				t.Errorf("Failed to wait for next connection: %v", err)
+			}
+			res.Close()
+		}()
+	}
+	wait.Wait()
+	assertFreeConns(t)
 }

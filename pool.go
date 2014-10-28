@@ -118,10 +118,10 @@ func (cp *ConnPool) getConn() (DriverConn, error) {
 		conn = connObj.(DriverConn)
 		conn.SetAvailable(true)
 	}
-	// TODO: How should timeouts be handled?
-	//if err == pools.TIMEOUT_ERR {
-	//	err = nil
-	//}
+	// TODO: Need logic to expand the pool capacity up to the max capacity.
+	if err == pools.TIMEOUT_ERR {
+		// TODO: How should timeouts be handled?
+	}
 	return conn, err
 }
 
