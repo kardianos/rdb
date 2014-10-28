@@ -19,6 +19,13 @@ type Row struct {
 	Field  []rdb.Nullable
 }
 
+func (row Row) Index(name string) (int, error) {
+	index, found := row.buffer.nameIndexLookup[name]
+	if !found {
+		return -1, rdb.ErrorColumnNotFound{At: "Index", Name: name}
+	}
+	return index, nil
+}
 func (row Row) Get(name string) (interface{}, error) {
 	index, found := row.buffer.nameIndexLookup[name]
 	if !found {
