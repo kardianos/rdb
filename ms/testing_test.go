@@ -12,7 +12,7 @@ import (
 	"bitbucket.org/kardianos/rdb/must"
 )
 
-const parallel = false
+const parallel = true
 
 var testConnectionString = "ms://TESTU:letmein@localhost/SqlExpress?db=master&dial_timeout=3s"
 
@@ -29,6 +29,9 @@ func init() {
 }
 
 func assertFreeConns(t *testing.T) {
+	if parallel {
+		return
+	}
 	capacity, available := db.Normal().PoolAvailable()
 	t.Logf("Pool capacity: %v, available: %v.", capacity, available)
 	if capacity != available {

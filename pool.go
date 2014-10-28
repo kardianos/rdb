@@ -2,6 +2,7 @@ package rdb
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"bitbucket.org/kardianos/rdb/internal/third_party/vitess/pools"
@@ -19,6 +20,8 @@ type ConnPool struct {
 	dr   Driver
 	conf *Config
 	pool *pools.ResourcePool
+
+	poolSync sync.Mutex
 }
 
 func Open(config *Config) (*ConnPool, error) {
@@ -111,16 +114,36 @@ func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 	}
 	return nil
 }
-func (cp *ConnPool) getConn() (DriverConn, error) {
+func (cp *ConnPool) getConn(again bool) (DriverConn, error) {
 	var conn DriverConn
-	connObj, err := cp.pool.Get(time.Millisecond * 40)
+	timeout := time.Millisecond * 40
+	if !again {
+		timeout = 0
+	}
+	connObj, err := cp.pool.Get(timeout)
 	if connObj != nil {
 		conn = connObj.(DriverConn)
 		conn.SetAvailable(true)
 	}
-	// TODO: Need logic to expand the pool capacity up to the max capacity.
-	if err == pools.TIMEOUT_ERR {
-		// TODO: How should timeouts be handled?
+	// Logic to expand the pool capacity up to the max capacity.
+	if again && err == pools.TIMEOUT_ERR {
+		cp.poolSync.Lock()
+
+		maxCap := cp.pool.MaxCap()
+		curCap := cp.pool.Capacity()
+
+		if curCap >= maxCap {
+			cp.poolSync.Unlock()
+			return cp.getConn(false)
+		}
+		curCap += (maxCap / 10)
+		if curCap > maxCap {
+			curCap = maxCap
+		}
+		cp.pool.SetCapacity(int(curCap))
+		cp.poolSync.Unlock()
+
+		return cp.getConn(false)
 	}
 	return conn, err
 }
@@ -145,7 +168,7 @@ func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **Conne
 	}
 
 	if conn == nil {
-		conn, err = cp.getConn()
+		conn, err = cp.getConn(true)
 		if err != nil {
 			return nil, err
 		}
@@ -218,7 +241,7 @@ func (cp *ConnPool) Begin() (*Transaction, error) {
 	return cp.BeginLevel(LevelDefault)
 }
 func (cp *ConnPool) BeginLevel(level IsolationLevel) (*Transaction, error) {
-	conn, err := cp.getConn()
+	conn, err := cp.getConn(true)
 	if err != nil {
 		return nil, err
 	}
