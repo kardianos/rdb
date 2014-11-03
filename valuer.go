@@ -403,7 +403,7 @@ func AssignValue(c *Column, outValue Nullable, prep interface{}, assign Assigner
 	case float32:
 		switch out := prep.(type) {
 		case **big.Rat:
-			out.SetFloat64(float64(in))
+			(*out).SetFloat64(float64(in))
 		case *big.Rat:
 			out.SetFloat64(float64(in))
 		case *float64:
@@ -416,7 +416,7 @@ func AssignValue(c *Column, outValue Nullable, prep interface{}, assign Assigner
 	case float64:
 		switch out := prep.(type) {
 		case **big.Rat:
-			out.SetFloat64(float64(in))
+			(*out).SetFloat64(float64(in))
 		case *big.Rat:
 			out.SetFloat64(float64(in))
 		case *float64:

@@ -585,7 +585,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		case *int64:
 			writeValue = float64(*v)
 		case **big.Rat:
-			writeValue, _ = v.Float64()
+			writeValue, _ = (*v).Float64()
 		default:
 			return fmt.Errorf("Need numeric for param @%s", param.Name)
 		}
