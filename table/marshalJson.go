@@ -21,6 +21,12 @@ type JsonRowObject struct {
 	FlushAt int
 }
 
+func (coder *JsonRowObject) MarshalJSON() ([]byte, error) {
+	buf := &bytes.Buffer{}
+	_, err := coder.WriteTo(buf)
+	return buf.Bytes(), err
+}
+
 func (coder *JsonRowObject) WriteTo(writer io.Writer) (n int64, err error) {
 	flushAt := coder.FlushAt
 	if flushAt == 0 {
@@ -140,6 +146,11 @@ type JsonRowArray struct {
 	DataRowsName      string // Default field name is "Data".
 }
 
+func (coder *JsonRowArray) MarshalJSON() ([]byte, error) {
+	buf := &bytes.Buffer{}
+	_, err := coder.WriteTo(buf)
+	return buf.Bytes(), err
+}
 func (coder *JsonRowArray) WriteTo(writer io.Writer) (n int64, err error) {
 	flushAt := coder.FlushAt
 	if flushAt == 0 {
