@@ -27,7 +27,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 	collation := []byte{0x09, 0x04, 0xD0, 0x00, 0x34}
 
 	nullValue := false
-	if value == rdb.Null || value == nil {
+	if value == rdb.Null || value == nil || param.Null {
 		nullValue = true
 	}
 
@@ -479,54 +479,57 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			return err
 		}
 		if nullValue {
-			w.WriteByte(0)
+			w.Write([]byte{0, 0, 0, 0})
 			return nil
 		}
 		w.WriteByte(typeLength) // TYPE_INFO width.
 		w.WriteByte(byte(param.Precision))
 		w.WriteByte(byte(param.Scale))
-		switch v := value.(type) {
-		case **big.Rat:
-			value = *v
+		var rv *big.Rat
+		if !nullValue {
+			switch v := value.(type) {
+			case **big.Rat:
+				value = *v
+			}
+			switch v := value.(type) {
+			case *big.Rat:
+				rv = v
+			default:
+				return fmt.Errorf("Need *big.Rat for param @%s", param.Name)
+			}
 		}
-		switch v := value.(type) {
-		case *big.Rat:
-			sign := byte(0)
-			if v.Sign() >= 0 {
-				sign = 1
-			}
+		sign := byte(0)
+		if rv.Sign() >= 0 {
+			sign = 1
+		}
 
-			mult := getMult(param.Scale)
+		mult := getMult(param.Scale)
 
-			scale := big.NewRat(mult, 1)
-			bb := scale.Mul(v, scale).Num().Bytes()
-			if len(bb) > 16 {
-				return fmt.Errorf("Decimal value of (%s) too large for param %s %s", v.String(), param.Name, st.TypeString(param))
-			}
-			// Big.Bytes writes out in big-endian.
-			// Want little endian so reverse bytes.
-			reverseBytes(bb)
-
-			dataLen := 0
-			switch {
-			case len(bb) <= 4:
-				dataLen = 4
-			case len(bb) <= 8:
-				dataLen = 8
-			case len(bb) <= 12:
-				dataLen = 12
-			case len(bb) <= 16:
-				dataLen = 16
-			}
-			filler := make([]byte, dataLen-len(bb))
-			w.WriteByte(byte(dataLen + 1))
-			w.WriteByte(sign)
-			w.WriteBuffer(bb)
-			if len(filler) > 0 {
-				w.WriteBuffer(filler)
-			}
-		default:
-			return fmt.Errorf("Need *big.Rat for param @%s", param.Name)
+		scale := big.NewRat(mult, 1)
+		bb := scale.Mul(rv, scale).Num().Bytes()
+		if len(bb) > 16 {
+			return fmt.Errorf("Decimal value of (%s) too large for param %s %s", rv.String(), param.Name, st.TypeString(param))
+		}
+		// Big.Bytes writes out in big-endian.
+		// Want little endian so reverse bytes.
+		reverseBytes(bb)
+		dataLen := 0
+		switch {
+		case len(bb) <= 4:
+			dataLen = 4
+		case len(bb) <= 8:
+			dataLen = 8
+		case len(bb) <= 12:
+			dataLen = 12
+		case len(bb) <= 16:
+			dataLen = 16
+		}
+		filler := make([]byte, dataLen-len(bb))
+		w.WriteByte(byte(dataLen + 1))
+		w.WriteByte(sign)
+		w.WriteBuffer(bb)
+		if len(filler) > 0 {
+			w.WriteBuffer(filler)
 		}
 		return nil
 	}
@@ -861,7 +864,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 			nullValue = 0xFFFF
 		case 4:
 			dataLen = int(binary.LittleEndian.Uint32(read(4)))
-			nullValue = 0xFFFFFFFF
+			nullValue = -1 // 0xFFFFFFFF
 		}
 	}
 

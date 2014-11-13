@@ -97,3 +97,28 @@ func TestBytesValue(t *testing.T) {
 		}
 	}
 }
+
+func TestNullNumbers(t *testing.T) {
+	defer recoverTest(t)
+
+	cmd := &rdb.Command{
+		Sql: `
+			select @decimal
+		`,
+		Arity: rdb.OneMust,
+	}
+
+	params := []rdb.Param{
+		{Name: "decimal", Type: rdb.Decimal, Value: nil, Precision: 38, Scale: 6, Null: true},
+	}
+
+	res := db.Query(cmd, params...)
+	defer res.Close()
+
+	res.Scan()
+	val := res.Getx(0)
+
+	if val != nil {
+		t.Fatalf("Rat should be nil: %v", val)
+	}
+}
