@@ -19,26 +19,26 @@ type Row struct {
 	Field  []rdb.Nullable
 }
 
-func (row Row) Index(name string) (int, error) {
+func (row Row) Index(name string) int {
 	index, found := row.buffer.nameIndexLookup[name]
 	if !found {
-		return -1, rdb.ErrorColumnNotFound{At: "Index", Name: name}
+		panic(rdb.ErrorColumnNotFound{At: "Index", Name: name})
 	}
-	return index, nil
+	return index
 }
-func (row Row) Get(name string) (interface{}, error) {
+func (row Row) Get(name string) interface{} {
 	index, found := row.buffer.nameIndexLookup[name]
 	if !found {
-		return rdb.Nullable{}, rdb.ErrorColumnNotFound{At: "Get", Name: name}
+		panic(rdb.ErrorColumnNotFound{At: "Get", Name: name})
 	}
-	return row.Field[index].Value, nil
+	return row.Field[index].Value
 }
-func (row Row) GetN(name string) (rdb.Nullable, error) {
+func (row Row) GetN(name string) rdb.Nullable {
 	index, found := row.buffer.nameIndexLookup[name]
 	if !found {
-		return rdb.Nullable{}, rdb.ErrorColumnNotFound{At: "GetN", Name: name}
+		panic(rdb.ErrorColumnNotFound{At: "GetN", Name: name})
 	}
-	return row.Field[index], nil
+	return row.Field[index]
 }
 
 type Buffer struct {
