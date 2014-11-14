@@ -40,6 +40,10 @@ func (row Row) GetN(name string) rdb.Nullable {
 	}
 	return row.Field[index]
 }
+func (row Row) HasColumn(name string) bool {
+	_, found := row.buffer.nameIndexLookup[name]
+	return found
+}
 
 type Buffer struct {
 	Name            string
