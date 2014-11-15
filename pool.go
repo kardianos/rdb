@@ -187,7 +187,8 @@ func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **Conne
 	if timeout == 0 {
 		timeout = cp.conf.QueryTimeout
 	}
-	if timeout != 0 {
+	// Suspect this is causing an issue with connection state.
+	/* if timeout != 0 {
 		// Give the driver time to stop it if possible.
 		timeout = timeout + (time.Second * 1)
 
@@ -208,7 +209,8 @@ func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **Conne
 		}
 	} else {
 		err = conn.Query(cmd, params, nil, &res.val)
-	}
+	}*/
+	err = conn.Query(cmd, params, nil, &res.val)
 	if ci != nil {
 		*ci = conn.ConnectionInfo()
 	}
