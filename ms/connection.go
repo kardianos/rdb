@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"bitbucket.org/kardianos/rdb"
 	"bitbucket.org/kardianos/rdb/internal/uconv"
@@ -30,6 +31,7 @@ type Connection struct {
 
 	status    rdb.DriverConnStatus
 	available bool
+	syncClose sync.Mutex
 
 	ProductVersion  *semver.Version
 	ProtocolVersion *semver.Version
@@ -135,6 +137,9 @@ func (tds *Connection) ConnectionInfo() *rdb.ConnectionInfo {
 }
 
 func (tds *Connection) Close() {
+	tds.syncClose.Lock()
+	defer tds.syncClose.Unlock()
+
 	if tds.status == rdb.StatusDisconnected {
 		return
 	}
@@ -297,6 +302,9 @@ func (tds *Connection) NextResult() (more bool, err error) {
 	if debugAPI {
 		fmt.Printf("API NextResult\n")
 	}
+	tds.syncClose.Lock()
+	defer tds.syncClose.Unlock()
+
 	more = (tds.status == rdb.StatusResultDone)
 	if more {
 		tds.status = rdb.StatusQuery
@@ -388,6 +396,9 @@ func (tds *Connection) Scan() error {
 }
 
 func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, params []rdb.Param) error {
+	tds.syncClose.Lock()
+	defer tds.syncClose.Unlock()
+
 	if tds.status == rdb.StatusDisconnected {
 		return connectionNotOpenError
 	}
@@ -577,6 +588,12 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		}
 		for i := 0; i < count; i++ {
 			column := decodeColumnInfo(read)
+			if column.info.Table {
+				parts := read(1)[0]
+				for pi := byte(0); pi < parts; pi++ {
+					uconv.Decode.Prefix2(read)
+				}
+			}
 			_, column.Name = uconv.Decode.Prefix1(read)
 			column.Index = i
 			columns = append(columns, column)

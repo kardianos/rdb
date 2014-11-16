@@ -1,16 +1,18 @@
 package ms
 
 import (
+	"encoding/hex"
 	"fmt"
+	"strings"
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
 )
 
-func TestText(t *testing.T) {
+func TestShortText(t *testing.T) {
 	defer recoverTest(t)
 
-	var testText = "Hello"
+	var testText = strings.Repeat("X", 200)
 	var testLimit = 100
 
 	type TI struct {
@@ -19,7 +21,7 @@ func TestText(t *testing.T) {
 		Value string
 	}
 	var list = []*TI{
-		// &TI{Name: "AsText", Limit: false},
+		&TI{Name: "AsText", Limit: false},
 		// &TI{Name: "AsNText", Limit: false},
 		&TI{Name: "AsVarChar", Limit: true},
 		&TI{Name: "AsNVarChar", Limit: true},
@@ -30,8 +32,8 @@ func TestText(t *testing.T) {
 	cmd := &rdb.Command{
 		Sql: fmt.Sprintf(`
 			select
-				-- AsText = cast('%[1]s' as Text),
-				-- AsNText = cast('%[1]s' as NText),
+				AsText = cast('%[1]s' as Text),
+				AsNText = cast('%[1]s' as NText),
 				AsVarChar = cast('%[1]s' as varchar(%[2]d)),
 				AsNVarChar = cast('%[1]s' as nvarchar(%[2]d)),
 				AsVarCharMax = cast('%[1]s' as varchar(max)),
@@ -46,16 +48,66 @@ func TestText(t *testing.T) {
 	res.Scan()
 
 	for _, item := range list {
-		item.Value = string(res.Get(item.Name).([]byte))
+		if v, is := res.Get(item.Name).([]byte); is {
+			item.Value = string(v)
+		}
 	}
 	for _, item := range list {
 		var compareTo = testText
-		if item.Limit && len(testText) > testLimit && len(item.Value) > testLimit {
+		if item.Limit && len(testText) > testLimit {
 			compareTo = testText[:testLimit]
 		}
 
 		if item.Value != compareTo {
-			t.Errorf("Field %s not correct value. Is: %s", item.Name, item.Value)
+			// dv := hex.Dump([]byte(item.Value))
+			t.Errorf("Field %s not correct value.\n", item.Name)
+		}
+	}
+}
+func TestLongText(t *testing.T) {
+	t.Skip() // Text that spans packets are not supported.
+
+	defer recoverTest(t)
+
+	var testText = strings.Repeat("X", 50000)
+	var testLimit = 100
+
+	type TI struct {
+		Name  string
+		Limit bool
+		Value string
+	}
+	var list = []*TI{
+		&TI{Name: "AsText", Limit: false},
+	}
+
+	cmd := &rdb.Command{
+		Sql: fmt.Sprintf(`
+			select
+				AsText = cast('%[1]s' as Text)
+		`, testText, testLimit),
+		Arity: rdb.OneMust,
+	}
+
+	res := db.Query(cmd)
+	defer res.Close()
+
+	res.Scan()
+
+	for _, item := range list {
+		if v, is := res.Get(item.Name).([]byte); is {
+			item.Value = string(v)
+		}
+	}
+	for _, item := range list {
+		var compareTo = testText
+		if item.Limit && len(testText) > testLimit {
+			compareTo = testText[:testLimit]
+		}
+
+		if item.Value != compareTo {
+			dv := hex.Dump([]byte(item.Value))
+			t.Errorf("Field %s not correct value, len: %d\n:%s", item.Name, len(item.Value), dv)
 		}
 	}
 }
