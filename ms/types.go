@@ -127,6 +127,7 @@ type typeInfo struct {
 	NChar  bool   // Does the server expect utf16 encoded text?
 	Bytes  bool   // Can the type be treated as a stream of bytes?
 	IsPrSc bool   // Use scale and prec?
+	Table  bool   // Send table name after type info.
 	Dt     byte   // Date Time Flags.
 
 	MinVer *semver.Version // Minimum protocol version for type.
@@ -196,9 +197,9 @@ var typeInfoLookup = map[driverType]typeInfo{
 	typeChar:      {Name: "Char(Big)", Bytes: true, IsText: true, Len: 2, Specific: rdb.TypeAnsiChar, Generic: rdb.Text},
 	typeNVarChar:  {Name: "NVarChar", Bytes: true, NChar: true, IsText: true, Max: true, Len: 2, Specific: rdb.TypeVarChar, Generic: rdb.Text},
 	typeNChar:     {Name: "NChar", Bytes: true, NChar: true, IsText: true, Len: 2, Specific: rdb.TypeChar, Generic: rdb.Text},
-	typeText:      {Name: "Text", Bytes: true, IsText: true, Len: 4, Specific: rdb.TypeAnsiText, Generic: rdb.Text},
-	typeImage:     {Name: "Image", Bytes: true, Len: 4, Specific: rdb.TypeBinary, Generic: rdb.Binary},
-	typeNText:     {Name: "NText", Bytes: true, NChar: true, IsText: true, Len: 4, Specific: rdb.TypeText, Generic: rdb.Text},
+	typeText:      {Name: "Text", Bytes: true, IsText: true, Table: true, Len: 4, Specific: rdb.TypeAnsiText, Generic: rdb.Text},
+	typeImage:     {Name: "Image", Bytes: true, Table: true, Len: 4, Specific: rdb.TypeBinary, Generic: rdb.Binary},
+	typeNText:     {Name: "NText", Bytes: true, NChar: true, IsText: true, Table: true, Len: 4, Specific: rdb.TypeText, Generic: rdb.Text},
 
 	// The following will be unsupported for a time.
 	typeXml:     {Name: "Xml", Max: true, Len: 4, Specific: rdb.TypeXml, Generic: rdb.Other},

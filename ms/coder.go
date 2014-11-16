@@ -704,15 +704,13 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 }
 
 func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
-	_ = binary.LittleEndian.Uint32(read(4)) // userType
-
+	userType := binary.LittleEndian.Uint32(read(4)) // userType
 	flags := read(2)
-
 	driverType := driverType(read(1)[0])
 
 	info, ok := typeInfoLookup[driverType]
 	if !ok {
-		panic(fmt.Sprintf("Not a known type: %d", driverType))
+		panic(recoverError{fmt.Errorf("Not a known type: 0x%X (UserType: %d, flags: %v)", int(driverType), userType, flags)})
 	}
 
 	column := &SqlColumn{
@@ -849,7 +847,26 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 	}
 
 	dataLen := 0
-	nullValue := 0
+	isNull := false
+
+	if column.info.Table {
+		// Types text, ntext, and image.
+		/*
+			10 > 16 (meta-data length)
+			64 75 6d 6d 79 20 74 65 78 74 70 74 72 00 00 00  > dummy textptr (meta-data)
+			64 75 6d 6d 79 54 53 00 > dummyTS (label)
+			05 00 00 00 > 5 (data length)
+			48 65 6c 6c 6f > Hello (data)
+		*/
+		metaDataLen := read(1)[0]
+		if metaDataLen == 0 {
+			isNull = true
+		} else {
+			read(int(metaDataLen)) // metaData
+			read(8)                // label; not sure if this should be hard-coded or scanned till null.
+		}
+	}
+
 	if column.info.Fixed {
 		dataLen = int(column.info.Len)
 	} else {
@@ -858,18 +875,18 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 			fallthrough
 		case 1:
 			dataLen = int(read(1)[0])
-			nullValue = 0xFF
+			isNull = dataLen == 0xFF
 		case 2:
 			dataLen = int(binary.LittleEndian.Uint16(read(2)))
-			nullValue = 0xFFFF
+			isNull = dataLen == 0xFFFF
 		case 4:
 			dataLen = int(binary.LittleEndian.Uint32(read(4)))
-			nullValue = -1 // 0xFFFFFFFF
+			isNull = dataLen == -1 // 0xFFFFFFFF
 		}
 	}
 
 	if column.info.Bytes {
-		if dataLen == nullValue {
+		if isNull {
 			wf(&rdb.DriverValue{
 				Null: true,
 			})

@@ -179,8 +179,8 @@ func TestConnectionPoolExhaustion(t *testing.T) {
 	wait := &sync.WaitGroup{}
 
 	for i := 0; i < 200; i++ {
+		wait.Add(1)
 		go func() {
-			wait.Add(1)
 			defer wait.Done()
 
 			res, err := db.Normal().Query(&rdb.Command{
