@@ -850,6 +850,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 	isNull := false
 
 	if column.info.Table {
+		panic(recoverError{err: fmt.Errorf("Text, NText, and Image types not currently supported. Long values do not decode correctly.")})
 		// Types text, ntext, and image.
 		/*
 			10 > 16 (meta-data length)
