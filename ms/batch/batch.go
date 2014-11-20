@@ -20,11 +20,14 @@ func ExecuteBatchSql(cp *rdb.ConnPool, batchSql, separator string) error {
 		Arity: rdb.Zero,
 	}
 
-	var err error
+	conn, err := cp.Connection()
+	if err != nil {
+		return err
+	}
 	for i := range ss {
 		cmd.Sql = ss[i]
 
-		_, err = cp.Query(cmd)
+		_, err = conn.Query(cmd)
 		if err != nil {
 			if errList, is := err.(rdb.Errors); is {
 				return SqlErrorWithContext(cmd.Sql, errList, 2)

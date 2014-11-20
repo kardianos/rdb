@@ -156,7 +156,8 @@ func (cp *ConnPool) Query(cmd *Command, params ...Param) (*Result, error) {
 	return cp.query(false, nil, cmd, nil, params...)
 }
 
-func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **ConnectionInfo, params ...Param) (*Result, error) {
+// keepOnClose used to not recycle the DB connection after a query result is done. Used for transactions and connections.
+func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **ConnectionInfo, params ...Param) (*Result, error) {
 	var err error
 	if cmd.Converter != nil {
 		for i := range params {
@@ -180,7 +181,7 @@ func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **Conne
 		val: valuer{
 			cmd: cmd,
 		},
-		keepOnClose: inTran,
+		keepOnClose: keepOnClose,
 	}
 
 	timeout := cmd.QueryTimeout
@@ -236,10 +237,12 @@ func (cp *ConnPool) query(inTran bool, conn DriverConn, cmd *Command, ci **Conne
 	return res, err
 }
 
-// Begin a Transaction with the default isolation level.
+// Begin starts a Transaction with the default isolation level.
 func (cp *ConnPool) Begin() (*Transaction, error) {
 	return cp.BeginLevel(LevelDefault)
 }
+
+// BeginLevel starts a Transaction with the specified isolation level.
 func (cp *ConnPool) BeginLevel(level IsolationLevel) (*Transaction, error) {
 	conn, err := cp.getConn(true)
 	if err != nil {
@@ -257,6 +260,20 @@ func (cp *ConnPool) BeginLevel(level IsolationLevel) (*Transaction, error) {
 		return nil, err
 	}
 	return tran, nil
+}
+
+// Connection returns a dedicated database connection from the connection pool.
+func (cp *ConnPool) Connection() (*Connection, error) {
+	conn, err := cp.getConn(true)
+	if err != nil {
+		return nil, err
+	}
+
+	c := &Connection{
+		cp:   cp,
+		conn: conn,
+	}
+	return c, nil
 }
 
 func (cp *ConnPool) PoolAvailable() (capacity, available int) {
