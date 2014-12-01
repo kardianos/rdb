@@ -78,7 +78,9 @@ func FillSet(res *rdb.Result) ([]*Buffer, error) {
 		if err != nil {
 			return nil, err
 		}
+		hasRow := false
 		for res.Next() {
+			hasRow = true
 			err = res.Scan()
 			if err != nil {
 				return nil, err
@@ -88,7 +90,9 @@ func FillSet(res *rdb.Result) ([]*Buffer, error) {
 				Field:  res.GetRowN(),
 			})
 		}
-		set = append(set, tb)
+		if len(tb.schema) != 0 || hasRow {
+			set = append(set, tb)
+		}
 
 		nextRes, err := res.NextResult()
 		if err != nil {
