@@ -138,16 +138,17 @@ func (tds *Connection) ConnectionInfo() *rdb.ConnectionInfo {
 
 func (tds *Connection) Close() {
 	tds.syncClose.Lock()
-	defer tds.syncClose.Unlock()
-
 	if tds.status == rdb.StatusDisconnected {
+		tds.syncClose.Unlock()
 		return
 	}
-	tds.done()
-	tds.wc.Close()
 	tds.val = nil
 	tds.mr = nil
 	tds.status = rdb.StatusDisconnected
+	tds.syncClose.Unlock()
+
+	tds.done()
+	tds.wc.Close()
 	return
 }
 
@@ -303,14 +304,17 @@ func (tds *Connection) NextResult() (more bool, err error) {
 		fmt.Printf("API NextResult\n")
 	}
 	tds.syncClose.Lock()
-	defer tds.syncClose.Unlock()
 
 	more = (tds.status == rdb.StatusResultDone)
 	if more {
 		tds.status = rdb.StatusQuery
-		return true, tds.Scan()
+		tds.syncClose.Unlock()
+
+		err = tds.Scan()
+	} else {
+		tds.syncClose.Unlock()
 	}
-	return false, nil
+	return more, err
 }
 func (tds *Connection) NextQuery() (err error) {
 	if debugAPI {
@@ -339,7 +343,10 @@ func (tds *Connection) done() error {
 	}
 	mrCloseErr := tds.mr.Close()
 	tds.params = nil
+
+	tds.syncClose.Lock()
 	tds.status = rdb.StatusReady
+	tds.syncClose.Unlock()
 
 	var err error
 	if tds.val != nil {
@@ -355,14 +362,20 @@ func (tds *Connection) Scan() error {
 	if debugAPI {
 		fmt.Printf("API Scan\n")
 	}
+	tds.syncClose.Lock()
 	if tds.status == rdb.StatusResultDone {
+		tds.syncClose.Unlock()
 		return io.EOF
 	}
 	if tds.status != rdb.StatusQuery {
+		tds.syncClose.Unlock()
 		return nil
 	}
+	tds.syncClose.Unlock()
 	for {
+		tds.syncClose.Lock()
 		res, err := tds.getSingleResponse(tds.mr, true)
+		tds.syncClose.Unlock()
 		if err != nil {
 			tds.done()
 			return err
@@ -397,15 +410,18 @@ func (tds *Connection) Scan() error {
 
 func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, params []rdb.Param) error {
 	tds.syncClose.Lock()
-	defer tds.syncClose.Unlock()
 
 	if tds.status == rdb.StatusDisconnected {
+		tds.syncClose.Unlock()
 		return connectionNotOpenError
 	}
 	if tds.status != rdb.StatusReady {
+		tds.syncClose.Unlock()
 		return connectionInUseError
 	}
 	tds.status = rdb.StatusQuery
+	tds.syncClose.Unlock()
+
 	var err error
 	if len(params) == 0 {
 		err = tds.sendSimpleQuery(sql)
