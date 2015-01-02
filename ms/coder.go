@@ -636,15 +636,16 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			w.WriteByte(0)
 			return nil
 		}
-		w.WriteByte(st.W) // Row field width.
-
-		switch v := value.(type) {
-		case *time.Time:
-			value = *v
-		}
 		var v time.Time
 		var dur time.Duration
+
 		switch input := value.(type) {
+		case *time.Time:
+			if input != nil {
+				v = *input
+			} else {
+				nullValue = true
+			}
 		case time.Time:
 			v = input
 		case time.Duration:
@@ -652,6 +653,13 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		default:
 			return fmt.Errorf("Need time.Time for param @%s", param.Name)
 		}
+		if nullValue {
+			w.WriteByte(0)
+			return nil
+		}
+
+		w.WriteByte(st.W) // Row field width.
+
 		_, sec := v.Zone()
 		v = v.UTC()
 
