@@ -503,7 +503,7 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) 
 
 			st, found := sqlTypeLookup[param.Type]
 			if !found {
-				panic(fmt.Sprintf("SqlType not found: %d", param.Type))
+				return fmt.Errorf("SqlType not found: %d", param.Type)
 			}
 			fmt.Fprintf(paramNames, "@%s %s", param.Name, st.TypeString(param))
 		}
