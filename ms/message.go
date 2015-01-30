@@ -6,6 +6,7 @@ package ms
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -357,6 +358,9 @@ func (tds *PacketReader) LoginAck() (*ServerInfo, error) {
 		return nil, err
 	}
 	defer read.Close()
+	if len(bb) == 0 {
+		return nil, errors.New("Unable to authenticate to server or database.")
+	}
 
 	at := 0
 	token := bb[at]
