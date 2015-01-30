@@ -88,7 +88,7 @@ func TestError(t *testing.T) {
 	assertFreeConns(t)
 
 	if err != nil {
-		t.Errorf("Error with query: %v", err)
+		t.Fatalf("Error with query: %v", err)
 	}
 
 	_, err = db.Normal().Query(&rdb.Command{
@@ -101,7 +101,7 @@ func TestError(t *testing.T) {
 	assertFreeConns(t)
 
 	if err == nil {
-		t.Errorf("Expected error (res2).")
+		t.Fatalf("Expected error (res2).")
 	}
 
 	res3, err := db.Normal().Query(&rdb.Command{
@@ -110,10 +110,13 @@ func TestError(t *testing.T) {
 		`,
 		Arity: rdb.Any,
 	}, rdb.Param{Name: "Text", Type: rdb.Text, Value: longText})
+	if err != nil {
+		t.Fatalf("Error with query3: %v", err)
+	}
 
 	err = res3.Scan()
 	if err != nil {
-		t.Errorf("Error doing scan: %v", err)
+		t.Fatalf("Error doing scan: %v", err)
 	}
 	tx := string(res3.Get("TX").([]byte))
 
@@ -122,11 +125,11 @@ func TestError(t *testing.T) {
 
 	if tx != longText {
 		txDump := hex.Dump([]byte(tx))
-		t.Errorf("Text does not match:\n\n%s\n\n", txDump)
+		t.Fatalf("Text does not match:\n\n%s\n\n", txDump)
 	}
 
 	if err != nil {
-		t.Errorf("Error with query: %v", err)
+		t.Fatalf("Error with query: %v", err)
 	}
 }
 
