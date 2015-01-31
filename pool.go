@@ -2,6 +2,7 @@ package rdb
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -196,6 +197,14 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 		done := make(chan struct{})
 		tm := time.NewTimer(timeout)
 		go func() {
+			defer func() {
+				if rval := recover(); rval != nil {
+					buf := make([]byte, 8000)
+					buf = buf[:runtime.Stack(buf, false)]
+
+					err = fmt.Errorf("Panic in database driver: %v\n%s", rval, string(buf))
+				}
+			}()
 			err = conn.Query(cmd, params, nil, &res.val)
 			tm.Stop()
 			close(done)
@@ -208,6 +217,14 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 		case <-done:
 		}
 	} else {
+		defer func() {
+			if rval := recover(); rval != nil {
+				buf := make([]byte, 8000)
+				buf = buf[:runtime.Stack(buf, false)]
+
+				err = fmt.Errorf("Panic in database driver: %v\n%s", rval, string(buf))
+			}
+		}()
 		err = conn.Query(cmd, params, nil, &res.val)
 	}
 	if ci != nil {
