@@ -117,10 +117,12 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 
 	tds.status = rdb.StatusReady
 
-	// SQL Server will not return a full field if this is not set.
+	// If TEXTSIZE is not set to -1, varchar(max) and friends will be truncated.
+	// If XACT_ABORT is not set to ON, transactions will not roll back if they fail.
 	err = tds.Query(&rdb.Command{
 		Sql: `
-SET TEXTSIZE -1
+SET TEXTSIZE -1;
+SET XACT_ABORT ON;
 	`}, nil, nil, nil)
 	if err != nil {
 		return nil, err
