@@ -119,10 +119,12 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 
 	// If TEXTSIZE is not set to -1, varchar(max) and friends will be truncated.
 	// If XACT_ABORT is not set to ON, transactions will not roll back if they fail.
+	// If ANSI_NULLS is not set to ON, tables will be created that is incompatible with indexes.
 	err = tds.Query(&rdb.Command{
 		Sql: `
 SET TEXTSIZE -1;
 SET XACT_ABORT ON;
+SET ANSI_NULLS ON;
 	`}, nil, nil, nil)
 	if err != nil {
 		return nil, err
