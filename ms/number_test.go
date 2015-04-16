@@ -65,6 +65,38 @@ func TestNumber(t *testing.T) {
 	}
 }
 
+func TestDecimal(t *testing.T) {
+	defer recoverTest(t)
+
+	cmd := &rdb.Command{
+		Sql: `
+			declare @ld decimal(38,6) = @d;
+			
+			select d = @ld, s = cast(@ld as varchar(100));
+		`,
+		Arity: rdb.OneMust,
+	}
+
+	var dec *big.Rat
+	var sdec string
+
+	dIn := &big.Rat{}
+	// dIn.SetString("1.035")
+	dIn = big.NewRat(4661225614328463, 4503599627370496)
+	params := []rdb.Param{
+		{Name: "d", Type: rdb.TypeDecimal, Precision: 38, Scale: 6, Value: dIn},
+	}
+
+	res := db.Query(cmd, params...)
+	defer res.Close()
+
+	res.Scan(&dec, &sdec)
+
+	if dIn.FloatString(10) != dec.FloatString(10) {
+		t.Errorf("D: %v, S: %v, In: %v", dec.FloatString(10), sdec, dIn.FloatString(10))
+	}
+}
+
 func TestBytesValue(t *testing.T) {
 	defer recoverTest(t)
 
