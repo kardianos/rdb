@@ -1,7 +1,0 @@
-Source: https://github.com/youtube/vitess
-Version: bac71a463b3186b715122c34f84dcc2c7a946d61 Pulled June 13th
-License: BSD
-
-Modifications:
-	pools: Remove files with types that are not used. No files modified.
-	sync2: Remove files with types that are not used. No files modified.

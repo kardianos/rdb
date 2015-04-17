@@ -11,7 +11,8 @@ import (
 	"fmt"
 	"time"
 
-	"bitbucket.org/kardianos/rdb/internal/third_party/vitess/sync2"
+	"bitbucket.org/kardianos/rdb/internal/github.com/youtube/vitess/go/sync2"
+	"bitbucket.org/kardianos/rdb/internal/golang.org/x/net/context"
 )
 
 var (
@@ -24,7 +25,7 @@ type Factory func() (Resource, error)
 
 // Every resource needs to suport the Resource interface.
 // Thread synchronization between Close() and IsClosed()
-// is the responsibility the caller.
+// is the responsibility of the caller.
 type Resource interface {
 	Close()
 }
@@ -47,8 +48,11 @@ type resourceWrapper struct {
 }
 
 // NewResourcePool creates a new ResourcePool pool.
-// capacity is the initial capacity of the pool.
-// maxCap is the maximum capacity.
+// capacity is the number of active resources in the pool:
+// there can be up to 'capacity' of these at a given time.
+// maxCap specifies the extent to which the pool can be resized
+// in the future through the SetCapacity function.
+// You cannot resize the pool beyond maxCap.
 // If a resource is unused beyond idleTimeout, it's discarded.
 // An idleTimeout of 0 means that there is no timeout.
 func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Duration) *ResourcePool {
@@ -83,18 +87,18 @@ func (rp *ResourcePool) IsClosed() (closed bool) {
 // has not been reached, it will create a new one using the factory. Otherwise,
 // it will wait till the next resource becomes available or a timeout.
 // A timeout of 0 is an indefinite wait.
-func (rp *ResourcePool) Get(timeout time.Duration) (resource Resource, err error) {
-	return rp.get(true, timeout)
+func (rp *ResourcePool) Get(ctx context.Context) (resource Resource, err error) {
+	return rp.get(ctx, true)
 }
 
 // TryGet will return the next available resource. If none is available, and capacity
 // has not been reached, it will create a new one using the factory. Otherwise,
 // it will return nil with no error.
 func (rp *ResourcePool) TryGet() (resource Resource, err error) {
-	return rp.get(false, 0)
+	return rp.get(context.TODO(), false)
 }
 
-func (rp *ResourcePool) get(wait bool, timeout time.Duration) (resource Resource, err error) {
+func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, err error) {
 	// Fetch
 	var wrapper resourceWrapper
 	var ok bool
@@ -105,16 +109,10 @@ func (rp *ResourcePool) get(wait bool, timeout time.Duration) (resource Resource
 			return nil, nil
 		}
 		startTime := time.Now()
-		if timeout == 0 {
-			wrapper, ok = <-rp.resources
-		} else {
-			tmr := time.NewTimer(timeout)
-			defer tmr.Stop()
-			select {
-			case wrapper, ok = <-rp.resources:
-			case <-tmr.C:
-				return nil, TIMEOUT_ERR
-			}
+		select {
+		case wrapper, ok = <-rp.resources:
+		case <-ctx.Done():
+			return nil, TIMEOUT_ERR
 		}
 		rp.recordWait(startTime)
 	}
