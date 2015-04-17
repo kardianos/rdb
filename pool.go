@@ -6,7 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"bitbucket.org/kardianos/rdb/internal/third_party/vitess/pools"
+	"bitbucket.org/kardianos/rdb/internal/github.com/youtube/vitess/go/pools"
+	"bitbucket.org/kardianos/rdb/internal/golang.org/x/net/context"
 )
 
 const debugConnectionReuse = false
@@ -121,7 +122,9 @@ func (cp *ConnPool) getConn(again bool) (DriverConn, error) {
 	if !again {
 		timeout = 0
 	}
-	connObj, err := cp.pool.Get(timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	connObj, err := cp.pool.Get(ctx)
+	cancel()
 	if connObj != nil {
 		conn = connObj.(DriverConn)
 		conn.SetAvailable(true)

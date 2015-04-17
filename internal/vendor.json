@@ -1,0 +1,35 @@
+{
+	"Tool": "github.com/kardianos/vendor",
+	"Package": [
+		{
+			"Vendor": "github.com/youtube/vitess/go/acl",
+			"Local": "bitbucket.org/kardianos/rdb/internal/github.com/youtube/vitess/go/acl",
+			"Version": "9a6606471944418897d7242c0ba61da0265e1f64",
+			"VersionTime": "2015-04-16T16:02:55-07:00"
+		},
+		{
+			"Vendor": "github.com/youtube/vitess/go/cache",
+			"Local": "bitbucket.org/kardianos/rdb/internal/github.com/youtube/vitess/go/cache",
+			"Version": "9a6606471944418897d7242c0ba61da0265e1f64",
+			"VersionTime": "2015-04-16T16:02:55-07:00"
+		},
+		{
+			"Vendor": "github.com/youtube/vitess/go/pools",
+			"Local": "bitbucket.org/kardianos/rdb/internal/github.com/youtube/vitess/go/pools",
+			"Version": "9a6606471944418897d7242c0ba61da0265e1f64",
+			"VersionTime": "2015-04-16T16:02:55-07:00"
+		},
+		{
+			"Vendor": "github.com/youtube/vitess/go/sync2",
+			"Local": "bitbucket.org/kardianos/rdb/internal/github.com/youtube/vitess/go/sync2",
+			"Version": "9a6606471944418897d7242c0ba61da0265e1f64",
+			"VersionTime": "2015-04-16T16:02:55-07:00"
+		},
+		{
+			"Vendor": "golang.org/x/net/context",
+			"Local": "bitbucket.org/kardianos/rdb/internal/golang.org/x/net/context",
+			"Version": "aa73292ff82e",
+			"VersionTime": "2014-11-10T09:49:06+09:00"
+		}
+	]
+}
