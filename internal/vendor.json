@@ -2,6 +2,12 @@
 	"Tool": "github.com/kardianos/vendor",
 	"Package": [
 		{
+			"Vendor": "github.com/golang/glog",
+			"Local": "bitbucket.org/kardianos/rdb/internal/github.com/golang/glog",
+			"Version": "44145f04b68cf362d9c4df2182967c2275eaefed",
+			"VersionTime": "2014-09-24T06:47:00+10:00"
+		},
+		{
 			"Vendor": "github.com/youtube/vitess/go/acl",
 			"Local": "bitbucket.org/kardianos/rdb/internal/github.com/youtube/vitess/go/acl",
 			"Version": "9a6606471944418897d7242c0ba61da0265e1f64",
