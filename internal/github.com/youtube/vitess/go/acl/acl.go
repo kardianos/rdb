@@ -14,7 +14,7 @@ import (
 	"net/http"
 	"sync"
 
-	log "github.com/golang/glog"
+	log "bitbucket.org/kardianos/rdb/internal/github.com/golang/glog"
 )
 
 // This is a list of predefined roles. Applications are free
