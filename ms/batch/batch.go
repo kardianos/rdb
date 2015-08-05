@@ -146,16 +146,16 @@ func stateText(l *lexer) stateFn {
 		switch {
 		case strings.HasPrefix(l.Sql[l.At:], lineComment):
 			l.At += len(lineComment)
-			return stateLineComment(l)
+			return stateLineComment
 		case strings.HasPrefix(l.Sql[l.At:], leftComment):
 			l.At += len(leftComment)
-			return stateMultiComment(l)
+			return stateMultiComment
 		case ch == '\'':
 			l.At += 1
-			return stateString(l)
+			return stateString
 		case ch == '\r', ch == '\n':
 			l.At += 1
-			return stateWhitespace(l)
+			return stateWhitespace
 		default:
 			if l.Next() == false {
 				return nil
@@ -172,10 +172,10 @@ func stateWhitespace(l *lexer) stateFn {
 	switch {
 	case ch == ' ', ch == '\t', ch == '\r', ch == '\n':
 		l.At += 1
-		return stateWhitespace(l)
+		return stateWhitespace
 	case strings.HasPrefix(l.Sql[l.At:], l.Sep):
 		if l.AddCurrent() {
-			return stateWhitespace(l)
+			return stateWhitespace
 		}
 		return nil
 	default:
@@ -189,7 +189,7 @@ func stateLineComment(l *lexer) stateFn {
 		switch {
 		case ch == '\r', ch == '\n':
 			l.At += 1
-			return stateWhitespace(l)
+			return stateWhitespace
 		default:
 			if l.Next() == false {
 				return nil
@@ -202,7 +202,7 @@ func stateMultiComment(l *lexer) stateFn {
 		switch {
 		case strings.HasPrefix(l.Sql[l.At:], rightComment):
 			l.At += len(leftComment)
-			return stateWhitespace(l)
+			return stateWhitespace
 		default:
 			if l.Next() == false {
 				return nil
@@ -223,7 +223,7 @@ func stateString(l *lexer) stateFn {
 			l.At += 2
 		case ch == '\'' && chNext != '\'':
 			l.At += 1
-			return stateWhitespace(l)
+			return stateWhitespace
 		default:
 			if l.Next() == false {
 				return nil
