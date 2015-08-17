@@ -118,7 +118,7 @@ func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 }
 func (cp *ConnPool) getConn(again bool) (DriverConn, error) {
 	var conn DriverConn
-	timeout := time.Millisecond * 40
+	timeout := time.Millisecond * 15000
 	if !again {
 		timeout = 0
 	}
