@@ -3,7 +3,6 @@ package rdb
 import (
 	"fmt"
 	"runtime"
-	"sync"
 	"time"
 
 	"bitbucket.org/kardianos/rdb/internal/github.com/youtube/vitess/go/pools"
@@ -22,8 +21,6 @@ type ConnPool struct {
 	dr   Driver
 	conf *Config
 	pool *pools.ResourcePool
-
-	poolSync sync.Mutex
 }
 
 func Open(config *Config) (*ConnPool, error) {
@@ -118,26 +115,27 @@ func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 }
 func (cp *ConnPool) getConn(again bool) (DriverConn, error) {
 	var conn DriverConn
-	timeout := time.Millisecond * 15000
-	if !again {
-		timeout = 0
+	ctx := context.Background()
+	var cancel context.CancelFunc
+	if again {
+		timeout := time.Millisecond * 150
+		ctx, cancel = context.WithTimeout(ctx, timeout)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+
 	connObj, err := cp.pool.Get(ctx)
-	cancel()
+	if cancel != nil {
+		cancel()
+	}
 	if connObj != nil {
 		conn = connObj.(DriverConn)
 		conn.SetAvailable(true)
 	}
 	// Logic to expand the pool capacity up to the max capacity.
-	if again && err == pools.TIMEOUT_ERR {
-		cp.poolSync.Lock()
-
+	if again && err == pools.ErrTimeout {
 		maxCap := cp.pool.MaxCap()
 		curCap := cp.pool.Capacity()
 
 		if curCap >= maxCap {
-			cp.poolSync.Unlock()
 			return cp.getConn(false)
 		}
 		curCap += (maxCap / 10)
@@ -145,7 +143,6 @@ func (cp *ConnPool) getConn(again bool) (DriverConn, error) {
 			curCap = maxCap
 		}
 		cp.pool.SetCapacity(int(curCap))
-		cp.poolSync.Unlock()
 
 		return cp.getConn(false)
 	}
