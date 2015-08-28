@@ -65,6 +65,7 @@ type PacketWriter struct {
 	buffer *bytes.Buffer
 
 	packetNumber uint8
+	resetPacket  bool
 }
 
 func NewPacketWriter(w io.Writer) *PacketWriter {
@@ -74,14 +75,10 @@ func NewPacketWriter(w io.Writer) *PacketWriter {
 	}
 }
 
-func (tds *PacketWriter) WriteMessage(PacketType PacketType, bb []byte) (n int, err error) {
-	tds.BeginMessage(PacketType)
-	return tds.writeClose(bb, true)
-}
-
-func (tds *PacketWriter) BeginMessage(PacketType PacketType) error {
+func (tds *PacketWriter) BeginMessage(PacketType PacketType, reset bool) error {
 	tds.buffer.Reset()
 
+	tds.resetPacket = reset
 	tds.PacketType = PacketType
 	tds.packetNumber = 0
 	return nil
@@ -133,6 +130,10 @@ func (tds *PacketWriter) writeClose(bb []byte, closeMessage bool) (int, error) {
 
 	for {
 		status := statusNormal
+		if tds.resetPacket {
+			tds.resetPacket = false
+			status |= statusResetConnection
+		}
 
 		l := maxPacketSizeBody
 		if tds.buffer.Len() <= maxPacketSizeBody {
@@ -140,7 +141,7 @@ func (tds *PacketWriter) writeClose(bb []byte, closeMessage bool) (int, error) {
 				return n, err
 			}
 			l = tds.buffer.Len()
-			status = statusEOM
+			status |= statusEOM
 		}
 
 		length := l + 8 // Header is 8 bytes.
