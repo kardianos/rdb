@@ -31,6 +31,7 @@ type Connection struct {
 
 	status    rdb.DriverConnStatus
 	available bool
+	resetNext bool
 	syncClose sync.Mutex
 
 	ProductVersion  *semver.Version
@@ -117,20 +118,20 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 
 	tds.status = rdb.StatusReady
 
+	return si, tds.NextQuery()
+}
+
+func (tds *Connection) Reset() error {
 	// If TEXTSIZE is not set to -1, varchar(max) and friends will be truncated.
 	// If XACT_ABORT is not set to ON, transactions will not roll back if they fail.
 	// If ANSI_NULLS is not set to ON, tables will be created that is incompatible with indexes.
-	err = tds.Query(&rdb.Command{
+	tds.resetNext = true
+	return tds.Query(&rdb.Command{
 		Sql: `
 SET TEXTSIZE -1;
 SET XACT_ABORT ON;
 SET ANSI_NULLS ON;
 	`}, nil, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return si, tds.NextQuery()
 }
 
 func (tds *Connection) ConnectionInfo() *rdb.ConnectionInfo {
@@ -206,7 +207,7 @@ func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationL
 	tds.status = rdb.StatusQuery
 
 	tds.mr = tds.pr.BeginMessage(packetTabularResult)
-	err := tds.pw.BeginMessage(packetTransaction)
+	err := tds.pw.BeginMessage(packetTransaction, false)
 	if err != nil {
 		return err
 	}
@@ -280,12 +281,27 @@ func (tds *Connection) SavePoint(name string) error {
 	return tds.transaction(tranSavepoint, name, rdb.LevelDefault)
 }
 
+type noopValuer struct {
+}
+
+func (noopValuer) Columns([]*rdb.Column) error { return nil }
+func (noopValuer) Done() error                 { return nil }
+func (noopValuer) RowScanned()                 {}
+func (noopValuer) Message(*rdb.Message)        {}
+func (noopValuer) WriteField(c *rdb.Column, value *rdb.DriverValue, assign rdb.Assigner) error {
+	return nil
+}
+func (noopValuer) RowsAffected(count uint64) {}
+
 func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, valuer rdb.DriverValuer) error {
 	if debugAPI {
 		fmt.Printf("API Query\n")
 	}
 	if tds.status != rdb.StatusReady {
 		return connectionInUseError
+	}
+	if valuer == nil {
+		valuer = noopValuer{}
 	}
 	tds.val = valuer
 
@@ -427,11 +443,13 @@ func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, par
 	tds.syncClose.Unlock()
 
 	var err error
+	tds.resetNext = false
 	if len(params) == 0 {
-		err = tds.sendSimpleQuery(sql)
+		err = tds.sendSimpleQuery(sql, tds.resetNext)
 	} else {
-		err = tds.sendRpc(sql, truncValue, params)
+		err = tds.sendRpc(sql, truncValue, params, tds.resetNext)
 	}
+	tds.resetNext = false
 	if err != nil {
 		return err
 	}
@@ -449,9 +467,9 @@ var rpcHeaderParam = &rdb.Param{
 	Length: 0,
 }
 
-func (tds *Connection) sendSimpleQuery(sql string) error {
+func (tds *Connection) sendSimpleQuery(sql string, reset bool) error {
 	w := tds.pw
-	err := w.BeginMessage(packetSqlBatch)
+	err := w.BeginMessage(packetSqlBatch, reset)
 	if err != nil {
 		return err
 	}
@@ -461,7 +479,7 @@ func (tds *Connection) sendSimpleQuery(sql string) error {
 	return w.EndMessage()
 }
 
-func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) error {
+func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param, reset bool) error {
 	// To make a SQL Query with params:
 	// * RPC Param 1 = {Name: "", Type: NText, Field: SqlQuery}
 	// * RPC Param 2 = {Name: "", Type: NText, Field: "@MySqlParam1 int,@Foo varchar(400)"}
@@ -478,7 +496,7 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param) 
 	var procID uint16 = sp_ExecuteSql
 
 	w := tds.pw
-	err := w.BeginMessage(packetRpc)
+	err := w.BeginMessage(packetRpc, reset)
 	if err != nil {
 		return err
 	}

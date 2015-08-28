@@ -39,7 +39,10 @@ func Open(config *Config) (*ConnPool, error) {
 		if conn == nil && err == nil {
 			return nil, fmt.Errorf("New connection is nil")
 		}
-		return conn, err
+		if err != nil {
+			return conn, err
+		}
+		return conn, conn.Reset()
 	}
 
 	initSize := config.PoolInitCapacity
@@ -105,6 +108,12 @@ func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 		fmt.Println("Result.Close() REUSE")
 	}
 	if conn.Available() {
+		err := conn.Reset()
+		if err != nil {
+			conn.SetAvailable(false)
+			cp.pool.Put(nil)
+			return err
+		}
 		conn.SetAvailable(false)
 		cp.pool.Put(conn)
 	}

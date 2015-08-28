@@ -70,7 +70,7 @@ func (tds *PacketWriter) PreLogin(instance string) error {
 	addToken(preloginEncryption, []byte{0x02}) // Encription not available. Pg 65.
 	addToken(preloginInstance, uconv.Encode.FromString(instance))
 
-	tds.BeginMessage(packetPreLogin)
+	tds.BeginMessage(packetPreLogin, false)
 
 	tokenListLen := uint16((5 * len(opts)) + 1)
 	payload := make([]byte, 0, 20)
@@ -337,7 +337,7 @@ func (tds *PacketWriter) Login(config *rdb.Config) error {
 		prevOffset = t.offset
 	}
 
-	tds.BeginMessage(packetTds7Login)
+	tds.BeginMessage(packetTds7Login, false)
 
 	tds.Write(buf)
 
