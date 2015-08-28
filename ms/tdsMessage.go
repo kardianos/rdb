@@ -66,6 +66,7 @@ type PacketWriter struct {
 
 	packetNumber uint8
 	resetPacket  bool
+	open         bool
 }
 
 func NewPacketWriter(w io.Writer) *PacketWriter {
@@ -81,6 +82,7 @@ func (tds *PacketWriter) BeginMessage(PacketType PacketType, reset bool) error {
 	tds.resetPacket = reset
 	tds.PacketType = PacketType
 	tds.packetNumber = 0
+	tds.open = true
 	return nil
 }
 
@@ -116,6 +118,9 @@ func (tds *PacketWriter) WriteUint64(v uint64) (n int) {
 }
 
 func (tds *PacketWriter) EndMessage() error {
+	if !tds.open {
+		return nil
+	}
 	_, err := tds.writeClose(nil, true)
 	return err
 }
@@ -142,6 +147,7 @@ func (tds *PacketWriter) writeClose(bb []byte, closeMessage bool) (int, error) {
 			}
 			l = tds.buffer.Len()
 			status |= statusEOM
+			tds.open = false
 		}
 
 		length := l + 8 // Header is 8 bytes.
@@ -180,7 +186,7 @@ func (tds *PacketWriter) writeClose(bb []byte, closeMessage bool) (int, error) {
 			return n, err
 		}
 		n += localN
-		if status == statusEOM {
+		if statusEOM&status != 0 {
 			return n, err
 		}
 

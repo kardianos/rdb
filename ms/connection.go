@@ -122,16 +122,16 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 }
 
 func (tds *Connection) Reset() error {
+	tds.resetNext = true
 	// If TEXTSIZE is not set to -1, varchar(max) and friends will be truncated.
 	// If XACT_ABORT is not set to ON, transactions will not roll back if they fail.
 	// If ANSI_NULLS is not set to ON, tables will be created that is incompatible with indexes.
-	tds.resetNext = true
 	return tds.Query(&rdb.Command{
 		Sql: `
-SET TEXTSIZE -1;
-SET XACT_ABORT ON;
-SET ANSI_NULLS ON;
-	`}, nil, nil, nil)
+	SET TEXTSIZE -1;
+	SET XACT_ABORT ON;
+	SET ANSI_NULLS ON;
+		`}, nil, nil, nil)
 }
 
 func (tds *Connection) ConnectionInfo() *rdb.ConnectionInfo {
@@ -443,7 +443,6 @@ func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, par
 	tds.syncClose.Unlock()
 
 	var err error
-	tds.resetNext = false
 	if len(params) == 0 {
 		err = tds.sendSimpleQuery(sql, tds.resetNext)
 	} else {
@@ -700,6 +699,11 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		case 15:
 			// Type 15 doesn't obey the length.
 			return nil, fmt.Errorf("Un-handled env-change type: %d", tokenType)
+		case 18:
+			if debugToken {
+				fmt.Printf("\tRESETCONNECTION\n")
+			}
+			read(length)
 		default:
 			read(length)
 		}
