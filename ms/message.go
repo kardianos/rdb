@@ -420,7 +420,7 @@ func (tds *PacketReader) LoginAck() (*ServerInfo, error) {
 	// Byte length prefix string.
 	programNameLen := int(bb[at]) * 2
 	at += 1
-	si.ProgramName = uconv.Decode.ToString(bb[at : at+programNameLen])
+	si.ProgramName = uconv.Decode.ToString(bb[at : at+programNameLen-2]) // Remove trailing nulls.
 	at += programNameLen
 
 	si.MajorVersion = bb[at]
