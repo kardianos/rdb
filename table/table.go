@@ -5,7 +5,7 @@
 // table give a logical in-memory buffer row a database table.
 /*
 
-*/
+ */
 package table
 
 import (
