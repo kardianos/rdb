@@ -3,23 +3,17 @@
 	"ignore": "",
 	"package": [
 		{
-			"canonical": "github.com/youtube/vitess/go/pools",
-			"comment": "",
-			"local": "github.com/youtube/vitess/go/pools",
+			"path": "github.com/youtube/vitess/go/pools",
 			"revision": "731a289d61182d41e1c5b52021cb7f2222b6ceb2",
 			"revisionTime": "2015-08-27T13:21:31-07:00"
 		},
 		{
-			"canonical": "github.com/youtube/vitess/go/sync2",
-			"comment": "",
-			"local": "github.com/youtube/vitess/go/sync2",
+			"path": "github.com/youtube/vitess/go/sync2",
 			"revision": "731a289d61182d41e1c5b52021cb7f2222b6ceb2",
 			"revisionTime": "2015-08-27T13:21:31-07:00"
 		},
 		{
-			"canonical": "golang.org/x/net/context",
-			"comment": "",
-			"local": "golang.org/x/net/context",
+			"path": "golang.org/x/net/context",
 			"revision": "aa73292ff82e",
 			"revisionTime": "2014-11-10T09:49:06+09:00"
 		}

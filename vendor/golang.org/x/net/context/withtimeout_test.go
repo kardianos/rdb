@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"bitbucket.org/kardianos/rdb/internal/golang.org/x/net/context"
+	"golang.org/x/net/context"
 )
 
 func ExampleWithTimeout() {
