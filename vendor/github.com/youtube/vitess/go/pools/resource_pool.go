@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"time"
 
-	"bitbucket.org/kardianos/rdb/internal/github.com/youtube/vitess/go/sync2"
-	"bitbucket.org/kardianos/rdb/internal/golang.org/x/net/context"
+	"github.com/youtube/vitess/go/sync2"
+	"golang.org/x/net/context"
 )
 
 var (

@@ -5,8 +5,8 @@ import (
 	"runtime"
 	"time"
 
-	"bitbucket.org/kardianos/rdb/internal/github.com/youtube/vitess/go/pools"
-	"bitbucket.org/kardianos/rdb/internal/golang.org/x/net/context"
+	"github.com/youtube/vitess/go/pools"
+	"golang.org/x/net/context"
 )
 
 const debugConnectionReuse = false
