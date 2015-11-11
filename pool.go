@@ -11,6 +11,8 @@ import (
 
 const debugConnectionReuse = false
 
+var ErrTimeout = pools.ErrTimeout
+
 // Queryer allows passing either a ConnPool or a Transaction.
 type Queryer interface {
 	Query(cmd *Command, params ...Param) (*Result, error)
@@ -90,7 +92,6 @@ func (cp *ConnPool) ConnectionInfo() (*ConnectionInfo, error) {
 
 func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 	if !kill && conn.Status() != StatusReady {
-		panic("Bad connection status.")
 		kill = true
 	}
 	if kill {
@@ -126,10 +127,15 @@ func (cp *ConnPool) getConn(again bool) (DriverConn, error) {
 	var conn DriverConn
 	ctx := context.Background()
 	var cancel context.CancelFunc
+	var timeout time.Duration
+
+	// Time to wait for an available connection.
 	if again {
-		timeout := time.Millisecond * 150
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		timeout = time.Millisecond * 150
+	} else {
+		timeout = time.Second * 30
 	}
+	ctx, cancel = context.WithTimeout(ctx, timeout)
 
 	connObj, err := cp.pool.Get(ctx)
 	if cancel != nil {
@@ -154,6 +160,9 @@ func (cp *ConnPool) getConn(again bool) (DriverConn, error) {
 		cp.pool.SetCapacity(int(curCap))
 
 		return cp.getConn(false)
+	}
+	if err == pools.ErrTimeout {
+		err = ErrTimeout
 	}
 	return conn, err
 }
@@ -221,6 +230,7 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 		select {
 		case <-tm.C:
 			// TODO: There should be a method for aborting an active command.
+			conn.Close()
 			cp.releaseConn(conn, true)
 			return nil, fmt.Errorf("Query timed out after %v.", timeout)
 		case <-done:
@@ -259,6 +269,8 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 	if err != nil {
 		cp.releaseConn(conn, true)
 	}
+
+	res.autoClose(time.Second * 25)
 
 	return res, err
 }
