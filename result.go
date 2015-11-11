@@ -4,6 +4,11 @@
 
 package rdb
 
+import (
+	"sync"
+	"time"
+)
+
 // Manages the life cycle of a query.
 // The result must automaticly Close() if the command Arity is Zero after
 // execution or after the first Scan() if Arity is One.
@@ -14,6 +19,10 @@ type Result struct {
 
 	// If true do not return to the connection pool when closed.
 	keepOnClose bool
+
+	m       sync.RWMutex
+	lastHit time.Time
+	closed  bool
 }
 
 // Results should automatically close when all rows have been read.
@@ -22,6 +31,35 @@ func (r *Result) Close() error {
 		return nil
 	}
 	return r.close(true)
+}
+func (r *Result) updateHit() {
+	r.m.Lock()
+	r.lastHit = time.Now()
+	r.m.Unlock()
+}
+
+func (r *Result) autoClose(after time.Duration) {
+	if r == nil {
+		return
+	}
+	r.lastHit = time.Now()
+	go func() {
+		<-time.After(after)
+		tick := time.NewTicker(time.Millisecond * 100)
+		defer tick.Stop()
+		for {
+			select {
+			case now := <-tick.C:
+				r.m.RLock()
+				if now.Sub(r.lastHit) > after {
+					r.m.RUnlock()
+					r.Close()
+					return
+				}
+				r.m.RUnlock()
+			}
+		}
+	}()
 }
 
 func (r *Result) RowsAffected() uint64 {
@@ -32,6 +70,14 @@ func (r *Result) close(explicit bool) error {
 	if r == nil {
 		return nil
 	}
+	r.m.Lock()
+	if r.closed {
+		r.m.Unlock()
+		return nil
+	}
+	r.closed = true
+	r.m.Unlock()
+
 	if explicit {
 		r.val.clearBuffer()
 	}
@@ -157,6 +203,7 @@ func (r *Result) NextResult() (more bool, err error) {
 	if r.conn == nil {
 		return false, nil
 	}
+	r.updateHit()
 	return r.conn.NextResult()
 }
 
@@ -165,6 +212,7 @@ func (r *Result) NextResult() (more bool, err error) {
 // Return value "more" is false if no more rows.
 // Results should automatically close when all rows have been read.
 func (r *Result) Scan(values ...interface{}) error {
+	r.updateHit()
 	for i := range values {
 		if i >= len(r.val.columns) {
 			return ErrorColumnNotFound{At: "Scan(values)", Index: i}

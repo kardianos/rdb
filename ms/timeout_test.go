@@ -172,6 +172,14 @@ func timeout(t *testing.T, d time.Duration, f func()) {
 }
 
 func TestConnectionPoolExhaustion(t *testing.T) {
+	connPoolTestLoop(t, true)
+}
+
+func TestConnectionPoolRecoverNoClose(t *testing.T) {
+	connPoolTestLoop(t, false)
+}
+
+func connPoolTestLoop(t *testing.T, closeConn bool) {
 	if testing.Short() {
 		t.Skip()
 	}
@@ -196,9 +204,44 @@ func TestConnectionPoolExhaustion(t *testing.T) {
 			if err != nil {
 				t.Errorf("Failed to wait for next connection: %v", err)
 			}
-			res.Close()
+			if closeConn {
+				res.Close()
+			}
 		}()
 	}
-	wait.Wait()
+	wc := make(chan struct{}, 3)
+	timeoutDur := time.Second * 35
+	timeout := time.After(timeoutDur)
+	go func() {
+		wait.Wait()
+		wc <- struct{}{}
+	}()
+	select {
+	case <-wc:
+	case <-timeout:
+		t.Fatalf("Timeout after %v", timeoutDur)
+	}
+	assertFreeConns(t)
+}
+
+func TestThrowError(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
+	// Handle multiple result sets.
+	defer recoverTest(t)
+
+	res, err := db.Normal().Query(&rdb.Command{
+		Sql:   `RAISERROR(N'throw an error', 16, 1);`,
+		Arity: rdb.Any,
+	})
+	if err == nil {
+		t.Errorf("Failed to get error")
+	} else {
+		t.Log(err.Error())
+	}
+	res.Close()
+
 	assertFreeConns(t)
 }
