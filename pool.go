@@ -272,6 +272,7 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 	}
 	if err != nil {
 		cp.releaseConn(conn, true)
+		res.closed = true
 	}
 
 	res.autoClose(time.Second * 25)
