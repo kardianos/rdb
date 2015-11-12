@@ -43,12 +43,12 @@ func (r *Result) autoClose(after time.Duration) {
 	if r == nil {
 		return
 	}
-	r.m.Lock()
+	r.m.RLock()
 	if r.closed {
-		r.m.Unlock()
+		r.m.RUnlock()
 		return
 	}
-	r.m.Unlock()
+	r.m.RUnlock()
 
 	r.lastHit = time.Now()
 	go func() {
