@@ -5,6 +5,8 @@
 package ms
 
 import (
+	"log"
+	"os"
 	"runtime"
 	"testing"
 
@@ -19,13 +21,18 @@ var testConnectionString = "ms://TESTU:letmein@localhost/SqlExpress?db=master&di
 var config *rdb.Config
 var db must.ConnPool
 
-func init() {
+func TestMain(m *testing.M) {
 	if db.Normal() != nil {
 		return
 	}
 	config = must.Config(rdb.ParseConfigURL(testConnectionString))
 	config.PoolInitCapacity = runtime.NumCPU()
 	db = must.Open(config)
+
+	db.Normal().OnAutoClose = func(sql string) {
+		log.Printf("Auto closed sql %s", sql)
+	}
+	os.Exit(m.Run())
 }
 
 func assertFreeConns(t *testing.T) {

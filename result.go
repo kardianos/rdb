@@ -22,6 +22,7 @@ type Result struct {
 
 	m       sync.RWMutex
 	lastHit time.Time
+	closing chan struct{}
 	closed  bool
 }
 
@@ -42,6 +43,7 @@ func (r *Result) autoClose(after time.Duration) {
 	if r == nil {
 		return
 	}
+
 	r.lastHit = time.Now()
 	go func() {
 		<-time.After(after)
@@ -52,11 +54,18 @@ func (r *Result) autoClose(after time.Duration) {
 			case now := <-tick.C:
 				r.m.RLock()
 				if now.Sub(r.lastHit) > after {
+					// Place notification in RLock and before r.Close
+					// to prevent r.cp from getting altered.
+					if r.cp != nil && r.cp.OnAutoClose != nil {
+						go r.cp.OnAutoClose(r.val.cmd.Sql)
+					}
 					r.m.RUnlock()
 					r.Close()
 					return
 				}
 				r.m.RUnlock()
+			case <-r.closing:
+				return
 			}
 		}
 	}()
@@ -70,6 +79,7 @@ func (r *Result) close(explicit bool) error {
 	if r == nil {
 		return nil
 	}
+	r.closing <- struct{}{}
 	r.m.Lock()
 	if r.closed {
 		r.m.Unlock()
