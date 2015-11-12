@@ -23,6 +23,8 @@ type ConnPool struct {
 	dr   Driver
 	conf *Config
 	pool *pools.ResourcePool
+
+	OnAutoClose func(sql string)
 }
 
 func Open(config *Config) (*ConnPool, error) {
@@ -201,6 +203,8 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 			cmd: cmd,
 		},
 		keepOnClose: keepOnClose,
+
+		closing: make(chan struct{}, 3),
 	}
 
 	timeout := cmd.QueryTimeout
