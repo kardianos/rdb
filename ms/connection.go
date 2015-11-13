@@ -132,7 +132,7 @@ func (tds *Connection) Reset() error {
 	SET TEXTSIZE -1;
 	SET XACT_ABORT ON;
 	SET ANSI_NULLS ON;
-	SET LOCK_TIMEOUT 1000;
+	SET LOCK_TIMEOUT 10000;
 		`}, nil, nil, nil)
 }
 
