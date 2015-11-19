@@ -12,7 +12,7 @@ import (
 	"bitbucket.org/kardianos/rdb"
 )
 
-func TestDateTime(t *testing.T) {
+func TestDateTimeRoundTrip(t *testing.T) {
 	if parallel {
 		t.Parallel()
 	}
@@ -40,7 +40,7 @@ func TestDateTime(t *testing.T) {
 		Sql: `
 			if object_id('tempdb..##timeTemp') is not null begin
 				truncate table ##timeTemp
-				
+
 				insert into ##timeTemp (Name, TM)
 				values ('DTO', @dto), ('DTO2', @dto2)
 			end
@@ -114,5 +114,51 @@ func TestDateTime(t *testing.T) {
 		if diff {
 			t.Errorf("Param %s did not round trip: Want (%v) got (%v)", in.Name, in.Value, compare[i])
 		}
+	}
+}
+
+func TestDateTimePull(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
+	defer assertFreeConns(t)
+	defer recoverTest(t)
+
+	dStaticCheck := time.Date(2015, 11, 18, 0, 0, 0, 0, time.UTC)
+
+	var dStaticOut time.Time
+
+	cmd := &rdb.Command{
+		Sql: `
+if object_id('tempdb..#timeTemp') is not null begin
+	drop table #timeTemp
+end
+
+create table #timeTemp (
+	D date
+)
+insert into #timeTemp (D)
+values ('2015-11-18');
+
+select
+	dStatic = D
+from
+	#timeTemp
+;
+		`,
+		Arity: rdb.OneMust,
+	}
+	res := db.Query(cmd)
+	defer res.Close()
+
+	res.Prep("dStatic", &dStaticOut)
+
+	res.Scan()
+
+	t.Logf("D Static Check: %v", dStaticCheck)
+	t.Logf("D Static Out: %v", dStaticOut)
+
+	if dStaticOut.Equal(dStaticCheck) == false {
+		t.Errorf("dStatc not equal")
 	}
 }
