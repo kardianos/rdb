@@ -4,18 +4,18 @@
 	"package": [
 		{
 			"path": "github.com/youtube/vitess/go/pools",
-			"revision": "731a289d61182d41e1c5b52021cb7f2222b6ceb2",
-			"revisionTime": "2015-08-27T13:21:31-07:00"
+			"revision": "0a25c913ec78ed52e217d9eddb5c8f5e7a9da89f",
+			"revisionTime": "2015-12-06T22:15:43-08:00"
 		},
 		{
 			"path": "github.com/youtube/vitess/go/sync2",
-			"revision": "731a289d61182d41e1c5b52021cb7f2222b6ceb2",
-			"revisionTime": "2015-08-27T13:21:31-07:00"
+			"revision": "0a25c913ec78ed52e217d9eddb5c8f5e7a9da89f",
+			"revisionTime": "2015-12-06T22:15:43-08:00"
 		},
 		{
 			"path": "golang.org/x/net/context",
-			"revision": "aa73292ff82e",
-			"revisionTime": "2014-11-10T09:49:06+09:00"
+			"revision": "d5cd7348bfebdf7dbb6dbb18fa488525f9024293",
+			"revisionTime": "2015-10-26T12:22:43+09:00"
 		}
 	]
 }
