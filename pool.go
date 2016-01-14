@@ -275,8 +275,13 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 		res.closed = true
 	}
 
-	res.autoClose(time.Second * 25)
-
+	if cmd.AutoClose >= 0 {
+		after := time.Second * 25
+		if cmd.AutoClose > 0 {
+			after = cmd.AutoClose
+		}
+		res.autoClose(after)
+	}
 	return res, err
 }
 

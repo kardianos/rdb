@@ -140,4 +140,9 @@ type Command struct {
 	// This is ignored if zero. If this is zero, the connection configuration
 	// QueryTimeout field will be used if non-zero.
 	QueryTimeout time.Duration
+
+	// The duraction before the query is automatically closed. If negative,
+	// autoclose is disabled. If zero, the default is used. If positive that
+	// value is used.
+	AutoClose time.Duration
 }
