@@ -133,3 +133,17 @@ func (b *Buffer) SetSchema(schema []*rdb.Column) error {
 func (b *Buffer) Schema() []*rdb.Column {
 	return b.schema
 }
+
+func (b *Buffer) AddRow(v ...interface{}) *Row {
+	b.Row = append(b.Row, Row{buffer: b, Field: make([]rdb.Nullable, len(b.schema))})
+	r := &b.Row[len(b.Row)-1]
+	ct := len(v)
+	if len(r.Field) < ct {
+		ct = len(r.Field)
+	}
+	for i := 0; i < ct; i++ {
+		r.Field[i].Null = v[i] == nil
+		r.Field[i].Value = v[i]
+	}
+	return r
+}
