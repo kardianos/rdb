@@ -24,6 +24,8 @@ func ExecuteBatchSql(cp *rdb.ConnPool, batchSql, separator string) error {
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
+
 	for i := range ss {
 		cmd.Sql = ss[i]
 
