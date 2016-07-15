@@ -70,6 +70,7 @@ func Fill(res *rdb.Result) (*Buffer, error) {
 }
 
 func FillSet(res *rdb.Result) ([]*Buffer, error) {
+	defer res.Close()
 	set := make([]*Buffer, 0, 1)
 	for {
 		tb := &Buffer{}
