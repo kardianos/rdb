@@ -93,7 +93,11 @@ func (cp *ConnPool) ConnectionInfo() (*ConnectionInfo, error) {
 }
 
 func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
-	if !kill && conn.Status() != StatusReady {
+	// TODO (DT): driver "ms" has issues with the token sequence.
+	// for now just open a new connection each time.
+	kill = true
+
+	if conn.Status() != StatusReady {
 		kill = true
 	}
 	if kill {
