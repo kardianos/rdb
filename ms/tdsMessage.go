@@ -201,7 +201,7 @@ type PacketReader struct {
 
 func NewPacketReader(r io.Reader) *PacketReader {
 	return &PacketReader{
-		buffer: sbuffer.NewBuffer(r, maxPacketSize*12),
+		buffer: sbuffer.NewBuffer(r, maxPacketSize*64),
 	}
 }
 

@@ -589,9 +589,18 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		}
 		return bb
 	}
+	assignPeek := func() {
+		tds.peek = read(1)[0]
+		if tds.peek == 0 {
+			panic(recoverError{err: errors.New("bad peek")})
+		}
+	}
 	var token byte
 	if tds.peek == 0 {
 		token = read(1)[0]
+		if token == 0 {
+			return nil, errors.New("bad token, is zero")
+		}
 	} else {
 		token = tds.peek
 		tds.peek = 0
@@ -619,7 +628,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		_, sqlMsg.ProcName = uconv.Decode.Prefix1(read)
 		sqlMsg.LineNumber = int32(binary.LittleEndian.Uint32(read(4)))
 
-		tds.peek = read(1)[0]
+		assignPeek()
 		return sqlMsg, nil
 	case tokenColumnMetaData:
 		var columns []*SqlColumn
@@ -640,7 +649,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			columns = append(columns, column)
 		}
 
-		tds.peek = read(1)[0]
+		assignPeek()
 
 		tds.col = columns
 		cc := make([]*rdb.Column, len(tds.col))
@@ -665,7 +674,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		if msg.StatusCode == 0 {
 			return MsgFinalDone{}, nil
 		}
-		tds.peek = read(1)[0]
+		assignPeek()
 		if msg.StatusCode&0x10 != 0 {
 			return MsgRowCount{Count: msg.Rows}, nil
 		}
@@ -675,7 +684,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			tds.decodeFieldValue(read, column, tds.val.WriteField, reportRow)
 		}
 
-		tds.peek = read(1)[0]
+		assignPeek()
 		return MsgRow{}, nil
 	case tokenOrder:
 		// Just read the token.
@@ -684,7 +693,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		for i := uint16(0); i < length; i++ {
 			order[i] = binary.LittleEndian.Uint16(read(2))
 		}
-		tds.peek = read(1)[0]
+		assignPeek()
 		return order, nil
 	case tokenEnvChange:
 		length := int(binary.LittleEndian.Uint16(read(2)) - 1)
@@ -713,7 +722,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		}
 		// Currently ignore all the data.
 
-		tds.peek = read(1)[0]
+		assignPeek()
 		return MsgEnvChange{}, nil
 	case tokenReturnValue:
 		//ParamOrdinal ushort
@@ -757,7 +766,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			return nil, err
 		}
 
-		tds.peek = read(1)[0]
+		assignPeek()
 
 		return MsgParamValue{}, nil
 	default:
