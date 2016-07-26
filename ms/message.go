@@ -6,7 +6,6 @@ package ms
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +14,8 @@ import (
 
 	"bitbucket.org/kardianos/rdb"
 	"bitbucket.org/kardianos/rdb/internal/uconv"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -400,7 +401,7 @@ func (tds *PacketReader) LoginAck() (*ServerInfo, error) {
 			at += 4
 			return nil, rdb.Errors{sqlMsg}
 		}
-		return nil, fmt.Errorf("Expected type %X but got %X", tokenLoginAck, bb[at])
+		return nil, errors.Errorf("Expected type %X but got %X", tokenLoginAck, bb[at])
 	}
 
 	si := &ServerInfo{}
