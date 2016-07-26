@@ -3,6 +3,12 @@
 	"ignore": "",
 	"package": [
 		{
+			"checksumSHA1": "Ub9w1qiN1yULT719Iy/e1NQ+BXY=",
+			"path": "github.com/pkg/errors",
+			"revision": "a2d6902c6d2a2f194eb3fb474981ab7867c81505",
+			"revisionTime": "2016-06-27T22:23:52Z"
+		},
+		{
 			"path": "github.com/youtube/vitess/go/pools",
 			"revision": "0a25c913ec78ed52e217d9eddb5c8f5e7a9da89f",
 			"revisionTime": "2015-12-06T22:15:43-08:00"
@@ -17,5 +23,6 @@
 			"revision": "d5cd7348bfebdf7dbb6dbb18fa488525f9024293",
 			"revisionTime": "2015-10-26T12:22:43+09:00"
 		}
-	]
+	],
+	"rootPath": "bitbucket.org/kardianos/rdb"
 }
