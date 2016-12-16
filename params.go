@@ -98,6 +98,14 @@ const (
 	OneMust Arity = One | ArityMust
 )
 
+// Return strings as.
+type StringMethod byte
+
+const (
+	StringAsString StringMethod = iota
+	StringAsBytes
+)
+
 // Command represents a SQL command and can be used from many different
 // queries at the same time.
 // The Command MUST be reused if the Prepare field is true.
@@ -145,4 +153,7 @@ type Command struct {
 	// autoclose is disabled. If zero, the default is used. If positive that
 	// value is used.
 	AutoClose time.Duration
+
+	// Return strings as strings or bytes.
+	StringMethod StringMethod
 }
