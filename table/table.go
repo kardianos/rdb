@@ -135,6 +135,16 @@ func (b *Buffer) Schema() []*rdb.Column {
 	return b.schema
 }
 
+// ColumnIndex returns the index of the named column.
+// If the name is not present it returns -1.
+func (b *Buffer) ColumnIndex(name string) int {
+	index, found := b.nameIndexLookup[name]
+	if !found {
+		return -1
+	}
+	return index
+}
+
 func (b *Buffer) AddRow(v ...interface{}) *Row {
 	b.Row = append(b.Row, Row{buffer: b, Field: make([]rdb.Nullable, len(b.schema))})
 	r := &b.Row[len(b.Row)-1]
