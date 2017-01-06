@@ -8,14 +8,37 @@ import (
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
+	"bitbucket.org/kardianos/rdb/table"
 )
 
-func TestMultiResult(t *testing.T) {
+func TestMultiResultSimple(t *testing.T) {
 	if parallel {
 		t.Parallel()
 	}
+	defer assertFreeConns(t)
+
 	// Handle multiple result sets.
 	defer recoverTest(t)
+
+	set, err := table.FillCommand(db.Normal(), &rdb.Command{
+		Sql: `
+			select @animal as 'MyAnimal';
+			-- New query.
+			select 3 as 'Pants', cast(1 as bit) as 'Shirt';
+		`,
+		Arity: rdb.Any,
+	}, rdb.Param{
+		Name:  "animal",
+		Type:  rdb.Text,
+		Value: "DogIsFriend",
+	})
+	if err != nil {
+		t.Fatalf("failed to fill set %v", err)
+	}
+	if len(set.Set) != 2 {
+		t.Fatalf("expected 2 result sets, got %d", set.Len())
+	}
+
 
 	var myFav string
 	res := db.Query(&rdb.Command{
@@ -32,18 +55,22 @@ func TestMultiResult(t *testing.T) {
 			Value: "DogIsFriend",
 		},
 	}...)
-
+	defer res.Close()
+res.Next()
 	res.Prep("MyAnimal", &myFav).Scan()
 	t.Logf("My Animal: %s\n", myFav)
-	res.NextResult()
+	if res.Next() {
+		t.Fatal("expected no more rows")
+	}
+	moreRes := res.NextResult()
+	if !moreRes {
+		t.Fatal("expected more result sets")
+	}
+res.Next()
 	var pants int
 	var shirt bool
 	res.Prep("Pants", &pants).Prep("Shirt", &shirt).Scan()
 	t.Logf("Pants: %v, Shirt: %v\n", pants, shirt)
-
-	res.Close()
-
-	assertFreeConns(t)
 }
 
 func TestMultiResultHalt(t *testing.T) {
@@ -127,6 +154,61 @@ func TestMultiResultLoop(t *testing.T) {
 	}
 
 	// Only fetch the first result.
+
+	assertFreeConns(t)
+}
+
+func TestMultiResultEmpty(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
+	// Handle multiple result sets.
+	defer recoverTest(t)
+
+	res := db.Query(&rdb.Command{
+		Sql: `
+select
+	*
+from
+	sys.columns
+where
+	1=1
+	and @TestingLink=1
+;
+
+select
+	*
+from
+	sys.tables
+where
+	1=1
+	and @TestingLink=1
+		`,
+		Arity: rdb.Any,
+	}, []rdb.Param{
+		{
+			Name:  "TestingLink",
+			Type:  rdb.Bool,
+			Value: false,
+		},
+	}...)
+
+	defer res.Close()
+
+	results := 1
+
+	for {
+		if res.Next() {
+			t.Fatal("No next rows")
+		}
+		if !res.NextResult() {
+			break
+		}
+		results++
+	}
+	if results != 2 {
+		t.Fatal("wanted 2 sets, got ", results)
+	}
 
 	assertFreeConns(t)
 }

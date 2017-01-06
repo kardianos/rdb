@@ -334,9 +334,12 @@ func (tds *Connection) NextResult() (more bool, err error) {
 		tds.status = rdb.StatusQuery
 		tds.syncClose.Unlock()
 
-		err = tds.Scan()
+		err = tds.scan()
 	} else {
 		tds.syncClose.Unlock()
+	}
+	if debugAPI {
+		fmt.Printf("<API NextResult more=%t err=%v\n", more, err)
 	}
 	return more, err
 }
@@ -369,6 +372,7 @@ func (tds *Connection) done() error {
 	tds.params = nil
 
 	tds.syncClose.Lock()
+	tds.col = nil
 	tds.status = rdb.StatusReady
 	tds.syncClose.Unlock()
 
@@ -386,6 +390,13 @@ func (tds *Connection) Scan() error {
 	if debugAPI {
 		fmt.Printf("API Scan\n")
 	}
+	return tds.scan()
+}
+
+func (tds *Connection) scan() error {
+	if debugAPI {
+		fmt.Printf("api scan\n")
+	}
 	tds.syncClose.Lock()
 	if tds.status == rdb.StatusResultDone {
 		tds.syncClose.Unlock()
@@ -396,6 +407,8 @@ func (tds *Connection) Scan() error {
 		return nil
 	}
 	tds.syncClose.Unlock()
+
+	hasCol := false
 	for {
 		tds.syncClose.Lock()
 		res, err := tds.getSingleResponse(tds.mr, true)
@@ -411,6 +424,7 @@ func (tds *Connection) Scan() error {
 		case *rdb.Message:
 			tds.val.Message(v)
 		case MsgColumn:
+			hasCol = true
 		case MsgRow:
 			// Sent after the row is scanned.
 			// Prep values must be cleared after the initial fill.
@@ -419,6 +433,14 @@ func (tds *Connection) Scan() error {
 			tds.val.RowScanned()
 		case MsgRowCount:
 			tds.val.RowsAffected(v.Count)
+
+			// If a message loop has both a column msg and a row count msg
+			// then it is an empty result set. Set the status as such
+			// and return.
+			if hasCol {
+				tds.status = rdb.StatusResultDone
+				return nil
+			}
 		case MsgFinalDone:
 			return tds.done()
 		}
@@ -446,6 +468,10 @@ func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, par
 	tds.status = rdb.StatusQuery
 	tds.syncClose.Unlock()
 
+	if debugToken {
+		fmt.Printf("SQL: %q\n", sql)
+	}
+
 	var err error
 	if len(params) == 0 {
 		err = tds.sendSimpleQuery(sql, tds.resetNext)
@@ -457,7 +483,7 @@ func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, par
 		return err
 	}
 
-	return tds.Scan()
+	return tds.scan()
 }
 
 const (
