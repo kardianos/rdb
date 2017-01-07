@@ -5,6 +5,7 @@
 package ms
 
 import (
+	"fmt"
 	"testing"
 
 	"bitbucket.org/kardianos/rdb"
@@ -36,7 +37,7 @@ func TestMultiResultSimple(t *testing.T) {
 		t.Fatalf("failed to fill set %v", err)
 	}
 	if len(set.Set) != 2 {
-		t.Fatalf("expected 2 result sets, got %d", set.Len())
+		t.Fatalf("expected 2 result sets, got %d", len(set.Set))
 	}
 
 
@@ -162,13 +163,16 @@ func TestMultiResultEmpty(t *testing.T) {
 	if parallel {
 		t.Parallel()
 	}
+
+	defer assertFreeConns(t)
+
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
 	res := db.Query(&rdb.Command{
 		Sql: `
 select
-	*
+	1 as set1, *
 from
 	sys.columns
 where
@@ -177,7 +181,7 @@ where
 ;
 
 select
-	*
+	2 as set2, *
 from
 	sys.tables
 where
@@ -201,6 +205,15 @@ where
 		if res.Next() {
 			t.Fatal("No next rows")
 		}
+		if len(res.Schema()) == 0 {
+			t.Fatal("column schema not populating in empty result set")
+		}
+		gotColName := res.Schema()[0].Name
+		expectColName := fmt.Sprintf("set%d", results)
+		if gotColName != expectColName {
+			t.Fatalf("expected first column to be %q, got %q", expectColName, gotColName)
+		}
+		t.Logf("column count %d, first column %q", len(res.Schema()), res.Schema()[0].Name)
 		if !res.NextResult() {
 			break
 		}
@@ -210,5 +223,5 @@ where
 		t.Fatal("wanted 2 sets, got ", results)
 	}
 
-	assertFreeConns(t)
+
 }

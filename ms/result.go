@@ -28,7 +28,7 @@ type MsgDone struct {
 	Rows       uint64
 }
 
-func (done *MsgDone) Status() string {
+func (done MsgDone) Status() string {
 	if done.StatusCode == 0 {
 		return "Final"
 	}
@@ -57,10 +57,10 @@ func (done *MsgDone) Status() string {
 	}
 	return strings.Join(codes, " & ")
 }
-func (done *MsgDone) String() string {
+func (done MsgDone) String() string {
 	return fmt.Sprintf("Done Cmd=%d Status=%s", done.CurrentCmd, done.Status())
 }
-func (done *MsgDone) Error() string {
+func (done MsgDone) Error() string {
 	return done.Status()
 }
 

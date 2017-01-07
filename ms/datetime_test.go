@@ -73,6 +73,10 @@ func TestDateTimeRoundTrip(t *testing.T) {
 	res := db.Query(cmd, params...)
 	defer res.Close()
 
+	if res.Next() == false {
+		t.Fatal("expected row")
+	}
+
 	res.Prep("dt", &dt)
 	res.Prep("d", &d)
 	res.Prep("t", &tm)
