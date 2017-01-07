@@ -317,19 +317,26 @@ func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken
 	if err != nil {
 		return err
 	}
-	if err == nil {
-		_, err = tds.NextResult()
+	if tds.status == rdb.StatusQuery && err == nil {
+		_, err = tds.nextResult()
 	}
-	return nil
+	return err
 }
 
 func (tds *Connection) NextResult() (more bool, err error) {
 	if debugAPI {
 		fmt.Printf("API NextResult\n")
 	}
+	return tds.nextResult()
+}
+
+func (tds *Connection) nextResult() (more bool, err error) {
 	tds.syncClose.Lock()
 
 	more = (tds.status == rdb.StatusResultDone)
+	if debugAPI {
+		fmt.Printf("API nextResult more=%t, tds.status=%d\n", more, tds.status)
+	}
 	if more {
 		tds.status = rdb.StatusQuery
 		tds.syncClose.Unlock()
@@ -338,11 +345,9 @@ func (tds *Connection) NextResult() (more bool, err error) {
 	} else {
 		tds.syncClose.Unlock()
 	}
-	if debugAPI {
-		fmt.Printf("<API NextResult more=%t err=%v\n", more, err)
-	}
-	return more, err
+	return (tds.status == rdb.StatusResultDone || tds.status == rdb.StatusQuery), err
 }
+
 func (tds *Connection) NextQuery() (err error) {
 	if debugAPI {
 		fmt.Printf("API NextQuery\n")
@@ -396,6 +401,7 @@ func (tds *Connection) Scan() error {
 func (tds *Connection) scan() error {
 	if debugAPI {
 		fmt.Printf("api scan\n")
+		defer fmt.Printf("<api scan\n")
 	}
 	tds.syncClose.Lock()
 	if tds.status == rdb.StatusResultDone {
@@ -441,14 +447,18 @@ func (tds *Connection) scan() error {
 				tds.status = rdb.StatusResultDone
 				return nil
 			}
+		case MsgDone:
 		case MsgFinalDone:
 			return tds.done()
 		}
-		if tds.peek == tokenColumnMetaData {
+		if tds.col == nil {
+			continue
+		}
+		switch tds.peek {
+		case tokenColumnMetaData:
 			tds.status = rdb.StatusResultDone
 			return nil
-		}
-		if tds.peek == tokenRow {
+		case tokenRow:
 			return nil
 		}
 	}
@@ -704,7 +714,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		if msg.StatusCode&0x10 != 0 {
 			return MsgRowCount{Count: msg.Rows}, nil
 		}
-		return &msg, nil
+		return msg, nil
 	case tokenRow:
 		for _, column := range tds.col {
 			tds.decodeFieldValue(read, column, tds.val.WriteField, reportRow)

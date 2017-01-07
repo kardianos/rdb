@@ -209,7 +209,8 @@ func (r *Result) Next() (more bool) {
 	if r.conn == nil {
 		return false
 	}
-	if r.conn.Status() == StatusResultDone {
+	switch r.conn.Status() {
+	case StatusResultDone:
 		return false
 	}
 	return !r.val.eof

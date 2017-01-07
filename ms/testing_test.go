@@ -14,7 +14,7 @@ import (
 	"bitbucket.org/kardianos/rdb/must"
 )
 
-const parallel = true
+const parallel = false
 
 var testConnectionString = "ms://TESTU:letmein@localhost/SqlExpress?db=master&dial_timeout=3s"
 
