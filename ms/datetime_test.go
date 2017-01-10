@@ -166,3 +166,28 @@ from
 		t.Errorf("dStatc not equal")
 	}
 }
+
+func TestDateTZ(t *testing.T) {
+	defer assertFreeConns(t)
+	defer recoverTest(t)
+
+	datecheck := time.Date(2017, 1, 9, 20, 30, 0, 0, time.FixedZone("Pacific", -8 * 60 * 60))
+
+	const wantDate = "01/09/2017"
+
+	cmd := &rdb.Command{
+		Sql: `select DS = convert(nvarchar(100), @d, 101);`,
+		Arity: rdb.OneMust,
+	}
+	res := db.Query(cmd, rdb.Param{Name: "d", Type: rdb.TypeDate, Value: datecheck})
+	defer res.Close()
+
+	var dOut string
+	res.Prep("DS", &dOut)
+
+	res.Scan()
+
+	if dOut != wantDate {
+		t.Fatalf("wanted %q, got %q", wantDate, dOut)
+	}
+}

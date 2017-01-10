@@ -663,6 +663,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		w.WriteByte(st.W) // Row field width.
 
 		_, sec := v.Zone()
+		year, month, day := v.Date()
 		v = v.UTC()
 
 		if (info.Dt & dtTime) != 0 {
@@ -682,7 +683,12 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			w.WriteBuffer(bb[:5])
 		}
 		if (info.Dt & dtDate) != 0 {
-			vDate := v.Truncate(time.Hour * 24)
+			var vDate time.Time
+			if (info.Dt & dtTime) != 0 {
+				vDate = v.Truncate(time.Hour * 24)
+			} else {
+				vDate = time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+			}
 			dt := zeroDateN
 			dtNext := dt
 
