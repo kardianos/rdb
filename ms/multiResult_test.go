@@ -276,6 +276,8 @@ func TestMultiResultEmpty2(t *testing.T) {
 		sys.tables
 	where
 		1=0
+	order by
+		name asc
 	;
 
 	select
@@ -285,7 +287,7 @@ func TestMultiResultEmpty2(t *testing.T) {
 	where
 		1=0
 	order by
-		set3
+		name asc
 	;
 		`,
 		Arity: rdb.Any,
@@ -394,5 +396,29 @@ func TestMultiResultEmpty3(t *testing.T) {
 	}
 	if results != 3 {
 		t.Fatal("wanted 3 sets, got ", results)
+	}
+}
+func TestMultiResultNotEmpty1(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
+
+	defer assertFreeConns(t)
+
+	// Handle multiple result sets.
+	defer recoverTest(t)
+
+
+	cmd := &rdb.Command{
+		Sql: `select name from sys.tables order by name asc;`,
+		Arity: rdb.Any,
+	}
+
+	tb, err := table.FillCommand(db.Normal(), cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tb.Len() == 0 {
+		t.Fatal("got %d rows, expected at last one row", tb.Len())
 	}
 }

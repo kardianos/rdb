@@ -949,7 +949,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 		case typeFloat64:
 			v = math.Float64frombits(binary.LittleEndian.Uint64(bb))
 		default:
-			panic("unhandled fixed type")
+			panic(recoverError{errors.New("unhandled fixed type")})
 		}
 		wf(&rdb.DriverValue{
 			Value: v,

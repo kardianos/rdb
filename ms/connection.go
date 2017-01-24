@@ -351,9 +351,14 @@ func (tds *Connection) nextResult() (more bool, err error) {
 func (tds *Connection) NextQuery() (err error) {
 	if debugAPI {
 		fmt.Printf("API NextQuery\n")
+		defer fmt.Printf("<API NextQuery\n")
 	}
 	for tds.status != rdb.StatusReady {
-		res, err := tds.getSingleResponse(tds.mr, false)
+		var res interface{}
+		var err error
+		withLock(&tds.syncClose, func() {
+			res, err = tds.getSingleResponse(tds.mr, false)
+		})
 		if err != nil {
 			tds.done()
 			return err
@@ -416,9 +421,11 @@ func (tds *Connection) scan() error {
 
 	hasCol := false
 	for {
-		tds.syncClose.Lock()
-		res, err := tds.getSingleResponse(tds.mr, true)
-		tds.syncClose.Unlock()
+		var res interface{}
+		var err error
+		withLock(&tds.syncClose, func() {
+			res, err = tds.getSingleResponse(tds.mr, true)
+		})
 		if err != nil {
 			tds.done()
 			return err
@@ -452,8 +459,6 @@ func (tds *Connection) scan() error {
 				return nil
 			}
 		case MsgOrder:
-			tds.status = rdb.StatusResultDone
-			return nil
 		case MsgDone:
 		case MsgFinalDone:
 			return tds.done()
@@ -606,8 +611,9 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 	var bb []byte
 
 	if debugToken {
+		fmt.Printf("getSingleResponse\n")
 		defer func() {
-			fmt.Printf("MSG %[1]T : %[1]v (peek: 0x%[2]X)\n", response, tds.peek)
+			fmt.Printf("<getSingleResponse MSG %[1]T : %[1]v (peek: 0x%[2]X)\n", response, tds.peek)
 		}()
 	}
 
@@ -785,7 +791,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		case 0x02:
 		// User defined function.
 		default:
-			panic(errors.Errorf("Unknown status value: 0x%X", status))
+			panic(recoverError{errors.Errorf("Unknown status value: 0x%X", status)})
 		}
 
 		col := decodeColumnInfo(read)
@@ -857,4 +863,11 @@ func getHeaderTemplate() ([]byte, int) {
 	at += 4
 
 	return bb, tranNumberOffset
+}
+
+func withLock(lk sync.Locker, f func()) {
+	lk.Lock()
+	defer lk.Unlock() // For panics.
+
+	f()
 }
