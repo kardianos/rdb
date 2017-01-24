@@ -171,6 +171,10 @@ func TestMultiResultEmpty(t *testing.T) {
 
 	res := db.Query(&rdb.Command{
 		Sql: `
+declare @T table(ID int);
+insert into @T
+select 1;
+
 select
 	1 as set1, *
 from
@@ -182,6 +186,15 @@ where
 
 select
 	2 as set2, *
+from
+	sys.tables
+where
+	1=1
+	and @TestingLink=1
+;
+
+select
+	3 as set3, *
 from
 	sys.tables
 where
@@ -219,9 +232,167 @@ where
 		}
 		results++
 	}
-	if results != 2 {
-		t.Fatal("wanted 2 sets, got ", results)
+	if results != 3 {
+		t.Fatal("wanted 3 sets, got ", results)
 	}
 
 
+}
+
+func TestMultiResultEmpty2(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
+
+	defer assertFreeConns(t)
+
+	// Handle multiple result sets.
+	defer recoverTest(t)
+
+	res := db.Query(&rdb.Command{
+		Sql: `
+	declare @SampleSelect table (ID bigint)
+	declare @Sample table (ID bigint);
+	declare @Locus table (ID bigint);
+
+	insert into @Sample
+	select ID
+	from
+		(select 1 as ID) a
+	where
+		1=0
+	;
+
+	select
+		1 as set1
+	from
+		sys.tables
+	where
+		1=0
+
+	select
+		2 as set2
+	from
+		sys.tables
+	where
+		1=0
+	;
+
+	select
+		3 as set3
+	from
+		sys.tables
+	where
+		1=0
+	order by
+		set3
+	;
+		`,
+		Arity: rdb.Any,
+	})
+
+	defer res.Close()
+
+	results := 1
+
+	for {
+		if res.Next() {
+			t.Fatal("No next rows")
+		}
+		if len(res.Schema()) == 0 {
+			t.Fatal("column schema not populating in empty result set")
+		}
+		gotColName := res.Schema()[0].Name
+		expectColName := fmt.Sprintf("set%d", results)
+		if gotColName != expectColName {
+			t.Fatalf("expected first column to be %q, got %q", expectColName, gotColName)
+		}
+		t.Logf("column count %d, first column %q", len(res.Schema()), res.Schema()[0].Name)
+		if !res.NextResult() {
+			t.Logf("done with %d results", results)
+			break
+		}
+		results++
+	}
+	if results != 3 {
+		t.Fatal("wanted 3 sets, got ", results)
+	}
+}
+
+func TestMultiResultEmpty3(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
+
+	defer assertFreeConns(t)
+
+	// Handle multiple result sets.
+	defer recoverTest(t)
+
+	res := db.Query(&rdb.Command{
+		Sql: `
+	declare @SampleSelect table (ID bigint)
+	declare @Sample table (ID bigint);
+	declare @Locus table (ID bigint);
+
+	insert into @Sample
+	select ID
+	from
+		(select 1 as ID) a
+	where
+		1=0
+	;
+
+	select
+		1 as set1
+	from
+		sys.tables
+	where
+		1=0
+
+	select
+		2 as set2
+	from
+		sys.tables
+	where
+		1=0
+	;
+
+	select
+		3 as set3
+	from
+		sys.tables
+	where
+		1=0
+	;
+		`,
+		Arity: rdb.Any,
+	})
+
+	defer res.Close()
+
+	results := 1
+
+	for {
+		if res.Next() {
+			t.Fatal("No next rows")
+		}
+		if len(res.Schema()) == 0 {
+			t.Fatal("column schema not populating in empty result set")
+		}
+		gotColName := res.Schema()[0].Name
+		expectColName := fmt.Sprintf("set%d", results)
+		if gotColName != expectColName {
+			t.Fatalf("expected first column to be %q, got %q", expectColName, gotColName)
+		}
+		t.Logf("column count %d, first column %q", len(res.Schema()), res.Schema()[0].Name)
+		if !res.NextResult() {
+			t.Logf("done with %d results", results)
+			break
+		}
+		results++
+	}
+	if results != 3 {
+		t.Fatal("wanted 3 sets, got ", results)
+	}
 }

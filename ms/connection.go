@@ -426,7 +426,11 @@ func (tds *Connection) scan() error {
 		switch v := res.(type) {
 		case MsgEom:
 			// END OF (TDS) MESSAGE.
-			return tds.done()
+			err = tds.done()
+			if hasCol {
+				tds.status = rdb.StatusResultDone
+			}
+			return err
 		case *rdb.Message:
 			tds.val.Message(v)
 		case MsgColumn:
@@ -447,6 +451,9 @@ func (tds *Connection) scan() error {
 				tds.status = rdb.StatusResultDone
 				return nil
 			}
+		case MsgOrder:
+			tds.status = rdb.StatusResultDone
+			return nil
 		case MsgDone:
 		case MsgFinalDone:
 			return tds.done()

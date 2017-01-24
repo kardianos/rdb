@@ -5,7 +5,6 @@
 package ms
 
 import (
-	"log"
 	"os"
 	"runtime"
 	"testing"
@@ -30,7 +29,7 @@ func TestMain(m *testing.M) {
 	db = must.Open(config)
 
 	db.Normal().OnAutoClose = func(sql string) {
-		log.Printf("Auto closed sql %s", sql)
+		// log.Printf("Auto closed sql %s", sql)
 	}
 	os.Exit(m.Run())
 }
