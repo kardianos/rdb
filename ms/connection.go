@@ -450,18 +450,14 @@ func (tds *Connection) scan() error {
 			tds.val.RowScanned()
 		case MsgRowCount:
 			tds.val.RowsAffected(v.Count)
-
-			// If a message loop has both a column msg and a row count msg
-			// then it is an empty result set. Set the status as such
-			// and return.
-			if hasCol {
-				tds.status = rdb.StatusResultDone
-				return nil
-			}
 		case MsgOrder:
 		case MsgDone:
 		case MsgFinalDone:
-			return tds.done()
+			err = tds.done()
+			if hasCol {
+				tds.status = rdb.StatusResultDone
+			}
+			return err
 		}
 		if tds.col == nil {
 			continue

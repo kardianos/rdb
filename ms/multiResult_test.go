@@ -40,7 +40,6 @@ func TestMultiResultSimple(t *testing.T) {
 		t.Fatalf("expected 2 result sets, got %d", len(set.Set))
 	}
 
-
 	var myFav string
 	res := db.Query(&rdb.Command{
 		Sql: `
@@ -57,7 +56,7 @@ func TestMultiResultSimple(t *testing.T) {
 		},
 	}...)
 	defer res.Close()
-res.Next()
+	res.Next()
 	res.Prep("MyAnimal", &myFav).Scan()
 	t.Logf("My Animal: %s\n", myFav)
 	if res.Next() {
@@ -67,7 +66,7 @@ res.Next()
 	if !moreRes {
 		t.Fatal("expected more result sets")
 	}
-res.Next()
+	res.Next()
 	var pants int
 	var shirt bool
 	res.Prep("Pants", &pants).Prep("Shirt", &shirt).Scan()
@@ -159,7 +158,7 @@ func TestMultiResultLoop(t *testing.T) {
 	assertFreeConns(t)
 }
 
-func TestMultiResultEmpty(t *testing.T) {
+func TestMultiResultEmpty1(t *testing.T) {
 	if parallel {
 		t.Parallel()
 	}
@@ -235,7 +234,6 @@ where
 	if results != 3 {
 		t.Fatal("wanted 3 sets, got ", results)
 	}
-
 
 }
 
@@ -408,9 +406,8 @@ func TestMultiResultNotEmpty1(t *testing.T) {
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
-
 	cmd := &rdb.Command{
-		Sql: `select name from sys.tables order by name asc;`,
+		Sql:   `select name from sys.tables order by name asc;`,
 		Arity: rdb.Any,
 	}
 
@@ -421,4 +418,61 @@ func TestMultiResultNotEmpty1(t *testing.T) {
 	if tb.Len() == 0 {
 		t.Fatal("got %d rows, expected at last one row", tb.Len())
 	}
+}
+
+func TestMultiResultAnotherTest(t *testing.T) {
+	if parallel {
+		t.Parallel()
+	}
+
+	defer assertFreeConns(t)
+
+	// Handle multiple result sets.
+	defer recoverTest(t)
+
+	cmd := &rdb.Command{
+		Sql: `
+
+	select
+		1 as set1
+	from
+		sys.tables
+	where
+		1=0
+
+	select
+		2 as set2
+	from
+		sys.tables
+	where
+		1=0
+	;
+
+	select top 1
+		3 as set3
+	from
+		sys.tables
+	where
+		1=1
+
+		`,
+		Arity: rdb.Any,
+	}
+
+	tb, err := table.FillCommand(db.Normal(), cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	set := tb.Set
+	list := []int{0, 0, 1}
+	if len(set) != len(list) {
+		t.Fatalf("expected %d result sets, got %d", len(list), len(set))
+	}
+	for index, tb := range set {
+		if len(tb.Row) != list[index] {
+			t.Errorf("in result set index %d, wanted %d rows, got %d", index, list[index], len(tb.Row))
+		}
+	}
+
 }
