@@ -916,6 +916,23 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 			value = make([]byte, dataLen)
 			copy(value, read(dataLen))
 		}
+		if column.code == typeGuid {
+			reverse := func(b []byte) {
+				for i, j := 0, len(b)-1; i < j; i, j = i+1, j-1 {
+					b[i], b[j] = b[j], b[i]
+				}
+			}
+			bytesToGuidString := func(u []byte) string {
+				reverse(u[0:4])
+				reverse(u[4:6])
+				reverse(u[6:8])
+				return fmt.Sprintf("%X-%X-%X-%X-%X", u[0:4], u[4:6], u[6:8], u[8:10], u[10:])
+			}
+			wf(&rdb.DriverValue{
+				Value: bytesToGuidString(value),
+			})
+			return
+		}
 		wf(&rdb.DriverValue{
 			Value: value,
 		})
