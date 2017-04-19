@@ -155,3 +155,25 @@ func TestNullNumbers(t *testing.T) {
 		t.Fatalf("Rat should be nil: %v", val)
 	}
 }
+
+func TestGUID(t *testing.T) {
+	defer recoverTest(t)
+
+	cmd := &rdb.Command{
+		Sql: `
+			select newid();
+		`,
+		Arity: rdb.OneMust,
+	}
+
+	res := db.Query(cmd)
+	defer res.Close()
+
+	res.Scan()
+	val := res.Getx(0)
+
+	if val == nil {
+		t.Fatalf("GUID should not be nil: %v", val)
+	}
+	t.Log(val)
+}
