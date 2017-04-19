@@ -902,7 +902,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 		}
 	}
 
-	if column.info.Bytes {
+	if column.info.Bytes || column.code == typeGuid {
 		if isNull {
 			wf(&rdb.DriverValue{
 				Null: true,
