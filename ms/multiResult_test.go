@@ -416,7 +416,7 @@ func TestMultiResultNotEmpty1(t *testing.T) {
 		t.Fatal(err)
 	}
 	if tb.Len() == 0 {
-		t.Fatal("got %d rows, expected at last one row", tb.Len())
+		t.Fatalf("got %d rows, expected at last one row", tb.Len())
 	}
 }
 
