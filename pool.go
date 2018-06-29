@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/youtube/vitess/go/pools"
+	"vitess.io/vitess/go/pools"
 	"golang.org/x/net/context"
 
 	"github.com/pkg/errors"
@@ -327,6 +327,6 @@ func (cp *ConnPool) Connection() (*Connection, error) {
 }
 
 func (cp *ConnPool) PoolAvailable() (capacity, available int) {
-	c, a, _, _, _, _ := cp.pool.Stats()
+	c, a := cp.pool.Capacity(), cp.pool.Available()
 	return int(c), int(a)
 }
