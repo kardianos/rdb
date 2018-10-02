@@ -68,7 +68,9 @@ func (tds *PacketWriter) PreLogin(instance string) error {
 	addToken(preloginVersion, version)
 	addToken(preloginMars, []byte{0x00})       // MARS OFF (0x01 is ON).
 	addToken(preloginEncryption, []byte{0x02}) // Encription not available. Pg 65.
-	addToken(preloginInstance, uconv.Encode.FromString(instance))
+	if len(instance) > 0 {
+		addToken(preloginInstance, uconv.Encode.FromString(instance))
+	}
 
 	tds.BeginMessage(packetPreLogin, false)
 
