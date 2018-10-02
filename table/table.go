@@ -70,6 +70,7 @@ func Fill(res *rdb.Result) (*Buffer, error) {
 }
 
 func FillSet(res *rdb.Result) ([]*Buffer, error) {
+	defer res.Close()
 	set := make([]*Buffer, 0, 1)
 	for {
 		tb := &Buffer{}
@@ -132,6 +133,16 @@ func (b *Buffer) SetSchema(schema []*rdb.Column) error {
 
 func (b *Buffer) Schema() []*rdb.Column {
 	return b.schema
+}
+
+// ColumnIndex returns the index of the named column.
+// If the name is not present it returns -1.
+func (b *Buffer) ColumnIndex(name string) int {
+	index, found := b.nameIndexLookup[name]
+	if !found {
+		return -1
+	}
+	return index
 }
 
 func (b *Buffer) AddRow(v ...interface{}) *Row {
