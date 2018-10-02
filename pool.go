@@ -5,8 +5,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/youtube/vitess/go/pools"
+	"vitess.io/vitess/go/pools"
 	"golang.org/x/net/context"
+
+	"github.com/pkg/errors"
 )
 
 const debugConnectionReuse = false
@@ -33,7 +35,7 @@ func Open(config *Config) (*ConnPool, error) {
 		return nil, err
 	}
 	if config.Secure && dr.DriverInfo().SecureConnection == false {
-		return nil, fmt.Errorf("Driver %s does not support secure connections.", config.DriverName)
+		return nil, errors.Errorf("Driver %s does not support secure connections.", config.DriverName)
 	}
 	factory := func() (pools.Resource, error) {
 		if debugConnectionReuse {
@@ -41,7 +43,7 @@ func Open(config *Config) (*ConnPool, error) {
 		}
 		conn, err := dr.Open(config)
 		if conn == nil && err == nil {
-			return nil, fmt.Errorf("New connection is nil")
+			return nil, errors.Errorf("New connection is nil")
 		}
 		if err != nil {
 			return conn, err
@@ -93,7 +95,7 @@ func (cp *ConnPool) ConnectionInfo() (*ConnectionInfo, error) {
 }
 
 func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
-	if !kill && conn.Status() != StatusReady {
+	if conn.Status() != StatusReady {
 		kill = true
 	}
 	if kill {
@@ -184,7 +186,7 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 		for i := range params {
 			err = cmd.Converter.ConvertParam(&params[i])
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrap(err, "ConvertParam")
 			}
 		}
 	}
@@ -192,7 +194,7 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 	if conn == nil {
 		conn, err = cp.getConn(true)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "getConn")
 		}
 	}
 
@@ -224,7 +226,7 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 					buf := make([]byte, 8000)
 					buf = buf[:runtime.Stack(buf, false)]
 
-					err = fmt.Errorf("Panic in database driver: %v\n%s", rval, string(buf))
+					err = errors.Errorf("Panic in database driver: %v\n%s", rval, string(buf))
 				}
 			}()
 			err = conn.Query(cmd, params, nil, &res.val)
@@ -236,7 +238,7 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 			// TODO: There should be a method for aborting an active command.
 			conn.Close()
 			cp.releaseConn(conn, true)
-			return nil, fmt.Errorf("Query timed out after %v.", timeout)
+			return nil, errors.Errorf("Query timed out after %v.", timeout)
 		case <-done:
 		}
 	} else {
@@ -245,7 +247,7 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 				buf := make([]byte, 8000)
 				buf = buf[:runtime.Stack(buf, false)]
 
-				err = fmt.Errorf("Panic in database driver: %v\n%s", rval, string(buf))
+				err = errors.Errorf("Panic in database driver: %v\n%s", rval, string(buf))
 			}
 		}()
 		err = conn.Query(cmd, params, nil, &res.val)
@@ -325,6 +327,6 @@ func (cp *ConnPool) Connection() (*Connection, error) {
 }
 
 func (cp *ConnPool) PoolAvailable() (capacity, available int) {
-	c, a, _, _, _, _ := cp.pool.Stats()
+	c, a := cp.pool.Capacity(), cp.pool.Available()
 	return int(c), int(a)
 }

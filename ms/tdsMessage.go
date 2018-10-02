@@ -12,6 +12,8 @@ import (
 	"io"
 
 	"bitbucket.org/kardianos/rdb/internal/sbuffer"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -199,7 +201,7 @@ type PacketReader struct {
 
 func NewPacketReader(r io.Reader) *PacketReader {
 	return &PacketReader{
-		buffer: sbuffer.NewBuffer(r, maxPacketSize*12),
+		buffer: sbuffer.NewBuffer(r, maxPacketSize*64),
 	}
 }
 
@@ -260,7 +262,7 @@ func (mr *MessageReader) Next() ([]byte, error) {
 		fmt.Println(hex.Dump(debugMessage))
 	}
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "buf.Next")
 	}
 	if packetEOM {
 		err = io.EOF

@@ -1,6 +1,18 @@
-// Copyright 2013, Google Inc. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+/*
+Copyright 2017 Google Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package sync2
 
@@ -98,6 +110,33 @@ func (d *AtomicDuration) Get() time.Duration {
 // CompareAndSwap atomatically swaps the old with the new value.
 func (d *AtomicDuration) CompareAndSwap(oldval, newval time.Duration) (swapped bool) {
 	return atomic.CompareAndSwapInt64(&d.int64, int64(oldval), int64(newval))
+}
+
+// AtomicBool gives an atomic boolean variable.
+type AtomicBool struct {
+	int32
+}
+
+// NewAtomicBool initializes a new AtomicBool with a given value.
+func NewAtomicBool(n bool) AtomicBool {
+	if n {
+		return AtomicBool{1}
+	}
+	return AtomicBool{0}
+}
+
+// Set atomically sets n as new value.
+func (i *AtomicBool) Set(n bool) {
+	if n {
+		atomic.StoreInt32(&i.int32, 1)
+	} else {
+		atomic.StoreInt32(&i.int32, 0)
+	}
+}
+
+// Get atomically returns the current value.
+func (i *AtomicBool) Get() bool {
+	return atomic.LoadInt32(&i.int32) != 0
 }
 
 // AtomicString gives you atomic-style APIs for string, but

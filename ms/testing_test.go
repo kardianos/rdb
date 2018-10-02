@@ -5,7 +5,6 @@
 package ms
 
 import (
-	"log"
 	"os"
 	"runtime"
 	"testing"
@@ -14,7 +13,7 @@ import (
 	"bitbucket.org/kardianos/rdb/must"
 )
 
-const parallel = true
+const parallel = false
 
 var testConnectionString = "ms://TESTU:letmein@localhost/SqlExpress?db=master&dial_timeout=3s"
 
@@ -30,7 +29,7 @@ func TestMain(m *testing.M) {
 	db = must.Open(config)
 
 	db.Normal().OnAutoClose = func(sql string) {
-		log.Printf("Auto closed sql %s", sql)
+		// log.Printf("Auto closed sql %s", sql)
 	}
 	os.Exit(m.Run())
 }

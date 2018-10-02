@@ -15,6 +15,8 @@ import (
 	"bitbucket.org/kardianos/rdb"
 	"bitbucket.org/kardianos/rdb/internal/uconv"
 	"bitbucket.org/kardianos/rdb/semver"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -315,35 +317,48 @@ func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken
 	if err != nil {
 		return err
 	}
-	if err == nil {
-		_, err = tds.NextResult()
+	if tds.status == rdb.StatusQuery && err == nil {
+		_, err = tds.nextResult()
 	}
-	return nil
+	return err
 }
 
 func (tds *Connection) NextResult() (more bool, err error) {
 	if debugAPI {
 		fmt.Printf("API NextResult\n")
 	}
+	return tds.nextResult()
+}
+
+func (tds *Connection) nextResult() (more bool, err error) {
 	tds.syncClose.Lock()
 
 	more = (tds.status == rdb.StatusResultDone)
+	if debugAPI {
+		fmt.Printf("API nextResult more=%t, tds.status=%d\n", more, tds.status)
+	}
 	if more {
 		tds.status = rdb.StatusQuery
 		tds.syncClose.Unlock()
 
-		err = tds.Scan()
+		err = tds.scan()
 	} else {
 		tds.syncClose.Unlock()
 	}
-	return more, err
+	return (tds.status == rdb.StatusResultDone || tds.status == rdb.StatusQuery), err
 }
+
 func (tds *Connection) NextQuery() (err error) {
 	if debugAPI {
 		fmt.Printf("API NextQuery\n")
+		defer fmt.Printf("<API NextQuery\n")
 	}
 	for tds.status != rdb.StatusReady {
-		res, err := tds.getSingleResponse(tds.mr, false)
+		var res interface{}
+		var err error
+		withLock(&tds.syncClose, func() {
+			res, err = tds.getSingleResponse(tds.mr, false)
+		})
 		if err != nil {
 			tds.done()
 			return err
@@ -367,6 +382,7 @@ func (tds *Connection) done() error {
 	tds.params = nil
 
 	tds.syncClose.Lock()
+	tds.col = nil
 	tds.status = rdb.StatusReady
 	tds.syncClose.Unlock()
 
@@ -384,6 +400,14 @@ func (tds *Connection) Scan() error {
 	if debugAPI {
 		fmt.Printf("API Scan\n")
 	}
+	return tds.scan()
+}
+
+func (tds *Connection) scan() error {
+	if debugAPI {
+		fmt.Printf("api scan\n")
+		defer fmt.Printf("<api scan\n")
+	}
 	tds.syncClose.Lock()
 	if tds.status == rdb.StatusResultDone {
 		tds.syncClose.Unlock()
@@ -394,10 +418,14 @@ func (tds *Connection) Scan() error {
 		return nil
 	}
 	tds.syncClose.Unlock()
+
+	hasCol := false
 	for {
-		tds.syncClose.Lock()
-		res, err := tds.getSingleResponse(tds.mr, true)
-		tds.syncClose.Unlock()
+		var res interface{}
+		var err error
+		withLock(&tds.syncClose, func() {
+			res, err = tds.getSingleResponse(tds.mr, true)
+		})
 		if err != nil {
 			tds.done()
 			return err
@@ -405,10 +433,15 @@ func (tds *Connection) Scan() error {
 		switch v := res.(type) {
 		case MsgEom:
 			// END OF (TDS) MESSAGE.
-			return tds.done()
+			err = tds.done()
+			if hasCol {
+				tds.status = rdb.StatusResultDone
+			}
+			return err
 		case *rdb.Message:
 			tds.val.Message(v)
 		case MsgColumn:
+			hasCol = true
 		case MsgRow:
 			// Sent after the row is scanned.
 			// Prep values must be cleared after the initial fill.
@@ -417,14 +450,23 @@ func (tds *Connection) Scan() error {
 			tds.val.RowScanned()
 		case MsgRowCount:
 			tds.val.RowsAffected(v.Count)
+		case MsgOrder:
+		case MsgDone:
 		case MsgFinalDone:
-			return tds.done()
+			err = tds.done()
+			if hasCol {
+				tds.status = rdb.StatusResultDone
+			}
+			return err
 		}
-		if tds.peek == tokenColumnMetaData {
+		if tds.col == nil {
+			continue
+		}
+		switch tds.peek {
+		case tokenColumnMetaData:
 			tds.status = rdb.StatusResultDone
 			return nil
-		}
-		if tds.peek == tokenRow {
+		case tokenRow:
 			return nil
 		}
 	}
@@ -444,6 +486,10 @@ func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, par
 	tds.status = rdb.StatusQuery
 	tds.syncClose.Unlock()
 
+	if debugToken {
+		fmt.Printf("SQL: %q\n", sql)
+	}
+
 	var err error
 	if len(params) == 0 {
 		err = tds.sendSimpleQuery(sql, tds.resetNext)
@@ -455,7 +501,7 @@ func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, par
 		return err
 	}
 
-	return tds.Scan()
+	return tds.scan()
 }
 
 const (
@@ -521,12 +567,12 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param, 
 				paramNames.WriteRune(',')
 			}
 			if len(param.Name) == 0 {
-				return fmt.Errorf("Missing parameter name at index: %d", i)
+				return errors.Errorf("Missing parameter name at index: %d", i)
 			}
 
 			st, found := sqlTypeLookup[param.Type]
 			if !found {
-				return fmt.Errorf("SqlType not found: %d", param.Type)
+				return errors.Errorf("SqlType not found: %d", param.Type)
 			}
 			fmt.Fprintf(paramNames, "@%s %s", param.Name, st.TypeString(param))
 		}
@@ -561,8 +607,9 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 	var bb []byte
 
 	if debugToken {
+		fmt.Printf("getSingleResponse\n")
 		defer func() {
-			fmt.Printf("MSG %[1]T : %[1]v (peek: 0x%[2]X)\n", response, tds.peek)
+			fmt.Printf("<getSingleResponse MSG %[1]T : %[1]v (peek: 0x%[2]X)\n", response, tds.peek)
 		}()
 	}
 
@@ -587,9 +634,18 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		}
 		return bb
 	}
+	assignPeek := func() {
+		tds.peek = read(1)[0]
+		if tds.peek == 0 {
+			panic(recoverError{err: errors.New("bad peek")})
+		}
+	}
 	var token byte
 	if tds.peek == 0 {
 		token = read(1)[0]
+		if token == 0 {
+			return nil, errors.New("bad token, is zero")
+		}
 	} else {
 		token = tds.peek
 		tds.peek = 0
@@ -617,7 +673,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		_, sqlMsg.ProcName = uconv.Decode.Prefix1(read)
 		sqlMsg.LineNumber = int32(binary.LittleEndian.Uint32(read(4)))
 
-		tds.peek = read(1)[0]
+		assignPeek()
 		return sqlMsg, nil
 	case tokenColumnMetaData:
 		var columns []*SqlColumn
@@ -638,7 +694,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			columns = append(columns, column)
 		}
 
-		tds.peek = read(1)[0]
+		assignPeek()
 
 		tds.col = columns
 		cc := make([]*rdb.Column, len(tds.col))
@@ -663,17 +719,17 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		if msg.StatusCode == 0 {
 			return MsgFinalDone{}, nil
 		}
-		tds.peek = read(1)[0]
+		assignPeek()
 		if msg.StatusCode&0x10 != 0 {
 			return MsgRowCount{Count: msg.Rows}, nil
 		}
-		return &msg, nil
+		return msg, nil
 	case tokenRow:
 		for _, column := range tds.col {
 			tds.decodeFieldValue(read, column, tds.val.WriteField, reportRow)
 		}
 
-		tds.peek = read(1)[0]
+		assignPeek()
 		return MsgRow{}, nil
 	case tokenOrder:
 		// Just read the token.
@@ -682,7 +738,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		for i := uint16(0); i < length; i++ {
 			order[i] = binary.LittleEndian.Uint16(read(2))
 		}
-		tds.peek = read(1)[0]
+		assignPeek()
 		return order, nil
 	case tokenEnvChange:
 		length := int(binary.LittleEndian.Uint16(read(2)) - 1)
@@ -696,11 +752,11 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			case 8:
 				tds.currentTransaction = binary.LittleEndian.Uint64(buf[1:])
 			default:
-				return nil, fmt.Errorf("Unknown length: %d", buf[0])
+				return nil, errors.Errorf("Unknown length: %d", buf[0])
 			}
 		case 15:
 			// Type 15 doesn't obey the length.
-			return nil, fmt.Errorf("Un-handled env-change type: %d", tokenType)
+			return nil, errors.Errorf("Un-handled env-change type: %d", tokenType)
 		case 18:
 			if debugToken {
 				fmt.Printf("\tRESETCONNECTION\n")
@@ -711,7 +767,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		}
 		// Currently ignore all the data.
 
-		tds.peek = read(1)[0]
+		assignPeek()
 		return MsgEnvChange{}, nil
 	case tokenReturnValue:
 		//ParamOrdinal ushort
@@ -731,7 +787,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		case 0x02:
 		// User defined function.
 		default:
-			panic(fmt.Errorf("Unknown status value: 0x%X", status))
+			panic(recoverError{errors.Errorf("Unknown status value: 0x%X", status)})
 		}
 
 		col := decodeColumnInfo(read)
@@ -755,11 +811,11 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			return nil, err
 		}
 
-		tds.peek = read(1)[0]
+		assignPeek()
 
 		return MsgParamValue{}, nil
 	default:
-		return nil, fmt.Errorf("Unknown response code: 0x%X", token)
+		return nil, errors.Errorf("Unknown response code: 0x%X", token)
 	}
 }
 
@@ -803,4 +859,11 @@ func getHeaderTemplate() ([]byte, int) {
 	at += 4
 
 	return bb, tranNumberOffset
+}
+
+func withLock(lk sync.Locker, f func()) {
+	lk.Lock()
+	defer lk.Unlock() // For panics.
+
+	f()
 }
