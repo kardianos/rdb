@@ -5,8 +5,8 @@ import (
 	"runtime"
 	"time"
 
-	"vitess.io/vitess/go/pools"
 	"golang.org/x/net/context"
+	"vitess.io/vitess/go/pools"
 
 	"github.com/pkg/errors"
 )
@@ -48,7 +48,7 @@ func Open(config *Config) (*ConnPool, error) {
 		if err != nil {
 			return conn, err
 		}
-		return conn, conn.Reset()
+		return conn, conn.Reset(config)
 	}
 
 	initSize := config.PoolInitCapacity
@@ -113,7 +113,7 @@ func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 		fmt.Println("Result.Close() REUSE")
 	}
 	if conn.Available() {
-		err := conn.Reset()
+		err := conn.Reset(cp.conf)
 		if err != nil {
 			conn.SetAvailable(false)
 			cp.pool.Put(nil)
