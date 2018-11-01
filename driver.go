@@ -104,7 +104,7 @@ type DriverConn interface {
 	Status() DriverConnStatus
 
 	// Reset the connection to be ready for next connection.
-	Reset() error
+	Reset(*Config) error
 
 	// Happy Path:
 	//  * Interface wants to prepare command, but doesn't have token.

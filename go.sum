@@ -1,0 +1,6 @@
+github.com/pkg/errors v0.0.0-20160627222352-a2d6902c6d2a h1:Cd2VdqlHz+Lpf96L0JxhfrBn7oRuybTcKF2NO15q9DI=
+github.com/pkg/errors v0.0.0-20160627222352-a2d6902c6d2a/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+golang.org/x/net v0.0.0-20151203091402-d5cd7348bfeb h1:c+vUvtmJrOc/9Pl7OC8qdbKTj41p802NjMhnmIA6BjA=
+golang.org/x/net v0.0.0-20151203091402-d5cd7348bfeb/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
+vitess.io/vitess v0.0.0-20180629154927-7bfd5e8a866f h1:xS4whQEbFYzHoy63+zU1X7ulmDTQlCB3Ua4nHXjFNnA=
+vitess.io/vitess v0.0.0-20180629154927-7bfd5e8a866f/go.mod h1:h4qvkyNYTOC0xI+vcidSWoka0gQAZc9ZPHbkHo48gP0=

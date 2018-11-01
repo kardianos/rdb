@@ -51,6 +51,9 @@ type Config struct {
 	// Ignored if Secure is false.
 	InsecureSkipVerify bool
 
+	// ResetQuery is executed after the connection is reset.
+	ResetQuery string
+
 	KV map[string]interface{}
 }
 

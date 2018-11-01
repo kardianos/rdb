@@ -123,19 +123,12 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 	return si, tds.NextQuery()
 }
 
-func (tds *Connection) Reset() error {
+func (tds *Connection) Reset(c *rdb.Config) error {
 	tds.resetNext = true
-	// If TEXTSIZE is not set to -1, varchar(max) and friends will be truncated.
-	// If XACT_ABORT is not set to ON, transactions will not roll back if they fail.
-	// If ANSI_NULLS is not set to ON, tables will be created that is incompatible with indexes.
-	// LOCK_TIMEOUT defaults to -1 which is no timeout on locks.
-	return tds.Query(&rdb.Command{
-		Sql: `
-	SET TEXTSIZE -1;
-	SET XACT_ABORT ON;
-	SET ANSI_NULLS ON;
-	SET LOCK_TIMEOUT 10000;
-		`}, nil, nil, nil)
+	if len(c.ResetQuery) == 0 {
+		return nil
+	}
+	return tds.Query(&rdb.Command{Sql: c.ResetQuery}, nil, nil, nil)
 }
 
 func (tds *Connection) ConnectionInfo() *rdb.ConnectionInfo {
