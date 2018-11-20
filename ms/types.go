@@ -222,9 +222,25 @@ type typeWidth struct {
 	SqlName string
 }
 
-func (t *typeWidth) IsMaxParam(param *rdb.Param) bool {
+func valueLength(v interface{}) int {
+	switch v := v.(type) {
+	default:
+		return 0
+	case []byte:
+		return len(v)
+	case string:
+		return len(v)
+	}
+}
+
+func (t *typeWidth) IsMaxParam(param *rdb.Param) (int, bool) {
 	info := typeInfoLookup[t.T]
-	return info.Max && (param.Length <= 0 || ((info.NChar && param.Length > 4000) || param.Length > 8000))
+	maybeMax := info.Max && (param.Length <= 0 || ((info.NChar && param.Length > 4000) || param.Length > 8000))
+	if !maybeMax {
+		return param.Length, false
+	}
+	length := valueLength(param.Value)
+	return length, info.Max && (length <= 0 || ((info.NChar && length > 4000) || length > 8000))
 }
 
 func (t *typeWidth) TypeString(param *rdb.Param) string {
@@ -233,10 +249,11 @@ func (t *typeWidth) TypeString(param *rdb.Param) string {
 	case info.IsPrSc:
 		return fmt.Sprintf("%s(%d,%d)", t.SqlName, param.Precision, param.Scale)
 	case info.Bytes:
-		if t.IsMaxParam(param) {
+		if length, max := t.IsMaxParam(param); max {
 			return fmt.Sprintf("%s(max)", t.SqlName)
+		} else {
+			return fmt.Sprintf("%s(%d)", t.SqlName, length)
 		}
-		return fmt.Sprintf("%s(%d)", t.SqlName, param.Length)
 	default:
 		return t.SqlName
 	}
