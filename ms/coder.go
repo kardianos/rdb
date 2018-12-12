@@ -70,11 +70,11 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 	w.WriteByte(byte(st.T))
 
 	if info.Bytes {
-		if length, max := st.IsMaxParam(param); max {
+		if st.IsMaxParam(param) {
 			typeLength = 0xFFFF
 			writeMaxValue = true
 		} else {
-			typeLength = uint32(length)
+			typeLength = uint32(param.Length)
 			if info.NChar {
 				// Double the stated length if utf16 sized text.
 				typeLength += typeLength
