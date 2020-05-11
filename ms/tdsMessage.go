@@ -12,8 +12,6 @@ import (
 	"io"
 
 	"bitbucket.org/kardianos/rdb/internal/sbuffer"
-
-	"github.com/pkg/errors"
 )
 
 const (
@@ -262,7 +260,7 @@ func (mr *MessageReader) Next() ([]byte, error) {
 		fmt.Println(hex.Dump(debugMessage))
 	}
 	if err != nil {
-		return nil, errors.Wrap(err, "buf.Next")
+		return nil, fmt.Errorf("buf.Next: %w", err)
 	}
 	if packetEOM {
 		err = io.EOF

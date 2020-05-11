@@ -1,3 +1,0 @@
-# PostgreSQL (PG, PQ) database client.
-Database driver for database client frontend:
- http://godoc.org/bitbucket.org/kardianos/rdb

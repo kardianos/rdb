@@ -9,8 +9,6 @@ import (
 
 	"bitbucket.org/kardianos/rdb"
 	"bitbucket.org/kardianos/rdb/semver"
-
-	"github.com/pkg/errors"
 )
 
 type driverType byte
@@ -254,7 +252,7 @@ func decimalLength(param *rdb.Param) (byte, error) {
 	case 29 <= p && p <= 38:
 		return 16 + 1, nil
 	default:
-		return 0, errors.Errorf("Requested precision(%d) not in range [1,38]", p)
+		return 0, fmt.Errorf("Requested precision(%d) not in range [1,38]", p)
 	}
 }
 

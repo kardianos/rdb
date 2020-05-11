@@ -16,7 +16,7 @@ import (
 	"bitbucket.org/kardianos/rdb/internal/uconv"
 	"bitbucket.org/kardianos/rdb/semver"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 const (
@@ -560,12 +560,12 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param, 
 				paramNames.WriteRune(',')
 			}
 			if len(param.Name) == 0 {
-				return errors.Errorf("Missing parameter name at index: %d", i)
+				return fmt.Errorf("Missing parameter name at index: %d", i)
 			}
 
 			st, found := sqlTypeLookup[param.Type]
 			if !found {
-				return errors.Errorf("SqlType not found: %d", param.Type)
+				return fmt.Errorf("SqlType not found: %d", param.Type)
 			}
 			fmt.Fprintf(paramNames, "@%s %s", param.Name, st.TypeString(param))
 		}
@@ -745,11 +745,11 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			case 8:
 				tds.currentTransaction = binary.LittleEndian.Uint64(buf[1:])
 			default:
-				return nil, errors.Errorf("Unknown length: %d", buf[0])
+				return nil, fmt.Errorf("Unknown length: %d", buf[0])
 			}
 		case 15:
 			// Type 15 doesn't obey the length.
-			return nil, errors.Errorf("Un-handled env-change type: %d", tokenType)
+			return nil, fmt.Errorf("Un-handled env-change type: %d", tokenType)
 		case 18:
 			if debugToken {
 				fmt.Printf("\tRESETCONNECTION\n")
@@ -780,7 +780,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		case 0x02:
 		// User defined function.
 		default:
-			panic(recoverError{errors.Errorf("Unknown status value: 0x%X", status)})
+			panic(recoverError{fmt.Errorf("Unknown status value: 0x%X", status)})
 		}
 
 		col := decodeColumnInfo(read)
@@ -808,7 +808,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 
 		return MsgParamValue{}, nil
 	default:
-		return nil, errors.Errorf("Unknown response code: 0x%X", token)
+		return nil, fmt.Errorf("Unknown response code: 0x%X", token)
 	}
 }
 
