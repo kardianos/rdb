@@ -108,8 +108,8 @@ func FillSet(res *rdb.Result) ([]*Buffer, error) {
 	}
 	return set, nil
 }
-func FillCommand(cp *rdb.ConnPool, cmd *rdb.Command, params ...rdb.Param) (*Buffer, error) {
-	res, err := cp.Query(cmd, params...)
+func FillCommand(q rdb.Queryer, cmd *rdb.Command, params ...rdb.Param) (*Buffer, error) {
+	res, err := q.Query(cmd, params...)
 	if err != nil {
 		return nil, err
 	}
