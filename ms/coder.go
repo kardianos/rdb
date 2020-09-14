@@ -993,7 +993,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 				Value: int64(binary.LittleEndian.Uint64(read(8))),
 			})
 		default:
-			panic("Proto Error IntN")
+			panic(fmt.Errorf("Proto Error IntN, unknown data len %d", dataLen))
 		}
 		return
 	}
@@ -1010,7 +1010,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 				Value: writeValue,
 			})
 		default:
-			panic("Proto Error BitN")
+			panic(fmt.Errorf("Proto Error BitN, unknown data len %d", dataLen))
 		}
 		return
 	}
@@ -1052,7 +1052,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 			})
 			return
 		default:
-			panic("Proto Error decode data typeFloatN")
+			panic(fmt.Errorf("Proto Error FloatN, unknown data len %d", dataLen))
 		}
 
 	}
@@ -1070,7 +1070,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColum
 			})
 			return
 		default:
-			panic("Proto Error decode data typeDateTimeN")
+			panic(fmt.Errorf("Proto Error DateTimeN, unknown data len %d", dataLen))
 		}
 	}
 
