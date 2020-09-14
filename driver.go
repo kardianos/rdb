@@ -5,7 +5,7 @@
 package rdb
 
 import (
-	"bitbucket.org/kardianos/rdb/semver"
+	"github.com/kardianos/rdb/semver"
 )
 
 // TODO: Add states for transactions.

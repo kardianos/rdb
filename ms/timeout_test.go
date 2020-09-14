@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"bitbucket.org/kardianos/rdb"
+	"github.com/kardianos/rdb"
 )
 
 func TestTimeoutDie(t *testing.T) {

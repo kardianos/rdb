@@ -11,7 +11,7 @@ package table
 import (
 	"errors"
 
-	"bitbucket.org/kardianos/rdb"
+	"github.com/kardianos/rdb"
 )
 
 type Row struct {

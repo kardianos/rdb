@@ -12,9 +12,9 @@ import (
 	"math/big"
 	"time"
 
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/internal/uconv"
-	"bitbucket.org/kardianos/rdb/semver"
+	"github.com/kardianos/rdb"
+	"github.com/kardianos/rdb/internal/uconv"
+	"github.com/kardianos/rdb/semver"
 
 	"errors"
 )

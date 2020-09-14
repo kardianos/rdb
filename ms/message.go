@@ -12,8 +12,8 @@ import (
 	"os"
 	"time"
 
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/internal/uconv"
+	"github.com/kardianos/rdb"
+	"github.com/kardianos/rdb/internal/uconv"
 
 	"errors"
 )

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"testing"
 
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/table"
+	"github.com/kardianos/rdb"
+	"github.com/kardianos/rdb/table"
 )
 
 func TestMultiResultSimple(t *testing.T) {

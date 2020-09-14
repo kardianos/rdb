@@ -7,7 +7,7 @@ package ms
 import (
 	"testing"
 
-	"bitbucket.org/kardianos/rdb"
+	"github.com/kardianos/rdb"
 )
 
 func TestErrorQuery(t *testing.T) {

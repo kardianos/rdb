@@ -5,7 +5,7 @@
 // Microsoft SQL Server (MS SQL Server) TDS Protocol database client.
 //
 // For use with sql client interface:
-//   bitbucket.org/kardianos/rdb
+//   github.com/kardianos/rdb
 //
 // This driver doesn't use cgo or any c libraries and is self contained.
 //

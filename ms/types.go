@@ -7,8 +7,8 @@ package ms
 import (
 	"fmt"
 
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/semver"
+	"github.com/kardianos/rdb"
+	"github.com/kardianos/rdb/semver"
 )
 
 type driverType byte

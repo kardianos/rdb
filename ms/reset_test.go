@@ -7,8 +7,8 @@ package ms
 import (
 	"testing"
 
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/must"
+	"github.com/kardianos/rdb"
+	"github.com/kardianos/rdb/must"
 )
 
 func TestReset(t *testing.T) {

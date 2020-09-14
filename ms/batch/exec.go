@@ -13,9 +13,9 @@ import (
 	"io/ioutil"
 	"os"
 
-	"bitbucket.org/kardianos/rdb"
-	_ "bitbucket.org/kardianos/rdb/ms"
-	"bitbucket.org/kardianos/rdb/ms/batch"
+	"github.com/kardianos/rdb"
+	_ "github.com/kardianos/rdb/ms"
+	"github.com/kardianos/rdb/ms/batch"
 )
 
 var cs = flag.String("conn", "", "Connection String URL")

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"bitbucket.org/kardianos/rdb"
+	"github.com/kardianos/rdb"
 )
 
 type MsgEom struct{}

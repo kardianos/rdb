@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"bitbucket.org/kardianos/rdb"
+	"github.com/kardianos/rdb"
 )
 
 func TestShortText(t *testing.T) {

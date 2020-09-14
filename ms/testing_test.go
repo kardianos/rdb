@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"testing"
 
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/must"
+	"github.com/kardianos/rdb"
+	"github.com/kardianos/rdb/must"
 )
 
 const parallel = false

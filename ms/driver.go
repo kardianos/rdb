@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"net"
 
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/ms/ssrp"
+	"github.com/kardianos/rdb"
+	"github.com/kardianos/rdb/ms/ssrp"
 )
 
 func init() {

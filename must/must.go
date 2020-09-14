@@ -7,7 +7,7 @@
 package must
 
 import (
-	"bitbucket.org/kardianos/rdb"
+	"github.com/kardianos/rdb"
 )
 
 // Type panic'ed with after calling a Must method.

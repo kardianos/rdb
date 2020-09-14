@@ -1,3 +1,3 @@
 # Microsoft SQL Server (MS SQL Server) TDS database client.
 Database driver for database client frontend:
- http://godoc.org/bitbucket.org/kardianos/rdb
+ http://godoc.org/github.com/kardianos/rdb

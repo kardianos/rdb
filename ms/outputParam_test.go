@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"testing"
 
-	"bitbucket.org/kardianos/rdb"
+	"github.com/kardianos/rdb"
 )
 
 func TestOutputParam(t *testing.T) {

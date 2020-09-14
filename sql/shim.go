@@ -10,8 +10,8 @@ package sql
 import (
 	"errors"
 
-	"bitbucket.org/kardianos/rdb"
-	"bitbucket.org/kardianos/rdb/sql/driver"
+	"github.com/kardianos/rdb"
+	"github.com/kardianos/rdb/sql/driver"
 )
 
 // ErrNoRows is returned by Scan when QueryRow doesn't return a row. In such a case, QueryRow returns a placeholder *Row value that defers this error until a Scan.

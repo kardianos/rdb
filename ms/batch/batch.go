@@ -11,7 +11,7 @@ import (
 	"errors"
 	"strings"
 
-	"bitbucket.org/kardianos/rdb"
+	"github.com/kardianos/rdb"
 )
 
 func ExecuteBatchSql(cp *rdb.ConnPool, batchSql, separator string) error {

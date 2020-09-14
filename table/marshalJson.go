@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"bitbucket.org/kardianos/rdb"
+	"github.com/kardianos/rdb"
 )
 
 // type Converter func(value *rdb.Nullable) error
