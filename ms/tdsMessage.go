@@ -199,7 +199,7 @@ type PacketReader struct {
 
 func NewPacketReader(r io.Reader) *PacketReader {
 	return &PacketReader{
-		buffer: sbuffer.NewBuffer(r, maxPacketSize*64),
+		buffer: sbuffer.NewBuffer(r, maxPacketSize),
 	}
 }
 
@@ -253,6 +253,9 @@ func (mr *MessageReader) Next() ([]byte, error) {
 	mr.length = int(binary.BigEndian.Uint16(bb[2:])) - 8
 	buf.Used(8)
 
+	if mr.length > maxPacketSize {
+		panic("packet length too large")
+	}
 	bb, err = buf.Next(mr.length)
 	if debugProto {
 		fmt.Println("Server -> Client")
@@ -309,6 +312,10 @@ func (r *MessageReader) Fetch(n int) (ret []byte, err error) {
 			}
 			r.packetEOM = true
 		}
+		// TODO(kardianos): find a way to make the bytes immutable, and normally avoid the copy.
+		x := next
+		next = make([]byte, len(x))
+		copy(next, x)
 		if len(r.current) == 0 {
 			r.current = next
 		} else {

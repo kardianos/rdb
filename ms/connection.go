@@ -632,7 +632,8 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 	assignPeek := func() {
 		tds.peek = read(1)[0]
 		if tds.peek == 0 {
-			panic(recoverError{err: errors.New("bad peek")})
+			panic("bad peek")
+			// panic(recoverError{err: errors.New("bad peek")})
 		}
 	}
 	var token byte
