@@ -34,23 +34,6 @@ type Buffer interface {
 	Used(used int)
 }
 
-type buffer2 struct {
-	r io.Reader
-}
-
-func NewBuffer2(read io.Reader, bufferSize int) Buffer {
-	return &buffer2{
-		r: read,
-	}
-}
-
-func (b *buffer2) Next(needed int) ([]byte, error) {
-	return nil, nil
-}
-func (b *buffer2) Used(used int) {
-	return
-}
-
 // Read from read for more data.
 // The bufferSize should be several times the max read size to prevent excessive copying.
 func NewBuffer(read io.Reader, bufferSize int) Buffer {
