@@ -150,6 +150,7 @@ func (v *valuer) WriteField(c *Column, value *DriverValue, assign Assigner) erro
 	}
 
 	prep := v.prep[c.Index]
+
 	f := v.fields[c.Index]
 	if value.Null && f != nil && f.Null != nil {
 		value.Null = false

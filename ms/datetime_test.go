@@ -24,7 +24,7 @@ func TestDateTimeRoundTrip(t *testing.T) {
 
 	dt := time.Now().Round(truncTo)
 	d := time.Now().Truncate(time.Hour * 24).UTC()
-	tm := time.Now().Sub(time.Now().Truncate(time.Hour * 24))
+	// tm := time.Now().Sub(time.Now().Truncate(time.Hour * 24))
 	dt2 := time.Now()
 
 	locName := "America/Los_Angeles"
@@ -52,8 +52,8 @@ func TestDateTimeRoundTrip(t *testing.T) {
 				dtoS = cast(@dto as nvarchar(max)),
 				dt = @dt,
 				d = @d,
-				t = @t,
-				dt2 = @dt2,
+				-- t = @t,
+				-- dt2 = @dt2,
 				dto = @dto,
 				dto2 = @dto2
 		`,
@@ -63,8 +63,8 @@ func TestDateTimeRoundTrip(t *testing.T) {
 	params := []rdb.Param{
 		{Name: "dt", Type: TypeOldTD, Value: dt},
 		{Name: "d", Type: rdb.TypeDate, Value: d},
-		{Name: "t", Type: rdb.TypeTime, Value: tm},
-		{Name: "dt2", Type: rdb.TypeTimestamp, Value: dt2},
+		// {Name: "t", Type: rdb.TypeTime, Value: tm},
+		// {Name: "dt2", Type: rdb.TypeTimestamp, Value: dt2},
 		{Name: "dto", Type: rdb.TypeTimestampz, Value: dto},
 		{Name: "dto2", Type: rdb.TypeTimestampz, Value: dto2},
 		{Name: "dtS", Type: TypeOldTD, Value: dtS},
@@ -79,8 +79,8 @@ func TestDateTimeRoundTrip(t *testing.T) {
 
 	res.Prep("dt", &dt)
 	res.Prep("d", &d)
-	res.Prep("t", &tm)
-	res.Prep("dt2", &dt2)
+	// res.Prep("t", &tm)
+	// res.Prep("dt2", &dt2)
 
 	res.Scan()
 
@@ -89,35 +89,39 @@ func TestDateTimeRoundTrip(t *testing.T) {
 
 	dt = dt.Round(truncTo)
 
-	t.Logf("D: %v", d)
-	t.Logf("DT2: %v", dt2)
-	t.Logf("DTO: %v", dto)
-	t.Logf("DTO2: %v", dto2)
+	if false {
+		t.Logf("D: %v", d)
+		t.Logf("DT2: %v", dt2)
+		t.Logf("DTO: %v", dto)
+		t.Logf("DTO2: %v", dto2)
 
-	t.Logf("DTV: %v", res.Get("dtV").(time.Time))
-	t.Logf("DTS: %s", res.Get("dtS").([]byte))
-	t.Logf("DT2V: %v", res.Get("dt2V").(time.Time))
-	t.Logf("DT2S: %s", res.Get("dt2S").([]byte))
-	t.Logf("dtoS: %s", res.Get("dtoS").([]byte))
+		t.Logf("DTV: %v", res.Get("dtV").(time.Time))
+		t.Logf("DTS: %s", res.Get("dtS").([]byte))
+		t.Logf("DT2V: %v", res.Get("dt2V").(time.Time))
+		t.Logf("DT2S: %s", res.Get("dt2S").([]byte))
+		t.Logf("dtoS: %s", res.Get("dtoS").([]byte))
+	}
 
-	compare := []interface{}{dt, d, tm, dt2, dto, dto2}
+	compare := []interface{}{dt, d /*tm, dt2,*/, dto, dto2}
 
 	for i := range compare {
-		if i >= len(params) {
-			return
-		}
 		in := params[i]
-		diff := false
-		if tv, ok := in.Value.(time.Time); ok {
-			if !tv.Equal(compare[i].(time.Time)) {
+		t.Run(in.Name, func(t *testing.T) {
+			if i >= len(params) {
+				return
+			}
+			diff := false
+			if tv, ok := in.Value.(time.Time); ok {
+				if !tv.Equal(compare[i].(time.Time)) {
+					diff = true
+				}
+			} else if !reflect.DeepEqual(compare[i], in.Value) {
 				diff = true
 			}
-		} else if !reflect.DeepEqual(compare[i], in.Value) {
-			diff = true
-		}
-		if diff {
-			t.Errorf("Param %s did not round trip: Want (%v) got (%v)", in.Name, in.Value, compare[i])
-		}
+			if diff {
+				t.Errorf("Param %s did not round trip: Want (%v) got (%v)", in.Name, in.Value, compare[i])
+			}
+		})
 	}
 }
 

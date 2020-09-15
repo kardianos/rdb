@@ -38,13 +38,14 @@ const (
 	tokenDoneInProc     = 0xFF
 	tokenColumnMetaData = 0x81
 	tokenRow            = 0xD1
+	tokenNBCRow         = 0xD2
 	tokenEnvChange      = 0xE3
 
 	tokenOrder = 0xA9
 )
 
 // Document the highest version this driver can handle.
-const protoVersionMax = version73A
+const protoVersionMax = version74
 
 // Pre-Login
 func (tds *PacketWriter) PreLogin(instance string) error {

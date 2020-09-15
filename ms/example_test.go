@@ -100,11 +100,12 @@ func TestRowsQuerySimple(t *testing.T) {
 	i := 0
 	for res.Next() {
 		res.Scan(&myFav)
+		// t.Logf("got: %s\n", myFav)
+
 		if myFav != check[i] {
 			t.Errorf("Got <%s>, want <%s>", myFav, check[i])
 		}
 		i++
-		t.Logf("Animal_2: %s\n", myFav)
 	}
 
 	if res.RowsAffected() != 3 {
@@ -130,9 +131,10 @@ func TestRowsQueryNull(t *testing.T) {
 	i := 0
 	norm := res.Normal()
 	for norm.Next() {
+		colA = ""
 		err := norm.Scan(&colA)
 		if i == 1 && err != rdb.ScanNullError {
-			t.Error("Scanning a null value without a *rdb.Nullable should be an error.")
+			t.Errorf("Scanning a null value without a *rdb.Nullable should be an error. Got: %q", colA)
 		}
 		i++
 	}

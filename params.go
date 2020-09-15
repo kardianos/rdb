@@ -4,7 +4,11 @@
 
 package rdb
 
-import "time"
+import (
+	"time"
+
+	"golang.org/x/net/context"
+)
 
 // If the N (Name) field is not specified is not specified, then the order
 // of the parameter should be used if the driver supports it.
@@ -110,6 +114,8 @@ const (
 // queries at the same time.
 // The Command MUST be reused if the Prepare field is true.
 type Command struct {
+	Context context.Context
+
 	// The SQL to be used in the command.
 	Sql string
 

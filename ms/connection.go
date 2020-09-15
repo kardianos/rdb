@@ -303,7 +303,7 @@ func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken
 	tds.val = valuer
 
 	if tds.mr != nil && tds.mr.packetEOM == false {
-		panic("Connection not ready to be re-used yet for query.")
+		return fmt.Errorf("Connection not ready to be re-used yet for query.")
 	}
 	tds.mr = tds.pr.BeginMessage(packetTabularResult)
 	err := tds.execute(cmd.Sql, cmd.TruncLongText, cmd.Arity, params)
@@ -460,6 +460,8 @@ func (tds *Connection) scan() error {
 			tds.status = rdb.StatusResultDone
 			return nil
 		case tokenRow:
+			return nil
+		case tokenNBCRow:
 			return nil
 		}
 	}
@@ -719,6 +721,24 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		return msg, nil
 	case tokenRow:
 		for _, column := range tds.col {
+			tds.decodeFieldValue(read, column, tds.val.WriteField, reportRow)
+		}
+
+		assignPeek()
+		return MsgRow{}, nil
+	case tokenNBCRow:
+		bitlen := (len(tds.col) + 7) / 8
+		nulls := read(bitlen)
+		for i, column := range tds.col {
+			if nulls[i/8]&(1<<(uint(i)%8)) != 0 {
+				err = tds.val.WriteField(&column.Column, &rdb.DriverValue{
+					Null: true,
+				}, nil)
+				if err != nil {
+					panic(recoverError{err: err})
+				}
+				continue
+			}
 			tds.decodeFieldValue(read, column, tds.val.WriteField, reportRow)
 		}
 

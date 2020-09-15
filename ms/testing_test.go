@@ -15,9 +15,7 @@ import (
 
 const parallel = false
 
-var testConnectionString = "ms://sa:5DirtyDishes@192.168.2.24/SQL2017?db=master&dial_timeout=3s"
-
-// var testConnectionString = "ms://TESTU:letmein@192.168.2.24/SqlExpress?db=master&dial_timeout=3s"
+var testConnectionString = os.Getenv("APP_DSN") // "ms://username:password@localhost?db=master&dial_timeout=3s"
 
 var config *rdb.Config
 var db must.ConnPool

@@ -176,6 +176,7 @@ func TestConnectionPoolExhaustion(t *testing.T) {
 }
 
 func TestConnectionPoolRecoverNoClose(t *testing.T) {
+	t.Skip("no longer use AutoClose")
 	connPoolTestLoop(t, false)
 }
 
@@ -199,7 +200,8 @@ func connPoolTestLoop(t *testing.T, closeConn bool) {
 			waitfor delay '00:00:01';
 			select ID = 1;
 		`,
-				Arity: rdb.Any,
+				Arity:     rdb.Any,
+				AutoClose: 1,
 			})
 			if err != nil {
 				t.Errorf("Failed to wait for next connection: %v", err)

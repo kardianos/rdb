@@ -15,6 +15,7 @@ func TestReset(t *testing.T) {
 	config := must.Config(rdb.ParseConfigURL(testConnectionString))
 	config.PoolInitCapacity = 1
 	config.PoolMaxCapacity = 1
+	config.ResetQuery = `set XACT_ABORT on;`
 
 	db := must.Open(config)
 	defer db.Close()

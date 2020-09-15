@@ -729,11 +729,34 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 		panic(recoverError{fmt.Errorf("Not a known type: 0x%X (UserType: %d, flags: %v)", int(driverType), userType, flags)})
 	}
 
+	/*
+		byte-0
+		0 fNullable
+		1 fCaseSen
+		2 usUpdateable (2bit)
+		4 fIdentity
+		5 fComputed
+		6 usReservedODBC (2bit)
+
+		byte-1
+		0 fFixedLenCLRType
+		1	FRESERVEDBIT
+		2	fSparseColumnSet
+		3	fEncrypted
+		4	usReserved3; (introduced in TDS 7.4)
+		5 fHidden
+		6 fKey
+		7 fNullableUnknown
+	*/
+	sparseColumnSet := flags[1]&(1<<2) != 0
+	if sparseColumnSet {
+		panic(recoverError{fmt.Errorf("sparse column set requested, but not supported")})
+	}
 	column := &SqlColumn{
 		Column: rdb.Column{
 			Nullable: flags[0]&(1<<0) != 0,
 			Serial:   flags[0]&(1<<4) != 0,
-			Key:      flags[1]&(1<<4) != 0,
+			Key:      flags[1]&(1<<6) != 0,
 		},
 		code: driverType,
 		info: info,

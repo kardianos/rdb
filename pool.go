@@ -196,6 +196,11 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 		}
 	}
 
+	ctx := cmd.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	res := &Result{
 		conn: conn,
 		cp:   cp,
@@ -212,7 +217,7 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 		timeout = cp.conf.QueryTimeout
 	}
 	// Suspect this is causing an issue with connection state.
-	if timeout != 0 {
+	if timeout != 0 || ctx != context.Background() {
 		// Give the driver time to stop it if possible.
 		timeout = timeout + (time.Second * 1)
 
@@ -232,8 +237,11 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 			close(done)
 		}()
 		select {
+		case <-ctx.Done():
+			conn.Close()
+			cp.releaseConn(conn, true)
+			return nil, fmt.Errorf("Query canceled: %w", ctx.Err())
 		case <-tm.C:
-			// TODO: There should be a method for aborting an active command.
 			conn.Close()
 			cp.releaseConn(conn, true)
 			return nil, fmt.Errorf("Query timed out after %v.", timeout)
@@ -275,12 +283,8 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 		res.closed = true
 	}
 
-	if cmd.AutoClose >= 0 {
-		after := time.Second * 25
-		if cmd.AutoClose > 0 {
-			after = cmd.AutoClose
-		}
-		res.autoClose(after)
+	if cmd.AutoClose > 0 {
+		res.autoClose(cmd.AutoClose)
 	}
 	return res, err
 }
