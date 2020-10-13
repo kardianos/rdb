@@ -51,6 +51,9 @@ type Buffer struct {
 	schema          []*rdb.Column
 	nameIndexLookup map[string]int
 
+	// Truncated may be manually set to true if the returned row set has been truncated.
+	Truncated bool
+
 	// Result set, which should include current buffer if not nil.
 	Set []*Buffer
 }
