@@ -161,3 +161,9 @@ func (b *Buffer) AddRow(v ...interface{}) *Row {
 	}
 	return r
 }
+
+func (b *Buffer) AddBufferRow(row *Row) {
+	x := *row
+	x.buffer = b
+	b.Row = append(b.Row, x)
+}
