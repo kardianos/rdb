@@ -164,5 +164,5 @@ func (b *Buffer) AddRow(v ...interface{}) *Row {
 
 func (b *Buffer) AddBufferRow(row Row) {
 	row.buffer = b
-	b.Row = append(b.Row, x)
+	b.Row = append(b.Row, row)
 }
