@@ -4,7 +4,11 @@
 
 package batch
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 func TestBatchSplit(t *testing.T) {
 	type testItem struct {
@@ -13,7 +17,7 @@ func TestBatchSplit(t *testing.T) {
 	}
 
 	list := []testItem{
-		testItem{
+		{
 			Sql: `use DB
 go
 select 1
@@ -28,7 +32,7 @@ select 2
 `,
 			},
 		},
-		testItem{
+		{
 			Sql: `go
 use DB go
 `,
@@ -37,7 +41,7 @@ use DB go
 `,
 			},
 		},
-		testItem{
+		{
 			Sql: `select 'It''s go time'
 go
 select top 1 1`,
@@ -46,7 +50,7 @@ select top 1 1`,
 select top 1 1`,
 			},
 		},
-		testItem{
+		{
 			Sql: `select 1 /* go */
 go
 select top 1 1`,
@@ -55,7 +59,7 @@ select top 1 1`,
 select top 1 1`,
 			},
 		},
-		testItem{
+		{
 			Sql: `select 1 -- go
 go
 select top 1 1`,
@@ -64,18 +68,37 @@ select top 1 1`,
 select top 1 1`,
 			},
 		},
+		{
+			Sql: `select 1;
+go
+select 2;
+Go
+select 3;
+gO
+select 4;
+GO
+select 5;`,
+			Expect: []string{
+				`select 1;`,
+				`select 2;`,
+				`select 3;`,
+				`select 4;`,
+				`select 5;`,
+			},
+		},
 	}
 
 	for i := range list {
-		ss := BatchSplitSql(list[i].Sql, "go")
-		if len(ss) != len(list[i].Expect) {
-			t.Errorf("Test Item index %d; expect %d items, got %d.", i, len(list[i].Expect), len(ss))
-			continue
-		}
-		for j := 0; j < len(ss); j++ {
-			if ss[j] != list[i].Expect[j] {
-				t.Errorf("Test Item index %d, batch index %d; expect <%s>, got <%s>.", i, j, list[i].Expect[j], ss[j])
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			ss := BatchSplitSql(list[i].Sql, "go")
+			if len(ss) != len(list[i].Expect) {
+				t.Fatalf("Test Item index %d; expect %d items, got %d.", i, len(list[i].Expect), len(ss))
 			}
-		}
+			for j := 0; j < len(ss); j++ {
+				if strings.TrimSpace(ss[j]) != strings.TrimSpace(list[i].Expect[j]) {
+					t.Errorf("Test Item index %d, batch index %d; expect <%s>, got <%s>.", i, j, list[i].Expect[j], ss[j])
+				}
+			}
+		})
 	}
 }

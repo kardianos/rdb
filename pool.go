@@ -5,8 +5,9 @@ import (
 	"runtime"
 	"time"
 
-	"golang.org/x/net/context"
-	"vitess.io/vitess/go/pools"
+	"context"
+
+	"github.com/kardianos/rdb/internal/pools"
 )
 
 const debugConnectionReuse = false

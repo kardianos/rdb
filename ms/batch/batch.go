@@ -2,7 +2,7 @@
 // Use of this source code is governed by a zlib-style
 // license that can be found in the LICENSE file.
 
-// Proides utility functions for interacting with batched sql statements
+// Proides batch functions for interacting with batched sql statements
 // in the same file or string.
 package batch
 
@@ -14,6 +14,8 @@ import (
 	"github.com/kardianos/rdb"
 )
 
+// ExecuteBatchSql runs the batchSql on the connection pool on a single
+// connection after separating out each commend, joined with separator.
 func ExecuteBatchSql(cp *rdb.ConnPool, batchSql, separator string) error {
 	ss := BatchSplitSql(batchSql, separator)
 	cmd := &rdb.Command{
@@ -40,6 +42,8 @@ func ExecuteBatchSql(cp *rdb.ConnPool, batchSql, separator string) error {
 	return nil
 }
 
+// SqlErrorWithContext highlights errors in the SQL script displaying
+// the number lines of contextLines for each error.
 func SqlErrorWithContext(sql string, msg rdb.Errors, contextLines int) error {
 	if contextLines < 0 {
 		contextLines = 0
@@ -73,6 +77,8 @@ func SqlErrorWithContext(sql string, msg rdb.Errors, contextLines int) error {
 	return errors.New(localMsg.String())
 }
 
+// BatchSplitCmd takes a single command and uses separator to split them
+// into mutliple commands.
 func BatchSplitCmd(cmd *rdb.Command, separator string) []*rdb.Command {
 	sql := cmd.Sql
 	localCmd := *cmd
@@ -89,6 +95,7 @@ func BatchSplitCmd(cmd *rdb.Command, separator string) []*rdb.Command {
 	return ret
 }
 
+// BatchSplitSql takes SQL text and splits it with separator.
 func BatchSplitSql(sql, separator string) []string {
 	if len(separator) == 0 || len(sql) < len(separator) {
 		return []string{sql}
@@ -175,7 +182,7 @@ func stateWhitespace(l *lexer) stateFn {
 	case ch == ' ', ch == '\t', ch == '\r', ch == '\n':
 		l.At += 1
 		return stateWhitespace
-	case strings.HasPrefix(l.Sql[l.At:], l.Sep):
+	case hasPrefixFold(l.Sql[l.At:], l.Sep):
 		if l.AddCurrent() {
 			return stateWhitespace
 		}
@@ -232,4 +239,8 @@ func stateString(l *lexer) stateFn {
 			}
 		}
 	}
+}
+
+func hasPrefixFold(s, prefix string) bool {
+	return len(s) >= len(prefix) && strings.EqualFold(s[0:len(prefix)], prefix)
 }

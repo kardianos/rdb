@@ -7,7 +7,7 @@ package rdb
 import (
 	"time"
 
-	"golang.org/x/net/context"
+	"context"
 )
 
 // If the N (Name) field is not specified is not specified, then the order
