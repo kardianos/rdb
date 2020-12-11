@@ -86,6 +86,20 @@ select 5;`,
 				`select 5;`,
 			},
 		},
+		{
+			Sql: `
+create table X (
+	Google bigint
+);
+			`,
+			Expect: []string{
+				`
+create table X (
+	Google bigint
+);
+				`,
+			},
+		},
 	}
 
 	for i := range list {

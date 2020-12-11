@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"errors"
 	"strings"
+	"unicode"
 
 	"github.com/kardianos/rdb"
 )
@@ -183,6 +184,11 @@ func stateWhitespace(l *lexer) stateFn {
 		l.At += 1
 		return stateWhitespace
 	case hasPrefixFold(l.Sql[l.At:], l.Sep):
+		next := l.Sql[l.At+len(l.Sep):]
+		space := len(next) == 0 || unicode.IsSpace(rune(next[0]))
+		if !space {
+			return stateText
+		}
 		if l.AddCurrent() {
 			return stateWhitespace
 		}
