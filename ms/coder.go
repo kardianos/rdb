@@ -664,7 +664,9 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 
 		_, sec := v.Zone()
 		year, month, day := v.Date()
-		v = v.UTC()
+		if (info.Dt & dtDate) != 0 {
+			v = v.UTC()
+		}
 
 		if (info.Dt & dtTime) != 0 {
 			var nano time.Duration

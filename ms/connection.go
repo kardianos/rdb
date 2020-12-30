@@ -817,9 +817,6 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		}
 		tds.decodeFieldValue(read, col, wf, true)
 
-		//tds.params[col.Index].Value
-		//pv.Value.Value
-
 		err := rdb.AssignValue(&col.Column, outValue, tds.params[col.Index].Value, nil)
 		if err != nil {
 			return nil, err

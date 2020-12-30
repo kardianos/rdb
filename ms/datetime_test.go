@@ -24,8 +24,7 @@ func TestDateTimeRoundTrip(t *testing.T) {
 
 	dt := time.Now().Round(truncTo)
 	d := time.Now().Truncate(time.Hour * 24).UTC()
-	// tm := time.Now().Sub(time.Now().Truncate(time.Hour * 24))
-	dt2 := time.Now()
+	tm := time.Now().Sub(time.Now().Truncate(time.Hour * 24))
 
 	locName := "America/Los_Angeles"
 	loc, err := time.LoadLocation(locName)
@@ -34,7 +33,6 @@ func TestDateTimeRoundTrip(t *testing.T) {
 	}
 	dto := time.Date(2000, 1, 1, 22, 45, 01, 0, loc)
 	dto2 := time.Date(2000, 1, 1, 11, 45, 01, 0, loc)
-	dtS := time.Now()
 
 	cmd := &rdb.Command{
 		Sql: `
@@ -52,7 +50,8 @@ func TestDateTimeRoundTrip(t *testing.T) {
 				dtoS = cast(@dto as nvarchar(max)),
 				dt = @dt,
 				d = @d,
-				-- t = @t,
+				t = @t,
+				t2 = format(@t2, 'hh\:mm', 'en-us'),
 				-- dt2 = @dt2,
 				dto = @dto,
 				dto2 = @dto2
@@ -60,16 +59,36 @@ func TestDateTimeRoundTrip(t *testing.T) {
 		Arity: rdb.OneMust,
 	}
 
-	params := []rdb.Param{
-		{Name: "dt", Type: TypeOldTD, Value: dt},
-		{Name: "d", Type: rdb.TypeDate, Value: d},
-		// {Name: "t", Type: rdb.TypeTime, Value: tm},
-		// {Name: "dt2", Type: rdb.TypeTimestamp, Value: dt2},
-		{Name: "dto", Type: rdb.TypeTimestampz, Value: dto},
-		{Name: "dto2", Type: rdb.TypeTimestampz, Value: dto2},
-		{Name: "dtS", Type: TypeOldTD, Value: dtS},
-		{Name: "dt2S", Type: rdb.TypeTimestamp, Value: dtS},
+	list := []struct {
+		name string
+		t    rdb.Type
+		in   interface{}
+		want interface{}
+		got  interface{}
+		proc func(interface{}) interface{}
+	}{
+		{name: "dt", t: TypeOldTD, in: dt, want: dt, proc: func(v interface{}) interface{} {
+			return v.(time.Time).Round(truncTo)
+		}},
+		{name: "d", t: rdb.TypeDate, in: d, want: d},
+		{name: "t", t: rdb.TypeTime, in: tm, want: tm},
+		{name: "t2", t: rdb.TypeTime, in: dto2, want: "11:45"},
+		{name: "dto", t: rdb.TypeTimestampz, in: dto, want: dto},
+		{name: "dto2", t: rdb.TypeTimestampz, in: dto2, want: dto2},
+		{name: "dtS", t: TypeOldTD, in: dto, want: "Jan  2 2000  6:45AM"},
+		{name: "dt2S", t: rdb.TypeTimestamp, in: dto, want: "2000-01-02 06:45:01.0000000"},
 	}
+
+	params := make([]rdb.Param, 0, len(list))
+
+	for _, item := range list {
+		params = append(params, rdb.Param{
+			Name:  item.name,
+			Type:  item.t,
+			Value: item.in,
+		})
+	}
+
 	res := db.Query(cmd, params...)
 	defer res.Close()
 
@@ -77,49 +96,37 @@ func TestDateTimeRoundTrip(t *testing.T) {
 		t.Fatal("expected row")
 	}
 
-	res.Prep("dt", &dt)
-	res.Prep("d", &d)
-	// res.Prep("t", &tm)
-	// res.Prep("dt2", &dt2)
-
 	res.Scan()
 
-	dto = res.Get("dto").(time.Time)
-	dto2 = res.Get("dto2").(time.Time)
-
-	dt = dt.Round(truncTo)
-
-	if false {
-		t.Logf("D: %v", d)
-		t.Logf("DT2: %v", dt2)
-		t.Logf("DTO: %v", dto)
-		t.Logf("DTO2: %v", dto2)
-
-		t.Logf("DTV: %v", res.Get("dtV").(time.Time))
-		t.Logf("DTS: %s", res.Get("dtS").([]byte))
-		t.Logf("DT2V: %v", res.Get("dt2V").(time.Time))
-		t.Logf("DT2S: %s", res.Get("dt2S").([]byte))
-		t.Logf("dtoS: %s", res.Get("dtoS").([]byte))
+	for i, item := range list {
+		v := res.Get(item.name)
+		if b, ok := v.([]byte); ok {
+			v = string(b)
+		}
+		if item.proc != nil {
+			v = item.proc(v)
+		}
+		list[i].got = v
 	}
 
-	compare := []interface{}{dt, d /*tm, dt2,*/, dto, dto2}
-
-	for i := range compare {
-		in := params[i]
-		t.Run(in.Name, func(t *testing.T) {
-			if i >= len(params) {
-				return
-			}
+	for _, item := range list {
+		t.Run(item.name, func(t *testing.T) {
 			diff := false
-			if tv, ok := in.Value.(time.Time); ok {
-				if !tv.Equal(compare[i].(time.Time)) {
+			switch x := item.want.(type) {
+			default:
+				if !reflect.DeepEqual(item.got, x) {
 					diff = true
 				}
-			} else if !reflect.DeepEqual(compare[i], in.Value) {
-				diff = true
+			case time.Duration:
+				z := item.got.(time.Duration)
+				diff = (z / 1_000) != (x / 1_000)
+			case time.Time:
+				if !x.Equal(item.got.(time.Time)) {
+					diff = true
+				}
 			}
 			if diff {
-				t.Errorf("Param %s did not round trip: Want (%v) got (%v)", in.Name, in.Value, compare[i])
+				t.Errorf("Param %s did not round trip: Want (%v) got (%v)", item.name, item.want, item.got)
 			}
 		})
 	}
