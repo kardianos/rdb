@@ -66,15 +66,16 @@ func TestNumber(t *testing.T) {
 }
 
 func TestDecimal(t *testing.T) {
-	t.Skip("TODO: Fix large decimals")
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{
 		Sql: `
-			declare @ld decimal(38,6) = @d;
-
-			select d = @ld, s = cast(@ld as varchar(100));
-		`,
+declare @ld decimal(38,3) = @d;
+select
+	d = @ld,
+	s = cast(@ld as varchar(100))
+;
+`,
 		Arity: rdb.OneMust,
 	}
 
@@ -93,8 +94,52 @@ func TestDecimal(t *testing.T) {
 
 	res.Scan(&dec, &sdec)
 
-	if dIn.FloatString(10) != dec.FloatString(10) {
-		t.Errorf("D: %v, S: %v, In: %v", dec.FloatString(10), sdec, dIn.FloatString(10))
+	if dec.FloatString(3) != dIn.FloatString(3) {
+		t.Errorf("D: %v, S: %v, In: %v", dec.FloatString(3), sdec, dIn.FloatString(3))
+	}
+}
+func TestDecimal2(t *testing.T) {
+	defer assertFreeConns(t)
+	defer recoverTest(t)
+
+	list := []struct {
+		Name  string
+		Input *big.Rat
+		Scale int
+		Want  string
+	}{
+		{
+			Name:  "bad scale",
+			Input: big.NewRat(35840000000000003, 1000000000000000),
+			Scale: 2,
+			Want:  "35.84",
+		},
+	}
+
+	cmd := &rdb.Command{
+		Sql: `
+declare @D decimal(36,2) = @V;
+select S = convert(nvarchar(100), @D);
+`,
+		Arity: rdb.OneMust,
+	}
+	for _, item := range list {
+		t.Run(item.Name, func(t *testing.T) {
+			res := db.Query(cmd,
+				rdb.Param{Name: "V", Type: rdb.Decimal, Precision: 38, Scale: item.Scale, Value: item.Input},
+			)
+			defer res.Close()
+
+			if res.Next() == false {
+				t.Fatal("expected row")
+			}
+			var got string
+			res.Scan(&got)
+
+			if g, w := got, item.Want; g != w {
+				t.Fatalf("got: %q, want: %q", g, w)
+			}
+		})
 	}
 }
 

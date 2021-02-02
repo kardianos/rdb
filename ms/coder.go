@@ -487,28 +487,35 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		w.WriteByte(typeLength) // TYPE_INFO width.
 		w.WriteByte(byte(param.Precision))
 		w.WriteByte(byte(param.Scale))
+		var pv big.Rat
 		var rv *big.Rat
 		if !nullValue {
 			switch v := value.(type) {
-			case **big.Rat:
-				value = *v
-			}
-			switch v := value.(type) {
-			case *big.Rat:
-				rv = v
 			default:
 				return fmt.Errorf("Need *big.Rat for param @%s", param.Name)
+			case **big.Rat:
+				pv = **v
+			case *big.Rat:
+				pv = *v
 			}
 		}
+		rv = &pv
+
 		sign := byte(0)
 		if rv.Sign() >= 0 {
 			sign = 1
 		}
 
+		// Num / Denom == Integer * 10^(-S)
+		// Mult = 10^(-S)
+		// Num / Denom == Integer * Mult
+		// Num * Mult / Denom == Integer
 		mult := getMult(param.Scale)
-
-		scale := big.NewRat(mult, 1)
-		bb := scale.Mul(rv, scale).Num().Bytes()
+		num := rv.Num()
+		denom := rv.Denom()
+		num.Mul(num, big.NewInt(mult))
+		num.Div(num, denom)
+		bb := num.Bytes()
 		if len(bb) > 16 {
 			return fmt.Errorf("Decimal value of (%s) too large for param %s %s", rv.String(), param.Name, st.TypeString(param))
 		}
