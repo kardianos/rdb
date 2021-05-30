@@ -15,11 +15,11 @@ var connectionInUseError = errors.New("Connection already in use")
 
 type UnexpectedMessage struct {
 	Expected PacketType
-	Recieved PacketType
+	Received PacketType
 }
 
 func (msg UnexpectedMessage) Error() string {
-	return fmt.Sprintf("Expected message type 0x%X, recieved type 0x%X.", msg.Expected, msg.Recieved)
+	return fmt.Sprintf("Expected message type 0x%[1]X(%[1]d), received type 0x%[2]X(%[2]d).", msg.Expected, msg.Received)
 }
 
 type InputToolong struct {

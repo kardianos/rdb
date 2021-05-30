@@ -237,9 +237,14 @@ func (mr *MessageReader) Next() ([]byte, error) {
 
 	if bb[0] != byte(mr.msgType) {
 		buf.Used(8)
+		if debugProto {
+			fmt.Println("Server -> Client (header)")
+			debugMessage = append(debugMessage, bb...)
+			fmt.Println(hex.Dump(debugMessage))
+		}
 		return nil, UnexpectedMessage{
 			Expected: mr.msgType,
-			Recieved: PacketType(bb[0]),
+			Received: PacketType(bb[0]),
 		}
 	}
 	packetEOM := false
@@ -280,6 +285,14 @@ func (mr *MessageReader) Close() error {
 		mr.length = 0
 	}
 	return nil
+}
+
+func (r *MessageReader) FetchAll() (ret []byte, err error) {
+	_, err = r.Fetch(0)
+	if err != nil {
+		return ret, err
+	}
+	return r.Fetch(r.length)
 }
 
 func (r *MessageReader) Fetch(n int) (ret []byte, err error) {

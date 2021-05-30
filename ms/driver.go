@@ -63,8 +63,8 @@ func (dr *Driver) DriverInfo() *rdb.DriverInfo {
 
 			NamedParameter:   true,
 			FluidType:        false,
-			MultipleResult:   false,
-			SecureConnection: false,
+			MultipleResult:   true,
+			SecureConnection: true,
 			BulkInsert:       false,
 			Notification:     false,
 			UserDataTypes:    false,

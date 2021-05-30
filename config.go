@@ -5,6 +5,8 @@
 package rdb
 
 import (
+	"crypto/x509"
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -50,6 +52,9 @@ type Config struct {
 	// Do not require the secure connection to verify the remote host name.
 	// Ignored if Secure is false.
 	InsecureSkipVerify bool
+
+	// Root Certificate Authorities for server.
+	RootCAs *x509.CertPool
 
 	// ResetQuery is executed after the connection is reset.
 	ResetQuery string
@@ -106,36 +111,52 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 
 	val := u.Query()
 
-	conf.Database = val.Get("db")
-
-	if st := val.Get("dial_timeout"); len(st) != 0 {
-		conf.DialTimeout, err = time.ParseDuration(st)
-		if err != nil {
-			return nil, err
+	for key, vv := range u.Query() {
+		if len(vv) == 0 {
+			return nil, fmt.Errorf("invalid setting: %v", key)
 		}
-	}
-	if st := val.Get("idle_timeout"); len(st) != 0 {
-		conf.PoolIdleTimeout, err = time.ParseDuration(st)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if st := val.Get("query_timeout"); len(st) != 0 {
-		conf.QueryTimeout, err = time.ParseDuration(st)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if st := val.Get("init_cap"); len(st) != 0 {
-		conf.PoolInitCapacity, err = strconv.Atoi(st)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if st := val.Get("max_cap"); len(st) != 0 {
-		conf.PoolMaxCapacity, err = strconv.Atoi(st)
-		if err != nil {
-			return nil, err
+		v0 := vv[0]
+		switch key {
+		default:
+			return nil, fmt.Errorf("unknown setting: %v", key)
+		case "db":
+			conf.Database = v0
+		case "dial_timeout":
+			conf.DialTimeout, err = time.ParseDuration(v0)
+			if err != nil {
+				return nil, err
+			}
+		case "idle_timeout":
+			conf.PoolIdleTimeout, err = time.ParseDuration(v0)
+			if err != nil {
+				return nil, err
+			}
+		case "query_timeout":
+			conf.QueryTimeout, err = time.ParseDuration(v0)
+			if err != nil {
+				return nil, err
+			}
+		case "init_cap":
+			conf.PoolInitCapacity, err = strconv.Atoi(v0)
+			if err != nil {
+				return nil, err
+			}
+		case "max_cap":
+			conf.PoolMaxCapacity, err = strconv.Atoi(v0)
+			if err != nil {
+				return nil, err
+			}
+		case "no_verify":
+			conf.InsecureSkipVerify, err = strconv.ParseBool(v0)
+			if err != nil {
+				return nil, err
+			}
+		case "require_encryption":
+			conf.Secure, err = strconv.ParseBool(v0)
+			if err != nil {
+				return nil, err
+			}
+		case "":
 		}
 	}
 

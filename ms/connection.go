@@ -6,11 +6,14 @@ package ms
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/kardianos/rdb"
 	"github.com/kardianos/rdb/internal/uconv"
@@ -29,7 +32,7 @@ type Connection struct {
 	pw *PacketWriter
 	pr *PacketReader
 
-	wc io.ReadWriteCloser
+	wc net.Conn
 
 	status    rdb.DriverConnStatus
 	available bool
@@ -38,6 +41,7 @@ type Connection struct {
 
 	ProductVersion  *semver.Version
 	ProtocolVersion *semver.Version
+	Encrypted       bool
 
 	mr     *MessageReader
 	val    rdb.DriverValuer
@@ -56,7 +60,7 @@ type Connection struct {
 	ucs2Next []byte
 }
 
-func NewConnection(c io.ReadWriteCloser) *Connection {
+func NewConnection(c net.Conn) *Connection {
 	return &Connection{
 		pw: NewPacketWriter(c),
 		pr: NewPacketReader(c),
@@ -84,14 +88,49 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 
 	tds.allHeaders, tds.allHeaderNumberOffset = getHeaderTemplate()
 
-	err = tds.pw.PreLogin(config.Instance)
+	encrypt := encryptOn
+	if config.Secure {
+		encrypt = encryptRequired
+	}
+
+	err = tds.pw.PreLogin(config.Instance, encrypt)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = tds.pr.Prelogin()
+	sc, err := tds.pr.Prelogin()
 	if err != nil {
 		return nil, err
+	}
+
+	switch sc.Encryption {
+	default:
+		if config.Secure {
+			return nil, fmt.Errorf("encryption required but server does not support encryption")
+		}
+	case encryptOn, encryptRequired:
+		tlsConfig := &tls.Config{
+			DynamicRecordSizingDisabled: true,
+			InsecureSkipVerify:          config.InsecureSkipVerify,
+			ServerName:                  config.Hostname,
+			MinVersion:                  tls.VersionTLS12,
+			RootCAs:                     config.RootCAs,
+		}
+
+		handshakeConn := &tlsHandshakeConn{
+			conn: tds,
+		}
+		connSwitch := &passthroughConn{c: handshakeConn}
+		tlsConn := tls.Client(connSwitch, tlsConfig)
+		err = tlsConn.Handshake()
+		if err != nil {
+			return nil, fmt.Errorf("TLS Handshake error: %w", err)
+		}
+
+		connSwitch.c = tds.wc
+		tds.pw.w = tlsConn
+		tds.pr = NewPacketReader(tlsConn)
+		tds.Encrypted = true
 	}
 
 	// Write LOGIN7 message.
@@ -123,6 +162,112 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 	return si, tds.NextQuery()
 }
 
+// this connection is used during TLS Handshake
+// TDS protocol requires TLS handshake messages to be sent inside TDS packets
+type tlsHandshakeConn struct {
+	conn          *Connection
+	mr            *MessageReader
+	readBuffer    []byte
+	packetPending bool
+	continueRead  bool
+}
+
+func (c *tlsHandshakeConn) Read(b []byte) (n int, err error) {
+	if c.packetPending {
+		c.packetPending = false
+		_, err = c.conn.pw.writeClose([]byte{}, true)
+		if err != nil {
+			return 0, fmt.Errorf("cannot send handshake packet: %s", err.Error())
+		}
+		c.continueRead = false
+	}
+	if !c.continueRead {
+		if c.mr == nil {
+			c.mr = c.conn.pr.BeginMessage(packetPreLogin)
+		}
+		c.readBuffer, err = c.mr.Next()
+		if err == io.EOF && n > 0 {
+			err = nil
+		}
+		c.continueRead = true
+	}
+	if len(c.readBuffer) == 0 {
+		return 0, io.EOF
+	}
+	n = copy(b, c.readBuffer)
+	c.readBuffer = c.readBuffer[n:]
+	return n, nil
+}
+
+func (c *tlsHandshakeConn) Write(b []byte) (n int, err error) {
+	if !c.packetPending {
+		c.conn.pw.BeginMessage(packetPreLogin, false)
+		c.packetPending = true
+	}
+	n, err = c.conn.pw.Write(b)
+	return n, err
+}
+
+func (c *tlsHandshakeConn) Close() error {
+	return c.conn.wc.Close()
+}
+
+func (c *tlsHandshakeConn) LocalAddr() net.Addr {
+	return nil
+}
+
+func (c *tlsHandshakeConn) RemoteAddr() net.Addr {
+	return nil
+}
+
+func (c *tlsHandshakeConn) SetDeadline(_ time.Time) error {
+	return nil
+}
+
+func (c *tlsHandshakeConn) SetReadDeadline(_ time.Time) error {
+	return nil
+}
+
+func (c *tlsHandshakeConn) SetWriteDeadline(_ time.Time) error {
+	return nil
+}
+
+type passthroughConn struct {
+	c net.Conn
+}
+
+func (c passthroughConn) Read(b []byte) (n int, err error) {
+	return c.c.Read(b)
+}
+
+func (c passthroughConn) Write(b []byte) (n int, err error) {
+	return c.c.Write(b)
+}
+
+func (c passthroughConn) Close() error {
+	return c.c.Close()
+}
+
+func (c passthroughConn) LocalAddr() net.Addr {
+	return c.c.LocalAddr()
+}
+
+func (c passthroughConn) RemoteAddr() net.Addr {
+	return c.c.RemoteAddr()
+}
+
+func (c passthroughConn) SetDeadline(t time.Time) error {
+	return c.c.SetDeadline(t)
+}
+
+func (c passthroughConn) SetReadDeadline(t time.Time) error {
+	return c.c.SetReadDeadline(t)
+}
+
+func (c passthroughConn) SetWriteDeadline(t time.Time) error {
+	return c.c.SetWriteDeadline(t)
+}
+
 func (tds *Connection) Reset(c *rdb.Config) error {
 	tds.resetNext = true
 	if len(c.ResetQuery) == 0 {
@@ -151,7 +296,6 @@ func (tds *Connection) Close() {
 
 	tds.done()
 	tds.wc.Close()
-	return
 }
 
 func (tds *Connection) Status() rdb.DriverConnStatus {

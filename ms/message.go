@@ -47,8 +47,17 @@ const (
 // Document the highest version this driver can handle.
 const protoVersionMax = version74
 
+type EncryptAvailable byte
+
+const (
+	encryptOff          EncryptAvailable = 0 // Encryption is available but off.
+	encryptOn           EncryptAvailable = 1 // Encryption is available and on.
+	encryptNotSupported EncryptAvailable = 2 // Encryption is not available.
+	encryptRequired     EncryptAvailable = 3 // Encryption is required.
+)
+
 // Pre-Login
-func (tds *PacketWriter) PreLogin(instance string) error {
+func (tds *PacketWriter) PreLogin(instance string, encrypt EncryptAvailable) error {
 	var err error
 	type option struct {
 		t byte
@@ -68,8 +77,8 @@ func (tds *PacketWriter) PreLogin(instance string) error {
 	binary.BigEndian.PutUint32(version, protoVersionMax)
 
 	addToken(preloginVersion, version)
-	addToken(preloginMars, []byte{0x00})       // MARS OFF (0x01 is ON).
-	addToken(preloginEncryption, []byte{0x02}) // Encription not available. Pg 65.
+	addToken(preloginMars, []byte{0x00})                // MARS OFF (0x01 is ON).
+	addToken(preloginEncryption, []byte{byte(encrypt)}) // Encription not available. Pg 65.
 	if len(instance) > 0 {
 		addToken(preloginInstance, uconv.Encode.FromString(instance))
 	}
@@ -111,7 +120,7 @@ func (tds *PacketWriter) PreLogin(instance string) error {
 // Rturned from Pre-Login.
 type ServerConnection struct {
 	Version    [6]byte
-	Encryption byte
+	Encryption EncryptAvailable
 	Instance   string
 	MARS       bool
 }
@@ -176,7 +185,7 @@ func (tds *PacketReader) Prelogin() (*ServerConnection, error) {
 		case 0x00:
 			copy(si.Version[:], o.d[:6])
 		case 0x01:
-			si.Encryption = o.d[0]
+			si.Encryption = EncryptAvailable(o.d[0])
 		case 0x02:
 			si.Instance = uconv.Decode.ToString(o.d)
 		case 0x03:
@@ -359,7 +368,7 @@ func (tds *PacketReader) LoginAck() (*ServerInfo, error) {
 
 	bb, err := read.Next()
 	if err != nil && err != io.EOF {
-		return nil, err
+		return nil, fmt.Errorf("login ack next: %w", err)
 	}
 	defer read.Close()
 	if len(bb) == 0 {
@@ -404,7 +413,7 @@ func (tds *PacketReader) LoginAck() (*ServerInfo, error) {
 			at += 4
 			return nil, rdb.Errors{sqlMsg}
 		}
-		return nil, fmt.Errorf("Expected type %X but got %X", tokenLoginAck, bb[at])
+		return nil, fmt.Errorf("expected type %X but got %X", tokenLoginAck, bb[at])
 	}
 
 	si := &ServerInfo{}
