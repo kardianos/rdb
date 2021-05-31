@@ -128,7 +128,7 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 		}
 
 		connSwitch.c = tds.wc
-		tds.pw.w = tlsConn
+		tds.pw = NewPacketWriter(tlsConn)
 		tds.pr = NewPacketReader(tlsConn)
 		tds.Encrypted = true
 	}
@@ -181,7 +181,7 @@ func (c *tlsHandshakeConn) Read(b []byte) (n int, err error) {
 		}
 		c.continueRead = false
 	}
-	if !c.continueRead {
+	if !c.continueRead || len(c.readBuffer) == 0 {
 		if c.mr == nil {
 			c.mr = c.conn.pr.BeginMessage(packetPreLogin)
 		}
@@ -191,12 +191,9 @@ func (c *tlsHandshakeConn) Read(b []byte) (n int, err error) {
 		}
 		c.continueRead = true
 	}
-	if len(c.readBuffer) == 0 {
-		return 0, io.EOF
-	}
 	n = copy(b, c.readBuffer)
 	c.readBuffer = c.readBuffer[n:]
-	return n, nil
+	return n, err
 }
 
 func (c *tlsHandshakeConn) Write(b []byte) (n int, err error) {
@@ -204,8 +201,8 @@ func (c *tlsHandshakeConn) Write(b []byte) (n int, err error) {
 		c.conn.pw.BeginMessage(packetPreLogin, false)
 		c.packetPending = true
 	}
-	n, err = c.conn.pw.Write(b)
-	return n, err
+	_, err = c.conn.pw.Write(b)
+	return len(b), err
 }
 
 func (c *tlsHandshakeConn) Close() error {

@@ -131,7 +131,7 @@ func (tds *PacketWriter) writeClose(bb []byte, closeMessage bool) (int, error) {
 	var n, localN int
 	var err error
 
-	tds.buffer.Write(bb)
+	bufN, _ := tds.buffer.Write(bb)
 
 	for {
 		status := statusNormal
@@ -143,7 +143,7 @@ func (tds *PacketWriter) writeClose(bb []byte, closeMessage bool) (int, error) {
 		l := maxPacketSizeBody
 		if tds.buffer.Len() <= maxPacketSizeBody {
 			if !closeMessage {
-				return n, err
+				return bufN, err
 			}
 			l = tds.buffer.Len()
 			status |= statusEOM
@@ -187,7 +187,7 @@ func (tds *PacketWriter) writeClose(bb []byte, closeMessage bool) (int, error) {
 		}
 		n += localN
 		if statusEOM&status != 0 {
-			return n, err
+			return bufN, err
 		}
 
 	}
