@@ -7,6 +7,7 @@ package rdb
 import (
 	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	"strconv"
 	"strings"
@@ -71,11 +72,16 @@ type Config struct {
 // This will attempt to find the driver to load additional parameters.
 //   Additional field options:
 //      db=<string>:                  Database
-//      dial_timeout=<time.Duration>: DialTimeout
-//      init_cap=<int>:               PoolInitCapacity
-//      max_cap=<int>:                PoolMaxCapacity
-//      idle_timeout=<time.Duration>: PoolIdleTimeout
-//      query_timeout=<time.Duration>:QueryTimeout
+//      dial_timeout=<time.Duration>: Dial Timeout
+//      init_cap=<int>:               Pool Init Capacity
+//      max_cap=<int>:                Pool Max Capacity
+//      idle_timeout=<time.Duration>: Pool Idle Timeout
+//      query_timeout=<time.Duration>:Query Timeout
+//      require_encryption=<bool>:    Require Connection Encryption
+//      cert=<string>:                Load the cert file as root CA, repeatable.
+//                                    SQL Server doens't send intermediate certificates.
+//                                    May be required even if root CA is known and trusted.
+//      insecure_skip_verify=<bool>:  INSECURE. Skip  encryption certificate verification.
 func ParseConfigURL(connectionString string) (*Config, error) {
 	u, err := url.Parse(connectionString)
 	if err != nil {
@@ -110,11 +116,11 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 	}
 
 	val := u.Query()
-
 	for key, vv := range u.Query() {
 		if len(vv) == 0 {
 			return nil, fmt.Errorf("invalid setting: %v", key)
 		}
+		allowMultiple := false
 		v0 := vv[0]
 		switch key {
 		default:
@@ -124,39 +130,55 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 		case "dial_timeout":
 			conf.DialTimeout, err = time.ParseDuration(v0)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}
 		case "idle_timeout":
 			conf.PoolIdleTimeout, err = time.ParseDuration(v0)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}
 		case "query_timeout":
 			conf.QueryTimeout, err = time.ParseDuration(v0)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}
 		case "init_cap":
 			conf.PoolInitCapacity, err = strconv.Atoi(v0)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}
 		case "max_cap":
 			conf.PoolMaxCapacity, err = strconv.Atoi(v0)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}
-		case "no_verify":
+		case "insecure_skip_verify":
 			conf.InsecureSkipVerify, err = strconv.ParseBool(v0)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}
 		case "require_encryption":
 			conf.Secure, err = strconv.ParseBool(v0)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}
-		case "":
+		case "cert":
+			allowMultiple = true
+			certs := x509.NewCertPool()
+			for index, v := range vv {
+				b, err := ioutil.ReadFile(v)
+				if err != nil {
+					return nil, fmt.Errorf("DSN property %q[%d], cert %q: %w", key, index, v, err)
+				}
+				ok := certs.AppendCertsFromPEM(b)
+				if !ok {
+					return nil, fmt.Errorf("DSN property %q[%d], cert %q: failed to append cert", key, index, v)
+				}
+			}
+			conf.RootCAs = certs
+		}
+		if !allowMultiple && len(vv) > 1 {
+			return nil, fmt.Errorf("DSN property %q must not be repeated", key)
 		}
 	}
 
