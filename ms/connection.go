@@ -703,12 +703,12 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param, 
 				paramNames.WriteRune(',')
 			}
 			if len(param.Name) == 0 {
-				return fmt.Errorf("Missing parameter name at index: %d", i)
+				return fmt.Errorf("missing parameter name at index: %d", i)
 			}
 
 			st, found := sqlTypeLookup[param.Type]
 			if !found {
-				return fmt.Errorf("SqlType not found: %d", param.Type)
+				return fmt.Errorf("param %q type not found: %d", param.Name, param.Type)
 			}
 			fmt.Fprintf(paramNames, "@%s %s", param.Name, st.TypeString(param))
 		}
