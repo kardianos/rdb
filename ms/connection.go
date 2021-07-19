@@ -89,6 +89,9 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 	tds.allHeaders, tds.allHeaderNumberOffset = getHeaderTemplate()
 
 	encrypt := encryptOn
+	if config.InsecureDisableEncryption {
+		encrypt = encryptNotSupported
+	}
 	if config.Secure {
 		encrypt = encryptRequired
 	}

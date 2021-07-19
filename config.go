@@ -50,6 +50,9 @@ type Config struct {
 	// Require the driver to establish a secure connection.
 	Secure bool
 
+	// Disable encryption on the connection.
+	InsecureDisableEncryption bool
+
 	// Do not require the secure connection to verify the remote host name.
 	// Ignored if Secure is false.
 	InsecureSkipVerify bool
@@ -78,6 +81,7 @@ type Config struct {
 //      idle_timeout=<time.Duration>: Pool Idle Timeout
 //      query_timeout=<time.Duration>:Query Timeout
 //      require_encryption=<bool>:    Require Connection Encryption
+//      disable_encryption=<bool>:    Disable Connection Encryption
 //      cert=<string>:                Load the cert file as root CA, repeatable.
 //                                    SQL Server doens't send intermediate certificates.
 //                                    May be required even if root CA is known and trusted.
@@ -159,6 +163,11 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 			}
 		case "require_encryption":
 			conf.Secure, err = strconv.ParseBool(v0)
+			if err != nil {
+				return nil, fmt.Errorf("DSN property %q: %w", key, err)
+			}
+		case "disable_encryption":
+			conf.InsecureDisableEncryption, err = strconv.ParseBool(v0)
 			if err != nil {
 				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}
