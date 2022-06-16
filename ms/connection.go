@@ -53,6 +53,8 @@ type Connection struct {
 
 	currentTransaction uint64
 
+	opened time.Time
+
 	// Next token type.
 	peek byte
 
@@ -62,9 +64,10 @@ type Connection struct {
 
 func NewConnection(c net.Conn) *Connection {
 	return &Connection{
-		pw: NewPacketWriter(c),
-		pr: NewPacketReader(c),
-		wc: c,
+		pw:     NewPacketWriter(c),
+		pr:     NewPacketReader(c),
+		wc:     c,
+		opened: time.Now(),
 	}
 }
 
@@ -281,6 +284,10 @@ func (tds *Connection) ConnectionInfo() *rdb.ConnectionInfo {
 		Server:   tds.ProductVersion,
 		Protocol: tds.ProtocolVersion,
 	}
+}
+
+func (tds *Connection) Opened() time.Time {
+	return tds.opened
 }
 
 func (tds *Connection) Close() {

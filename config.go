@@ -6,6 +6,7 @@ package rdb
 
 import (
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -34,6 +35,9 @@ type Config struct {
 	// Default timeout for each query if no timeout is
 	// specified in the Command structure.
 	QueryTimeout time.Duration
+
+	// Max time for a connection to live.
+	ConnectionMaxLifetime time.Duration
 
 	// Time for an idle connection to be closed.
 	// Zero if there should be no timeout.
@@ -76,6 +80,7 @@ type Config struct {
 //   Additional field options:
 //      db=<string>:                  Database
 //      dial_timeout=<time.Duration>: Dial Timeout
+//      max_lifetime=<time.Duration>: Max Connection Lifetime
 //      init_cap=<int>:               Pool Init Capacity
 //      max_cap=<int>:                Pool Max Capacity
 //      idle_timeout=<time.Duration>: Pool Idle Timeout
@@ -87,6 +92,9 @@ type Config struct {
 //                                    May be required even if root CA is known and trusted.
 //      insecure_skip_verify=<bool>:  INSECURE. Skip  encryption certificate verification.
 func ParseConfigURL(connectionString string) (*Config, error) {
+	if len(connectionString) == 0 {
+		return nil, errors.New("empty DSN")
+	}
 	u, err := url.Parse(connectionString)
 	if err != nil {
 		return nil, err
@@ -133,6 +141,11 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 			conf.Database = v0
 		case "dial_timeout":
 			conf.DialTimeout, err = time.ParseDuration(v0)
+			if err != nil {
+				return nil, fmt.Errorf("DSN property %q: %w", key, err)
+			}
+		case "max_lifetime":
+			conf.ConnectionMaxLifetime, err = time.ParseDuration(v0)
 			if err != nil {
 				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}

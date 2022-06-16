@@ -97,6 +97,14 @@ func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 	if conn.Status() != StatusReady {
 		kill = true
 	}
+	if life := cp.conf.ConnectionMaxLifetime; life > 0 {
+		now := time.Now()
+		op := conn.Opened()
+		diff := now.Sub(op)
+		if diff > life {
+			kill = true
+		}
+	}
 	if kill {
 		if debugConnectionReuse {
 			fmt.Println("Result.Close() CLOSE")

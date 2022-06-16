@@ -5,6 +5,8 @@
 package rdb
 
 import (
+	"time"
+
 	"github.com/kardianos/rdb/semver"
 )
 
@@ -86,6 +88,9 @@ type DriverConn interface {
 
 	// Return version information regarding the currently connected server.
 	ConnectionInfo() *ConnectionInfo
+
+	// Time connection was opened.
+	Opened() time.Time
 
 	// Read the next row from the connection. For each field in the row
 	// call the Valuer.WriteField(...) method. Propagate the reportRow field.

@@ -91,6 +91,7 @@ func (must ConnPool) Ping() {
 		panic(Error{Err: err})
 	}
 }
+
 func (must ConnPool) ConnectionInfo() *rdb.ConnectionInfo {
 	ci, err := must.norm.ConnectionInfo()
 	if err != nil {
