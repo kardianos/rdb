@@ -177,11 +177,17 @@ func (must Transaction) SavePoint(name string) {
 	}
 }
 func (must Transaction) Active() bool {
+	if must.norm == nil {
+		return false
+	}
 	return must.norm.Active()
 }
 
 // Make sure the result is closed.
 func (must Result) Close() {
+	if must.norm == nil {
+		return
+	}
 	err := must.norm.Close()
 	if err != nil {
 		panic(Error{Err: err})
@@ -189,14 +195,23 @@ func (must Result) Close() {
 }
 
 func (r *Result) RowsAffected() uint64 {
+	if r.norm == nil {
+		return 0
+	}
 	return r.norm.RowsAffected()
 }
 
 func (must Result) Next() (more bool) {
+	if must.norm == nil {
+		return false
+	}
 	return must.norm.Next()
 }
 
 func (must Result) NextResult() (more bool) {
+	if must.norm == nil {
+		return false
+	}
 	more, err := must.norm.NextResult()
 	if err != nil {
 		panic(Error{Err: err})

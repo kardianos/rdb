@@ -187,8 +187,7 @@ func (cp *ConnPool) Query(cmd *Command, params ...Param) (*Result, error) {
 }
 
 // keepOnClose used to not recycle the DB connection after a query result is done. Used for transactions and connections.
-func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **ConnectionInfo, params ...Param) (*Result, error) {
-	var err error
+func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **ConnectionInfo, params ...Param) (res *Result, err error) {
 	if cmd.Converter != nil {
 		for i := range params {
 			err = cmd.Converter.ConvertParam(&params[i])
@@ -210,7 +209,7 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 		ctx = context.Background()
 	}
 
-	res := &Result{
+	res = &Result{
 		conn: conn,
 		cp:   cp,
 		val: valuer{

@@ -27,6 +27,7 @@ func TestMain(m *testing.M) {
 	config = must.Config(rdb.ParseConfigURL(testConnectionString))
 	config.PoolInitCapacity = runtime.NumCPU()
 	db = must.Open(config)
+	db.Ping()
 
 	db.Normal().OnAutoClose = func(sql string) {
 		// log.Printf("Auto closed sql %s", sql)
