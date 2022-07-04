@@ -70,6 +70,8 @@ type Config struct {
 	KV map[string]interface{}
 }
 
+const optPrefix = "opt_"
+
 // Provides a standard method to parse configuration options from a text.
 // The instance field can also hold the filename in case of a file based connection.
 //   driver://[username:password@][url[:port]]/[Instance]?db=mydatabase&opt1=valA&opt2=valB
@@ -91,6 +93,7 @@ type Config struct {
 //                                    SQL Server doens't send intermediate certificates.
 //                                    May be required even if root CA is known and trusted.
 //      insecure_skip_verify=<bool>:  INSECURE. Skip  encryption certificate verification.
+//      opt_<any>=<any>:              include values, unchecked here, into KV. "opt_" prefix is stripped.
 func ParseConfigURL(connectionString string) (*Config, error) {
 	if len(connectionString) == 0 {
 		return nil, errors.New("empty DSN")
@@ -125,6 +128,7 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 		Password:   pass,
 		Hostname:   host,
 		Port:       port,
+		KV:         map[string]interface{}{},
 	}
 
 	val := u.Query()
@@ -136,7 +140,11 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 		v0 := vv[0]
 		switch key {
 		default:
-			return nil, fmt.Errorf("unknown setting: %v", key)
+			if !strings.HasPrefix(key, optPrefix) {
+				return nil, fmt.Errorf("unknown setting: %v", key)
+			}
+			key := strings.TrimPrefix(key, optPrefix)
+			conf.KV[key] = v0
 		case "db":
 			conf.Database = v0
 		case "dial_timeout":
