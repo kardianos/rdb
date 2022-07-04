@@ -93,7 +93,7 @@ func (tds *Connection) getAllHeaders() []byte {
 }
 
 func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
-	if tds.status != rdb.StatusDisconnected {
+	if tds.Status() != rdb.StatusDisconnected {
 		return nil, connectionOpenError
 	}
 	var err error
@@ -172,7 +172,9 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 		InHex:   true,
 	}
 
+	tds.syncClose.Lock()
 	tds.status = rdb.StatusReady
+	tds.syncClose.Unlock()
 
 	return si, tds.NextQuery()
 }
@@ -314,15 +316,18 @@ func (tds *Connection) Close() {
 	tds.val = nil
 	tds.mr = nil
 	tds.status = rdb.StatusDisconnected
+	close(tds.onClose)
 	tds.syncClose.Unlock()
 
 	tds.done()
 	tds.wc.Close()
-	close(tds.onClose)
 }
 
 func (tds *Connection) Status() rdb.DriverConnStatus {
-	return tds.status
+	tds.syncClose.Lock()
+	status := tds.status
+	tds.syncClose.Unlock()
+	return status
 }
 
 func (tds *Connection) Prepare(*rdb.Command) (preparedStatementToken interface{}, err error) {
@@ -361,16 +366,21 @@ const (
 func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationLevel) error {
 	ctx := context.Background()
 
+	tds.syncClose.Lock()
 	if tds.status == rdb.StatusDisconnected {
+		tds.syncClose.Unlock()
 		return connectionNotOpenError
 	}
 	if tds.status != rdb.StatusReady {
+		tds.syncClose.Unlock()
 		return connectionInUseError
 	}
+	tds.status = rdb.StatusQuery
+	tds.syncClose.Unlock()
+
 	if tds.mr != nil && tds.mr.packetEOM == false {
 		panic("Connection not ready to be re-used yet for transaction.")
 	}
-	tds.status = rdb.StatusQuery
 
 	tds.mr = tds.pr.BeginMessage(packetTabularResult)
 	err := tds.pw.BeginMessage(ctx, packetTransaction, false)
@@ -463,9 +473,13 @@ func (tds *Connection) Query(ctx context.Context, cmd *rdb.Command, params []rdb
 	if debugAPI {
 		fmt.Printf("API Query\n")
 	}
+	tds.syncClose.Lock()
 	if tds.status != rdb.StatusReady {
+		tds.syncClose.Unlock()
 		return connectionInUseError
 	}
+	tds.syncClose.Unlock()
+
 	if valuer == nil {
 		valuer = noopValuer{}
 	}
@@ -481,7 +495,11 @@ func (tds *Connection) Query(ctx context.Context, cmd *rdb.Command, params []rdb
 	if err != nil {
 		return err
 	}
-	if tds.status == rdb.StatusQuery && err == nil {
+	tds.syncClose.Lock()
+	doNext := tds.status == rdb.StatusQuery && err == nil
+	tds.syncClose.Unlock()
+
+	if doNext {
 		_, err = tds.nextResult()
 	}
 	return err
@@ -536,10 +554,15 @@ func (tds *Connection) nextResult() (more bool, err error) {
 		tds.syncClose.Unlock()
 
 		err = tds.scan()
+
+		tds.syncClose.Lock()
+		more = tds.status == rdb.StatusResultDone || tds.status == rdb.StatusQuery
+		tds.syncClose.Unlock()
 	} else {
+		more = tds.status == rdb.StatusResultDone || tds.status == rdb.StatusQuery
 		tds.syncClose.Unlock()
 	}
-	return (tds.status == rdb.StatusResultDone || tds.status == rdb.StatusQuery), err
+	return more, err
 }
 
 func (tds *Connection) NextQuery() (err error) {
@@ -547,12 +570,20 @@ func (tds *Connection) NextQuery() (err error) {
 		fmt.Printf("API NextQuery\n")
 		defer fmt.Printf("<API NextQuery\n")
 	}
-	for tds.status != rdb.StatusReady {
+	run := true
+	for run {
 		var res interface{}
 		var err error
 		withLock(&tds.syncClose, func() {
+			run = tds.status != rdb.StatusReady && tds.status != rdb.StatusDisconnected
+			if !run {
+				return
+			}
 			res, err = tds.getSingleResponse(tds.mr, false)
 		})
+		if !run {
+			break
+		}
 		if err != nil {
 			tds.done()
 			return err
@@ -582,7 +613,9 @@ func (tds *Connection) done() error {
 
 	tds.syncClose.Lock()
 	tds.col = nil
-	tds.status = rdb.StatusReady
+	if tds.status != rdb.StatusDisconnected {
+		tds.status = rdb.StatusReady
+	}
 	tds.syncClose.Unlock()
 
 	var err error
@@ -634,7 +667,11 @@ func (tds *Connection) scan() error {
 			// END OF (TDS) MESSAGE.
 			err = tds.done()
 			if hasCol {
-				tds.status = rdb.StatusResultDone
+				tds.syncClose.Lock()
+				if tds.status != rdb.StatusDisconnected {
+					tds.status = rdb.StatusResultDone
+				}
+				tds.syncClose.Unlock()
 			}
 			return err
 		case *rdb.Message:
@@ -654,13 +691,21 @@ func (tds *Connection) scan() error {
 		case MsgFinalDone:
 			err = tds.done()
 			if hasCol {
-				tds.status = rdb.StatusResultDone
+				tds.syncClose.Lock()
+				if tds.status != rdb.StatusDisconnected {
+					tds.status = rdb.StatusResultDone
+				}
+				tds.syncClose.Unlock()
 			}
 			return err
 		case MsgCancel:
 			err = tds.done()
 			if hasCol {
-				tds.status = rdb.StatusResultDone
+				tds.syncClose.Lock()
+				if tds.status != rdb.StatusDisconnected {
+					tds.status = rdb.StatusResultDone
+				}
+				tds.syncClose.Unlock()
 			}
 			if err != nil {
 				return err
