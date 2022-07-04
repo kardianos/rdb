@@ -4,13 +4,16 @@
 
 package ms
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestPing(t *testing.T) {
 	if parallel {
 		t.Parallel()
 	}
-	err := db.Normal().Ping()
+	err := db.Normal().Ping(context.Background())
 	if err != nil {
 		t.Fatalf("Ping error: %v", err)
 	}
@@ -20,7 +23,7 @@ func TestVersion(t *testing.T) {
 	if parallel {
 		t.Parallel()
 	}
-	connInfo, err := db.Normal().ConnectionInfo()
+	connInfo, err := db.Normal().ConnectionInfo(context.Background())
 	if err != nil {
 		t.Fatalf("ConnectionInfo error: %v", err)
 	}

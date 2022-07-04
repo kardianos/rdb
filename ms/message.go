@@ -5,6 +5,7 @@
 package ms
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -26,22 +27,26 @@ const (
 	preloginTerminator = 0xff
 )
 
+type tdsToken byte
+
+//go:generate stringer -type tdsToken -trimprefix token
+
 const (
-	tokenLoginAck = 0xAD
-	tokenError    = 0xAA
-	tokenInfo     = 0xAB
-	tokenDone     = 0xFD
+	tokenLoginAck tdsToken = 0xAD
+	tokenError    tdsToken = 0xAA
+	tokenInfo     tdsToken = 0xAB
+	tokenDone     tdsToken = 0xFD
 
-	tokenReturnStatus   = 0x79
-	tokenReturnValue    = 0xAC
-	tokenDoneProc       = 0xFE
-	tokenDoneInProc     = 0xFF
-	tokenColumnMetaData = 0x81
-	tokenRow            = 0xD1
-	tokenNBCRow         = 0xD2
-	tokenEnvChange      = 0xE3
+	tokenReturnStatus   tdsToken = 0x79
+	tokenReturnValue    tdsToken = 0xAC
+	tokenDoneProc       tdsToken = 0xFE
+	tokenDoneInProc     tdsToken = 0xFF
+	tokenColumnMetaData tdsToken = 0x81
+	tokenRow            tdsToken = 0xD1
+	tokenNBCRow         tdsToken = 0xD2
+	tokenEnvChange      tdsToken = 0xE3
 
-	tokenOrder = 0xA9
+	tokenOrder tdsToken = 0xA9
 )
 
 // Document the highest version this driver can handle.
@@ -83,7 +88,7 @@ func (tds *PacketWriter) PreLogin(instance string, encrypt EncryptAvailable) err
 		addToken(preloginInstance, uconv.Encode.FromString(instance))
 	}
 
-	tds.BeginMessage(packetPreLogin, false)
+	tds.BeginMessage(context.TODO(), packetPreLogin, false)
 
 	tokenListLen := uint16((5 * len(opts)) + 1)
 	payload := make([]byte, 0, 20)
@@ -350,7 +355,7 @@ func (tds *PacketWriter) Login(config *rdb.Config) error {
 		prevOffset = t.offset
 	}
 
-	tds.BeginMessage(packetTds7Login, false)
+	tds.BeginMessage(context.TODO(), packetTds7Login, false)
 
 	tds.Write(buf)
 
@@ -376,7 +381,7 @@ func (tds *PacketReader) LoginAck() (*ServerInfo, error) {
 	}
 
 	at := 0
-	token := bb[at]
+	token := tdsToken(bb[at])
 	at++
 	if token != tokenLoginAck {
 		if token == tokenError {

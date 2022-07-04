@@ -5,6 +5,7 @@
 package ms
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -32,7 +33,7 @@ func TestTransaction(t *testing.T) {
 
 	var v1 string
 
-	res := tran.Query(cmd, params...)
+	res := tran.Query(context.Background(), cmd, params...)
 	res.Scan(&v1)
 	res.Close()
 
@@ -40,13 +41,13 @@ func TestTransaction(t *testing.T) {
 
 	tran.SavePoint(savePointName)
 
-	res = tran.Query(cmd, params...)
+	res = tran.Query(context.Background(), cmd, params...)
 	res.Scan(&v1)
 	res.Close()
 
 	tran.RollbackTo(savePointName)
 
-	res = tran.Query(cmd, params...)
+	res = tran.Query(context.Background(), cmd, params...)
 	res.Scan(&v1)
 	res.Close()
 
@@ -54,7 +55,7 @@ func TestTransaction(t *testing.T) {
 
 	tran = db.Begin()
 
-	res = tran.Query(cmd, params...)
+	res = tran.Query(context.Background(), cmd, params...)
 	res.Scan(&v1)
 	res.Close()
 

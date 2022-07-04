@@ -5,6 +5,7 @@
 package ms
 
 import (
+	"context"
 	"math/big"
 	"testing"
 
@@ -42,11 +43,11 @@ end
 		Arity: rdb.ZeroMust,
 	}
 
-	db.Query(createProcDrop)
-	db.Query(createProc)
+	db.Query(context.Background(), createProcDrop)
+	db.Query(context.Background(), createProc)
 
 	var val int
-	db.Query(callProc,
+	db.Query(context.Background(), callProc,
 		rdb.Param{Name: "p1", Value: 5, Type: rdb.TypeInt32},
 		rdb.Param{Name: "p2", Out: true, Value: &val, Type: rdb.TypeInt32},
 	)
@@ -88,14 +89,14 @@ end
 		Arity: rdb.ZeroMust,
 	}
 
-	db.Query(createProcDrop)
-	db.Query(createProc)
+	db.Query(context.Background(), createProcDrop)
+	db.Query(context.Background(), createProc)
 
 	var val1 string
 	var val2 int
 	var val3 = big.NewRat(5, 1)
 
-	db.Query(callProc,
+	db.Query(context.Background(), callProc,
 		rdb.Param{Name: "p1", Out: true, Value: &val1, Type: rdb.Text},
 		rdb.Param{Name: "p2", Out: true, Value: &val2, Type: rdb.Integer},
 		rdb.Param{Name: "p3", Out: true, Value: &val3, Precision: 38, Scale: 7, Type: rdb.Decimal},

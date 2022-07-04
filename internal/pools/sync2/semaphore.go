@@ -21,22 +21,20 @@ package sync2
 // cases, you just want a familiar API.
 
 import (
-	"time"
+	"context"
 )
 
 // Semaphore is a counting semaphore with the option to
 // specify a timeout.
 type Semaphore struct {
-	slots   chan struct{}
-	timeout time.Duration
+	slots chan struct{}
 }
 
 // NewSemaphore creates a Semaphore. The count parameter must be a positive
 // number. A timeout of zero means that there is no timeout.
-func NewSemaphore(count int, timeout time.Duration) *Semaphore {
+func NewSemaphore(count int) *Semaphore {
 	sem := &Semaphore{
-		slots:   make(chan struct{}, count),
-		timeout: timeout,
+		slots: make(chan struct{}, count),
 	}
 	for i := 0; i < count; i++ {
 		sem.slots <- struct{}{}
@@ -46,18 +44,12 @@ func NewSemaphore(count int, timeout time.Duration) *Semaphore {
 
 // Acquire returns true on successful acquisition, and
 // false on a timeout.
-func (sem *Semaphore) Acquire() bool {
-	if sem.timeout == 0 {
-		<-sem.slots
-		return true
-	}
-	tm := time.NewTimer(sem.timeout)
-	defer tm.Stop()
+func (sem *Semaphore) Acquire(ctx context.Context) error {
 	select {
 	case <-sem.slots:
-		return true
-	case <-tm.C:
-		return false
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 

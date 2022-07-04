@@ -5,6 +5,7 @@
 package ms
 
 import (
+	"context"
 	"math/big"
 	"reflect"
 	"testing"
@@ -50,7 +51,7 @@ func TestNumber(t *testing.T) {
 		{Name: "fl64", Type: rdb.TypeFloat64, Value: float64(89.1011)},
 	}
 
-	res := db.Query(cmd, params...)
+	res := db.Query(context.Background(), cmd, params...)
 	defer res.Close()
 
 	res.Scan(&bt, &bf, &i8, &i16, &i64, &bb, &dec, &fl32, &fl64)
@@ -89,7 +90,7 @@ select
 		{Name: "d", Type: rdb.TypeDecimal, Precision: 38, Scale: 6, Value: dIn},
 	}
 
-	res := db.Query(cmd, params...)
+	res := db.Query(context.Background(), cmd, params...)
 	defer res.Close()
 
 	res.Scan(&dec, &sdec)
@@ -125,7 +126,7 @@ select S = convert(nvarchar(100), @D);
 	}
 	for _, item := range list {
 		t.Run(item.Name, func(t *testing.T) {
-			res := db.Query(cmd,
+			res := db.Query(context.Background(), cmd,
 				rdb.Param{Name: "V", Type: rdb.Decimal, Precision: 38, Scale: item.Scale, Value: item.Input},
 			)
 			defer res.Close()
@@ -161,7 +162,7 @@ func TestBytesValue(t *testing.T) {
 		{Name: "bytesOne", Type: rdb.Binary, Value: bytesOne},
 	}
 
-	res := db.Query(cmd, params...)
+	res := db.Query(context.Background(), cmd, params...)
 	defer res.Close()
 
 	res.Scan(&bytesEmptyOut, &bytesOneOut)
@@ -190,7 +191,7 @@ func TestNullNumbers(t *testing.T) {
 		{Name: "decimal", Type: rdb.Decimal, Value: nil, Precision: 38, Scale: 6, Null: true},
 	}
 
-	res := db.Query(cmd, params...)
+	res := db.Query(context.Background(), cmd, params...)
 	defer res.Close()
 
 	res.Scan()
@@ -211,7 +212,7 @@ func TestGUID(t *testing.T) {
 		Arity: rdb.OneMust,
 	}
 
-	res := db.Query(cmd)
+	res := db.Query(context.Background(), cmd)
 	defer res.Close()
 
 	res.Scan()

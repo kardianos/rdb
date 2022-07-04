@@ -9,6 +9,7 @@
 package table
 
 import (
+	"context"
 	"errors"
 
 	"github.com/kardianos/rdb"
@@ -61,7 +62,7 @@ type Buffer struct {
 func (b *Buffer) Len() int {
 	return len(b.Row)
 }
-func Fill(res *rdb.Result) (*Buffer, error) {
+func Fill(ctx context.Context, res *rdb.Result) (*Buffer, error) {
 	set, err := FillSet(res)
 	if err != nil {
 		return nil, err
@@ -111,13 +112,13 @@ func FillSet(res *rdb.Result) ([]*Buffer, error) {
 	}
 	return set, nil
 }
-func FillCommand(q rdb.Queryer, cmd *rdb.Command, params ...rdb.Param) (*Buffer, error) {
-	res, err := q.Query(cmd, params...)
+func FillCommand(ctx context.Context, q rdb.Queryer, cmd *rdb.Command, params ...rdb.Param) (*Buffer, error) {
+	res, err := q.Query(ctx, cmd, params...)
 	if err != nil {
 		return nil, err
 	}
 	defer res.Close()
-	return Fill(res)
+	return Fill(ctx, res)
 }
 
 var errSetSchema = errors.New("Can only set the schema when no rows exist.")

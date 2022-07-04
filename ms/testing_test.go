@@ -5,8 +5,10 @@
 package ms
 
 import (
+	"context"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"testing"
 
 	"github.com/kardianos/rdb"
@@ -27,11 +29,8 @@ func TestMain(m *testing.M) {
 	config = must.Config(rdb.ParseConfigURL(testConnectionString))
 	config.PoolInitCapacity = runtime.NumCPU()
 	db = must.Open(config)
-	db.Ping()
+	db.Ping(context.Background())
 
-	db.Normal().OnAutoClose = func(sql string) {
-		// log.Printf("Auto closed sql %s", sql)
-	}
 	os.Exit(m.Run())
 }
 
@@ -49,6 +48,7 @@ func assertFreeConns(t *testing.T) {
 func recoverTest(t *testing.T) {
 	if re := recover(); re != nil {
 		if localError, is := re.(must.Error); is {
+			t.Logf("%s", debug.Stack())
 			t.Errorf("SQL Error: %v", localError)
 			return
 		}

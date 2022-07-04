@@ -8,6 +8,7 @@
 package sql
 
 import (
+	"context"
 	"errors"
 
 	"github.com/kardianos/rdb"
@@ -102,8 +103,9 @@ func prep(arity rdb.Arity, query string, args []interface{}) (*rdb.Command, []rd
 
 // Exec executes a query without returning any rows. The args are for any placeholder parameters in the query.
 func (db *DB) Exec(query string, args ...interface{}) (Result, error) {
+	ctx := context.Background()
 	cmd, params := prep(rdb.Zero, query, args)
-	res, err := db.pool.Query(cmd, params...)
+	res, err := db.pool.Query(ctx, cmd, params...)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +114,8 @@ func (db *DB) Exec(query string, args ...interface{}) (Result, error) {
 
 //  Ping verifies a connection to the database is still alive, establishing a connection if necessary.
 func (db *DB) Ping() error {
-	return db.pool.Ping()
+	ctx := context.Background()
+	return db.pool.Ping(ctx)
 }
 
 // Prepare creates a prepared statement for later queries or executions. Multiple queries or executions may be run concurrently from the returned statement.
@@ -127,8 +130,9 @@ func (db *DB) Prepare(query string) (*Stmt, error) {
 
 // Query executes a query that returns rows, typically a SELECT. The args are for any placeholder parameters in the query.
 func (db *DB) Query(query string, args ...interface{}) (*Rows, error) {
+	ctx := context.Background()
 	cmd, params := prep(rdb.Any, query, args)
-	res, err := db.pool.Query(cmd, params...)
+	res, err := db.pool.Query(ctx, cmd, params...)
 	if err != nil {
 		return nil, err
 	}
@@ -137,8 +141,9 @@ func (db *DB) Query(query string, args ...interface{}) (*Rows, error) {
 
 // QueryRow executes a query that is expected to return at most one row. QueryRow always return a non-nil value. Errors are deferred until Row's Scan method is called.
 func (db *DB) QueryRow(query string, args ...interface{}) *Row {
+	ctx := context.Background()
 	cmd, params := prep(rdb.One, query, args)
-	res, err := db.pool.Query(cmd, params...)
+	res, err := db.pool.Query(ctx, cmd, params...)
 	row := &Row{res: res}
 	if err != nil {
 		if err == rdb.ArityError {
@@ -353,17 +358,18 @@ func (s *Stmt) Close() error {
 
 // Exec executes a prepared statement with the given arguments and returns a Result summarizing the effect of the statement.
 func (s *Stmt) Exec(args ...interface{}) (Result, error) {
-	res, err := s.q.Query(s.cmd, prepParams(args)...)
+	ctx := context.Background()
+	res, err := s.q.Query(ctx, s.cmd, prepParams(args)...)
 	if err != nil {
 		return nil, err
 	}
-	res.Close()
-	return result{res: res}, nil
+	return result{res: res}, res.Close()
 }
 
 // Query executes a prepared query statement with the given arguments and returns the query results as a *Rows.
 func (s *Stmt) Query(args ...interface{}) (*Rows, error) {
-	res, err := s.q.Query(s.cmd, prepParams(args)...)
+	ctx := context.Background()
+	res, err := s.q.Query(ctx, s.cmd, prepParams(args)...)
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +392,8 @@ func (s *Stmt) Query(args ...interface{}) (*Rows, error) {
 //
 //After a call to Commit or Rollback, all operations on the transaction fail with ErrTxDone.
 func (s *Stmt) QueryRow(args ...interface{}) *Row {
-	res, err := s.q.Query(s.cmd, prepParams(args)...)
+	ctx := context.Background()
+	res, err := s.q.Query(ctx, s.cmd, prepParams(args)...)
 	row := &Row{res: res}
 	if err != nil {
 		if err == rdb.ArityError {
@@ -412,8 +419,9 @@ func (tx *Tx) Commit() error {
 
 // Exec executes a query that doesn't return rows. For example: an INSERT and UPDATE.
 func (tx *Tx) Exec(query string, args ...interface{}) (Result, error) {
+	ctx := context.Background()
 	cmd, params := prep(rdb.Zero, query, args)
-	res, err := tx.tran.Query(cmd, params...)
+	res, err := tx.tran.Query(ctx, cmd, params...)
 	if err != nil {
 		return nil, err
 	}
@@ -436,8 +444,9 @@ func (tx *Tx) Prepare(query string) (*Stmt, error) {
 
 // Query executes a query that returns rows, typically a SELECT.
 func (tx *Tx) Query(query string, args ...interface{}) (*Rows, error) {
+	ctx := context.Background()
 	cmd, params := prep(rdb.Any, query, args)
-	res, err := tx.tran.Query(cmd, params...)
+	res, err := tx.tran.Query(ctx, cmd, params...)
 	if err != nil {
 		return nil, err
 	}
@@ -446,8 +455,9 @@ func (tx *Tx) Query(query string, args ...interface{}) (*Rows, error) {
 
 // QueryRow executes a query that is expected to return at most one row. QueryRow always return a non-nil value. Errors are deferred until Row's Scan method is called.
 func (tx *Tx) QueryRow(query string, args ...interface{}) *Row {
+	ctx := context.Background()
 	cmd, params := prep(rdb.Any, query, args)
-	res, err := tx.tran.Query(cmd, params...)
+	res, err := tx.tran.Query(ctx, cmd, params...)
 	row := &Row{res: res}
 	if err != nil {
 		if err == rdb.ArityError {

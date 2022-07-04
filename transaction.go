@@ -5,6 +5,7 @@
 package rdb
 
 import (
+	"context"
 	"errors"
 )
 
@@ -20,11 +21,11 @@ type Transaction struct {
 
 var transactionClosed = errors.New("Transaction already closed.")
 
-func (tran *Transaction) Query(cmd *Command, params ...Param) (*Result, error) {
+func (tran *Transaction) Query(ctx context.Context, cmd *Command, params ...Param) (*Result, error) {
 	if tran.done {
 		return nil, transactionClosed
 	}
-	return tran.cp.query(true, tran.conn, cmd, nil, params...)
+	return tran.cp.query(ctx, true, tran.conn, cmd, nil, params...)
 }
 
 // Commit commits a one or more queries. If no queries have been run this

@@ -5,6 +5,7 @@
 package rdb
 
 import (
+	"context"
 	"errors"
 )
 
@@ -17,11 +18,11 @@ type Connection struct {
 var connectionClosed = errors.New("Connection already closed.")
 
 // Query executes a Command on the connection.
-func (c *Connection) Query(cmd *Command, params ...Param) (*Result, error) {
+func (c *Connection) Query(ctx context.Context, cmd *Command, params ...Param) (*Result, error) {
 	if c.done {
 		return nil, connectionClosed
 	}
-	return c.cp.query(true, c.conn, cmd, nil, params...)
+	return c.cp.query(ctx, true, c.conn, cmd, nil, params...)
 }
 
 // Close returns the underlying connection to the Connection Pool.

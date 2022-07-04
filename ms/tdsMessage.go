@@ -6,11 +6,13 @@ package ms
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
 
+	"github.com/kardianos/rdb/internal/pools/sync2"
 	"github.com/kardianos/rdb/internal/sbuffer"
 )
 
@@ -67,16 +69,23 @@ type PacketWriter struct {
 	packetNumber uint8
 	resetPacket  bool
 	open         bool
+
+	single *sync2.Semaphore
 }
 
 func NewPacketWriter(w io.Writer) *PacketWriter {
 	return &PacketWriter{
 		w:      w,
 		buffer: &bytes.Buffer{},
+		single: sync2.NewSemaphore(1),
 	}
 }
 
-func (tds *PacketWriter) BeginMessage(PacketType PacketType, reset bool) error {
+func (tds *PacketWriter) BeginMessage(ctx context.Context, PacketType PacketType, reset bool) error {
+	err := tds.single.Acquire(ctx)
+	if err != nil {
+		return err
+	}
 	tds.buffer.Reset()
 
 	tds.resetPacket = reset
@@ -119,10 +128,15 @@ func (tds *PacketWriter) WriteUint64(v uint64) (n int) {
 
 func (tds *PacketWriter) EndMessage() error {
 	if !tds.open {
+		tds.single.Release()
 		return nil
 	}
 	_, err := tds.writeClose(nil, true)
 	return err
+}
+
+func (tds *PacketWriter) abort() {
+	tds.single.Release()
 }
 
 func (tds *PacketWriter) writeClose(bb []byte, closeMessage bool) (int, error) {
@@ -183,10 +197,12 @@ func (tds *PacketWriter) writeClose(bb []byte, closeMessage bool) (int, error) {
 		}
 		localN, err = tds.w.Write(buf)
 		if err != nil {
+			tds.single.Release()
 			return n, err
 		}
 		n += localN
 		if statusEOM&status != 0 {
+			tds.single.Release()
 			return bufN, err
 		}
 

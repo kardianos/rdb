@@ -66,10 +66,12 @@ type Message struct {
 	LineNumber int32
 	SqlState   string
 	Number     int32
+	State      byte
+	Class      byte
 }
 
 func (err *Message) String() string {
-	return fmt.Sprintf("(%s %s: %d) L%d: %s)", err.ServerName, err.ProcName, err.Number, err.LineNumber, err.Message)
+	return fmt.Sprintf("(%s %s: %d) L%d: %s (%d, %d)", err.ServerName, err.ProcName, err.Number, err.LineNumber, err.Message, err.State, err.Class)
 }
 
 // Exposed to help isolate error paths when starting a client.

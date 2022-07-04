@@ -5,6 +5,7 @@
 package ms
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -15,6 +16,7 @@ type MsgEom struct{}
 type MsgRow struct{}
 type MsgColumn struct{}
 type MsgFinalDone struct{}
+type MsgCancel struct{}
 type MsgRowCount struct {
 	Count uint64
 }
@@ -84,3 +86,5 @@ type MsgOrder []uint16
 type recoverError struct {
 	err error
 }
+
+var ErrCancel = errors.New("Query Cancel")

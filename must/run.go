@@ -4,6 +4,8 @@
 
 package must
 
+import "context"
+
 type Roller func(t Transaction, savepoint string)
 
 // A method to take many panicing members and return a normal error.
@@ -29,7 +31,7 @@ type Roller func(t Transaction, savepoint string)
 		})
 	}
 */
-func Run(f func(r Roller) error) (err error) {
+func Run(ctx context.Context, f func(r Roller) error) (err error) {
 	trans := make(map[Transaction]string)
 	defer func() {
 		if recovered := recover(); recovered != nil {

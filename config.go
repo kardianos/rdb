@@ -32,16 +32,16 @@ type Config struct {
 	// Zero for no timeout.
 	DialTimeout time.Duration
 
-	// Default timeout for each query if no timeout is
-	// specified in the Command structure.
-	QueryTimeout time.Duration
-
 	// Max time for a connection to live.
 	ConnectionMaxLifetime time.Duration
 
 	// Time for an idle connection to be closed.
 	// Zero if there should be no timeout.
 	PoolIdleTimeout time.Duration
+
+	// Time for a query to reset the connection to complete.
+	// Zero if there should be no timeout.
+	ResetConnectionTimeout time.Duration
 
 	// How many connection should be created at startup.
 	// Valid range is (0 < init, init <= max).
@@ -86,7 +86,7 @@ const optPrefix = "opt_"
 //      init_cap=<int>:               Pool Init Capacity
 //      max_cap=<int>:                Pool Max Capacity
 //      idle_timeout=<time.Duration>: Pool Idle Timeout
-//      query_timeout=<time.Duration>:Query Timeout
+//      reset_timeout=<time.Duration>:Reset Connection Timeout
 //      require_encryption=<bool>:    Require Connection Encryption
 //      disable_encryption=<bool>:    Disable Connection Encryption
 //      cert=<string>:                Load the cert file as root CA, repeatable.
@@ -162,11 +162,15 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 			if err != nil {
 				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}
-		case "query_timeout":
-			conf.QueryTimeout, err = time.ParseDuration(v0)
+		case "reset_timeout":
+			conf.ResetConnectionTimeout, err = time.ParseDuration(v0)
 			if err != nil {
 				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}
+		case "query_timeout":
+			// Ignore this.
+			// All query timeouts controlled from context.
+			continue
 		case "init_cap":
 			conf.PoolInitCapacity, err = strconv.Atoi(v0)
 			if err != nil {

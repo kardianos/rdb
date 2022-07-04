@@ -46,7 +46,7 @@ func (dr *Driver) Open(c *rdb.Config) (rdb.DriverConn, error) {
 		return nil, err
 	}
 
-	tds := NewConnection(conn)
+	tds := NewConnection(conn, c.ResetConnectionTimeout)
 
 	_, err = tds.Open(c)
 	if err != nil {

@@ -5,6 +5,7 @@
 package ms
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -21,7 +22,7 @@ func TestMultiResultSimple(t *testing.T) {
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
-	set, err := table.FillCommand(db.Normal(), &rdb.Command{
+	set, err := table.FillCommand(context.Background(), db.Normal(), &rdb.Command{
 		Sql: `
 			select @animal as 'MyAnimal';
 			-- New query.
@@ -41,7 +42,7 @@ func TestMultiResultSimple(t *testing.T) {
 	}
 
 	var myFav string
-	res := db.Query(&rdb.Command{
+	res := db.Query(context.Background(), &rdb.Command{
 		Sql: `
 			select @animal as 'MyAnimal';
 			-- New query.
@@ -81,7 +82,7 @@ func TestMultiResultHalt(t *testing.T) {
 	defer recoverTest(t)
 
 	var myFav string
-	res := db.Query(&rdb.Command{
+	res := db.Query(context.Background(), &rdb.Command{
 		Sql: `
 			select @animal as 'MyAnimal';
 			-- New query.
@@ -114,7 +115,7 @@ func TestMultiResultLoop(t *testing.T) {
 	defer recoverTest(t)
 
 	var myFav string
-	res := db.Query(&rdb.Command{
+	res := db.Query(context.Background(), &rdb.Command{
 		Sql: `
 			select @animal as 'MyAnimal';
 			-- New query.
@@ -168,7 +169,7 @@ func TestMultiResultEmpty1(t *testing.T) {
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
-	res := db.Query(&rdb.Command{
+	res := db.Query(context.Background(), &rdb.Command{
 		Sql: `
 declare @T table(ID int);
 insert into @T
@@ -247,7 +248,7 @@ func TestMultiResultEmpty2(t *testing.T) {
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
-	res := db.Query(&rdb.Command{
+	res := db.Query(context.Background(), &rdb.Command{
 		Sql: `
 	declare @SampleSelect table (ID bigint)
 	declare @Sample table (ID bigint);
@@ -329,7 +330,7 @@ func TestMultiResultEmpty3(t *testing.T) {
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
-	res := db.Query(&rdb.Command{
+	res := db.Query(context.Background(), &rdb.Command{
 		Sql: `
 	declare @SampleSelect table (ID bigint)
 	declare @Sample table (ID bigint);
@@ -411,7 +412,7 @@ func TestMultiResultNotEmpty1(t *testing.T) {
 		Arity: rdb.Any,
 	}
 
-	tb, err := table.FillCommand(db.Normal(), cmd)
+	tb, err := table.FillCommand(context.Background(), db.Normal(), cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,7 +460,7 @@ func TestMultiResultAnotherTest(t *testing.T) {
 		Arity: rdb.Any,
 	}
 
-	tb, err := table.FillCommand(db.Normal(), cmd)
+	tb, err := table.FillCommand(context.Background(), db.Normal(), cmd)
 	if err != nil {
 		t.Fatal(err)
 	}

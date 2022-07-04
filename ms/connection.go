@@ -6,10 +6,12 @@ package ms
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"strings"
 	"sync"
@@ -32,7 +34,9 @@ type Connection struct {
 	pw *PacketWriter
 	pr *PacketReader
 
-	wc net.Conn
+	wc      net.Conn
+	onDone  chan struct{} // Write to when message is done.
+	onClose chan struct{} // Close to when connection closes
 
 	status    rdb.DriverConnStatus
 	available bool
@@ -53,21 +57,26 @@ type Connection struct {
 
 	currentTransaction uint64
 
-	opened time.Time
+	opened              time.Time
+	defaultResetTimeout time.Duration
 
 	// Next token type.
-	peek byte
+	peek tdsToken
 
 	// The next byte of ucs2 if split between packets.
 	ucs2Next []byte
 }
 
-func NewConnection(c net.Conn) *Connection {
+func NewConnection(c net.Conn, defaultResetTimeout time.Duration) *Connection {
 	return &Connection{
-		pw:     NewPacketWriter(c),
-		pr:     NewPacketReader(c),
-		wc:     c,
-		opened: time.Now(),
+		pw:      NewPacketWriter(c),
+		pr:      NewPacketReader(c),
+		wc:      c,
+		opened:  time.Now(),
+		onDone:  make(chan struct{}),
+		onClose: make(chan struct{}),
+
+		defaultResetTimeout: defaultResetTimeout,
 	}
 }
 
@@ -204,7 +213,7 @@ func (c *tlsHandshakeConn) Read(b []byte) (n int, err error) {
 
 func (c *tlsHandshakeConn) Write(b []byte) (n int, err error) {
 	if !c.packetPending {
-		c.conn.pw.BeginMessage(packetPreLogin, false)
+		c.conn.pw.BeginMessage(context.Background(), packetPreLogin, false)
 		c.packetPending = true
 	}
 	_, err = c.conn.pw.Write(b)
@@ -276,7 +285,13 @@ func (tds *Connection) Reset(c *rdb.Config) error {
 	if len(c.ResetQuery) == 0 {
 		return nil
 	}
-	return tds.Query(&rdb.Command{Sql: c.ResetQuery}, nil, nil, nil)
+	ctx := context.Background()
+	if c.ResetConnectionTimeout > 0 {
+		var cancel func()
+		ctx, cancel = context.WithTimeout(ctx, c.ResetConnectionTimeout)
+		defer cancel()
+	}
+	return tds.Query(ctx, &rdb.Command{Sql: c.ResetQuery}, nil, nil, nil)
 }
 
 func (tds *Connection) ConnectionInfo() *rdb.ConnectionInfo {
@@ -303,6 +318,7 @@ func (tds *Connection) Close() {
 
 	tds.done()
 	tds.wc.Close()
+	close(tds.onClose)
 }
 
 func (tds *Connection) Status() rdb.DriverConnStatus {
@@ -343,6 +359,8 @@ const (
 )
 
 func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationLevel) error {
+	ctx := context.Background()
+
 	if tds.status == rdb.StatusDisconnected {
 		return connectionNotOpenError
 	}
@@ -355,7 +373,7 @@ func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationL
 	tds.status = rdb.StatusQuery
 
 	tds.mr = tds.pr.BeginMessage(packetTabularResult)
-	err := tds.pw.BeginMessage(packetTransaction, false)
+	err := tds.pw.BeginMessage(ctx, packetTransaction, false)
 	if err != nil {
 		return err
 	}
@@ -441,7 +459,7 @@ func (noopValuer) WriteField(c *rdb.Column, value *rdb.DriverValue, assign rdb.A
 }
 func (noopValuer) RowsAffected(count uint64) {}
 
-func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, valuer rdb.DriverValuer) error {
+func (tds *Connection) Query(ctx context.Context, cmd *rdb.Command, params []rdb.Param, preparedToken interface{}, valuer rdb.DriverValuer) error {
 	if debugAPI {
 		fmt.Printf("API Query\n")
 	}
@@ -456,8 +474,10 @@ func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken
 	if tds.mr != nil && tds.mr.packetEOM == false {
 		return fmt.Errorf("Connection not ready to be re-used yet for query.")
 	}
+	go tds.asyncWaitCancel(ctx, cmd.Sql)
 	tds.mr = tds.pr.BeginMessage(packetTabularResult)
-	err := tds.execute(cmd.Sql, cmd.TruncLongText, cmd.Arity, params)
+
+	err := tds.execute(ctx, cmd.Sql, cmd.TruncLongText, cmd.Arity, params)
 	if err != nil {
 		return err
 	}
@@ -465,6 +485,36 @@ func (tds *Connection) Query(cmd *rdb.Command, params []rdb.Param, preparedToken
 		_, err = tds.nextResult()
 	}
 	return err
+}
+
+func (tds *Connection) asyncWaitCancel(ctx context.Context, sql string) {
+	select {
+	case <-ctx.Done():
+		// Wait until message is done.
+		err := tds.pw.BeginMessage(context.TODO(), packetAttention, false)
+		if err != nil {
+			// TODO: Determine a better error path.
+			log.Printf("Cancel begin message: %v\n", err)
+			select {
+			case <-tds.onDone:
+			case <-tds.onClose:
+			}
+			return
+		}
+		err = tds.pw.EndMessage()
+		if err != nil {
+			// TODO: Determine a better error path.
+			log.Printf("Cancel end message: %v\n", err)
+		}
+		select {
+		case <-tds.onDone:
+		case <-tds.onClose:
+		}
+	case <-tds.onDone:
+		// Nothing.
+	case <-tds.onClose:
+		// Nothing.
+	}
 }
 
 func (tds *Connection) NextResult() (more bool, err error) {
@@ -522,6 +572,11 @@ func (tds *Connection) done() error {
 	if tds == nil {
 		return nil
 	}
+	select {
+	case tds.onDone <- struct{}{}:
+	default:
+	}
+
 	mrCloseErr := tds.mr.Close()
 	tds.params = nil
 
@@ -602,6 +657,15 @@ func (tds *Connection) scan() error {
 				tds.status = rdb.StatusResultDone
 			}
 			return err
+		case MsgCancel:
+			err = tds.done()
+			if hasCol {
+				tds.status = rdb.StatusResultDone
+			}
+			if err != nil {
+				return err
+			}
+			return ErrCancel
 		}
 		if tds.col == nil {
 			continue
@@ -618,7 +682,7 @@ func (tds *Connection) scan() error {
 	}
 }
 
-func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, params []rdb.Param) error {
+func (tds *Connection) execute(ctx context.Context, sql string, truncValue bool, arity rdb.Arity, params []rdb.Param) error {
 	tds.syncClose.Lock()
 
 	if tds.status == rdb.StatusDisconnected {
@@ -638,9 +702,9 @@ func (tds *Connection) execute(sql string, truncValue bool, arity rdb.Arity, par
 
 	var err error
 	if len(params) == 0 {
-		err = tds.sendSimpleQuery(sql, tds.resetNext)
+		err = tds.sendSimpleQuery(ctx, sql, tds.resetNext)
 	} else {
-		err = tds.sendRpc(sql, truncValue, params, tds.resetNext)
+		err = tds.sendRpc(ctx, sql, truncValue, params, tds.resetNext)
 	}
 	tds.resetNext = false
 	if err != nil {
@@ -660,9 +724,9 @@ var rpcHeaderParam = &rdb.Param{
 	Length: 0,
 }
 
-func (tds *Connection) sendSimpleQuery(sql string, reset bool) error {
+func (tds *Connection) sendSimpleQuery(ctx context.Context, sql string, reset bool) error {
 	w := tds.pw
-	err := w.BeginMessage(packetSqlBatch, reset)
+	err := w.BeginMessage(ctx, packetSqlBatch, reset)
 	if err != nil {
 		return err
 	}
@@ -672,7 +736,7 @@ func (tds *Connection) sendSimpleQuery(sql string, reset bool) error {
 	return w.EndMessage()
 }
 
-func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param, reset bool) error {
+func (tds *Connection) sendRpc(ctx context.Context, sql string, truncValue bool, params []rdb.Param, reset bool) error {
 	// To make a SQL Query with params:
 	// * RPC Param 1 = {Name: "", Type: NText, Field: SqlQuery}
 	// * RPC Param 2 = {Name: "", Type: NText, Field: "@MySqlParam1 int,@Foo varchar(400)"}
@@ -689,7 +753,7 @@ func (tds *Connection) sendRpc(sql string, truncValue bool, params []rdb.Param, 
 	var procID uint16 = sp_ExecuteSql
 
 	w := tds.pw
-	err := w.BeginMessage(packetRpc, reset)
+	err := w.BeginMessage(ctx, packetRpc, reset)
 	if err != nil {
 		return err
 	}
@@ -781,15 +845,15 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		return bb
 	}
 	assignPeek := func() {
-		tds.peek = read(1)[0]
+		tds.peek = tdsToken(read(1)[0])
 		if tds.peek == 0 {
 			panic("bad peek")
 			// panic(recoverError{err: errors.New("bad peek")})
 		}
 	}
-	var token byte
+	var token tdsToken
 	if tds.peek == 0 {
-		token = read(1)[0]
+		token = tdsToken(read(1)[0])
 		if token == 0 {
 			return nil, errors.New("bad token, is zero")
 		}
@@ -815,10 +879,12 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		class := read(1)[0]
 
 		_, msg := uconv.Decode.Prefix2(read)
-		sqlMsg.Message = fmt.Sprintf("%s (%d, %d)", msg, state, class)
+		sqlMsg.Message = msg
 		_, sqlMsg.ServerName = uconv.Decode.Prefix1(read)
 		_, sqlMsg.ProcName = uconv.Decode.Prefix1(read)
 		sqlMsg.LineNumber = int32(binary.LittleEndian.Uint32(read(4)))
+		sqlMsg.State = state
+		sqlMsg.Class = class
 
 		assignPeek()
 		return sqlMsg, nil
@@ -865,6 +931,14 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		}
 		if msg.StatusCode == 0 {
 			return MsgFinalDone{}, nil
+		}
+		const (
+			doneError       = 0x2
+			doneAttn        = 0x20
+			doneServerError = 0x100
+		)
+		if msg.StatusCode&doneAttn != 0 || msg.StatusCode&doneServerError != 0 || msg.StatusCode&doneError != 0 {
+			return MsgCancel{}, nil
 		}
 		assignPeek()
 		if msg.StatusCode&0x10 != 0 {

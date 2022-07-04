@@ -5,6 +5,7 @@
 package rdb
 
 import (
+	"context"
 	"time"
 
 	"github.com/kardianos/rdb/semver"
@@ -104,12 +105,12 @@ type DriverConn interface {
 
 	// The isolation level is set by the command.
 	// Should return "PreparedTokenNotValid" if the preparedToken was not recognized.
-	Query(cmd *Command, params []Param, preparedToken interface{}, val DriverValuer) error
+	Query(ctx context.Context, cmd *Command, params []Param, preparedToken interface{}, val DriverValuer) error
 
 	Status() DriverConnStatus
 
 	// Reset the connection to be ready for next connection.
-	Reset(*Config) error
+	Reset(config *Config) error
 
 	// Happy Path:
 	//  * Interface wants to prepare command, but doesn't have token.

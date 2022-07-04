@@ -5,6 +5,7 @@
 package ms
 
 import (
+	"context"
 	"testing"
 
 	"github.com/kardianos/rdb"
@@ -15,7 +16,7 @@ func TestErrorQuery(t *testing.T) {
 		t.Parallel()
 	}
 	defer recoverTest(t)
-	res, err := db.Normal().Query(&rdb.Command{
+	res, err := db.Normal().Query(context.Background(), &rdb.Command{
 		Sql: `
 			s3l3c1 @animal as 'MyAnimal';`,
 		Arity:         rdb.OneMust,
@@ -45,7 +46,7 @@ func TestSimpleQuery(t *testing.T) {
 	}
 	defer recoverTest(t)
 	var myFav string
-	db.Query(&rdb.Command{
+	db.Query(context.Background(), &rdb.Command{
 		Sql: `
 			select @animal as 'MyAnimal';
 		`,
@@ -71,7 +72,7 @@ func TestRowsQuerySimple(t *testing.T) {
 	defer assertFreeConns(t)
 	defer recoverTest(t)
 	var myFav string
-	res := db.Query(&rdb.Command{
+	res := db.Query(context.Background(), &rdb.Command{
 		Sql: `
 			select @animal as 'MyAnimal'
 			union all
@@ -126,7 +127,7 @@ func TestRowsQueryNull(t *testing.T) {
 			select NULL
 		;`,
 	}
-	res := db.Query(cmd)
+	res := db.Query(context.Background(), cmd)
 	defer res.Close()
 	i := 0
 	norm := res.Normal()
@@ -163,7 +164,7 @@ func TestLargerQuery(t *testing.T) {
 	var id int
 	var val float64
 
-	res := db.Query(cmd, []rdb.Param{
+	res := db.Query(context.Background(), cmd, []rdb.Param{
 		{
 			Name:  "animal",
 			Type:  rdb.Text,

@@ -108,21 +108,14 @@ func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Dur
 	ctx, cancel := context.WithTimeout(context.TODO(), prefillTimeout)
 	defer cancel()
 	if prefillParallelism != 0 {
-		sem := sync2.NewSemaphore(prefillParallelism, 0 /* timeout */)
+		sem := sync2.NewSemaphore(prefillParallelism)
 		var wg sync.WaitGroup
 		for i := 0; i < capacity; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				_ = sem.Acquire()
+				_ = sem.Acquire(ctx)
 				defer sem.Release()
-
-				// If context has expired, give up.
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
 
 				r, err := rp.Get(ctx)
 				if err != nil {

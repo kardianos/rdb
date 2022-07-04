@@ -16,7 +16,7 @@ var ErrTimeout = pools.ErrTimeout
 
 // Queryer allows passing either a ConnPool or a Transaction.
 type Queryer interface {
-	Query(cmd *Command, params ...Param) (*Result, error)
+	Query(ctx context.Context, cmd *Command, params ...Param) (*Result, error)
 }
 
 // Represents a connection or connection configuration to a database.
@@ -24,8 +24,6 @@ type ConnPool struct {
 	dr   Driver
 	conf *Config
 	pool *pools.ResourcePool
-
-	OnAutoClose func(sql string)
 }
 
 func Open(config *Config) (*ConnPool, error) {
@@ -73,9 +71,9 @@ func (cp *ConnPool) Close() {
 
 // Will attempt to connect to the database and disconnect.
 // Must not impact any existing connections.
-func (cp *ConnPool) Ping() error {
+func (cp *ConnPool) Ping(ctx context.Context) error {
 	cmd := cp.dr.PingCommand()
-	res, err := cp.Query(cmd)
+	res, err := cp.Query(ctx, cmd)
 	if err != nil {
 		return err
 	}
@@ -83,10 +81,10 @@ func (cp *ConnPool) Ping() error {
 }
 
 // Returns the information specific to the connection.
-func (cp *ConnPool) ConnectionInfo() (*ConnectionInfo, error) {
+func (cp *ConnPool) ConnectionInfo(ctx context.Context) (*ConnectionInfo, error) {
 	cmd := cp.dr.PingCommand()
 	ci := &ConnectionInfo{}
-	res, err := cp.query(false, nil, cmd, &ci)
+	res, err := cp.query(ctx, false, nil, cmd, &ci)
 	if err != nil {
 		return nil, err
 	}
@@ -182,12 +180,12 @@ func (cp *ConnPool) getConn(again bool) (DriverConn, error) {
 // If values are not specified in the Command.Input[...].V, then they
 // may be specified in the Value. Order may be used to match the
 // existing parameters if the Value.N name is omitted.
-func (cp *ConnPool) Query(cmd *Command, params ...Param) (*Result, error) {
-	return cp.query(false, nil, cmd, nil, params...)
+func (cp *ConnPool) Query(ctx context.Context, cmd *Command, params ...Param) (*Result, error) {
+	return cp.query(ctx, false, nil, cmd, nil, params...)
 }
 
 // keepOnClose used to not recycle the DB connection after a query result is done. Used for transactions and connections.
-func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **ConnectionInfo, params ...Param) (res *Result, err error) {
+func (cp *ConnPool) query(ctx context.Context, keepOnClose bool, conn DriverConn, cmd *Command, ci **ConnectionInfo, params ...Param) (res *Result, err error) {
 	if cmd.Converter != nil {
 		for i := range params {
 			err = cmd.Converter.ConvertParam(&params[i])
@@ -203,8 +201,6 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 			return nil, fmt.Errorf("getConn: %w", err)
 		}
 	}
-
-	ctx := cmd.Context
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -220,52 +216,15 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 		closing: make(chan struct{}, 3),
 	}
 
-	timeout := cmd.QueryTimeout
-	if timeout == 0 {
-		timeout = cp.conf.QueryTimeout
-	}
-	// Suspect this is causing an issue with connection state.
-	if timeout != 0 || ctx != context.Background() {
-		// Give the driver time to stop it if possible.
-		timeout = timeout + (time.Second * 1)
+	defer func() {
+		if rval := recover(); rval != nil {
+			buf := make([]byte, 8000)
+			buf = buf[:runtime.Stack(buf, false)]
 
-		done := make(chan struct{})
-		tm := time.NewTimer(timeout)
-		go func() {
-			defer func() {
-				if rval := recover(); rval != nil {
-					buf := make([]byte, 8000)
-					buf = buf[:runtime.Stack(buf, false)]
-
-					err = fmt.Errorf("Panic in database driver: %v\n%s", rval, string(buf))
-				}
-			}()
-			err = conn.Query(cmd, params, nil, &res.val)
-			tm.Stop()
-			close(done)
-		}()
-		select {
-		case <-ctx.Done():
-			conn.Close()
-			cp.releaseConn(conn, true)
-			return nil, fmt.Errorf("Query canceled: %w", ctx.Err())
-		case <-tm.C:
-			conn.Close()
-			cp.releaseConn(conn, true)
-			return nil, fmt.Errorf("Query timed out after %v.", timeout)
-		case <-done:
+			err = fmt.Errorf("Panic in database driver: %v\n%s", rval, string(buf))
 		}
-	} else {
-		defer func() {
-			if rval := recover(); rval != nil {
-				buf := make([]byte, 8000)
-				buf = buf[:runtime.Stack(buf, false)]
-
-				err = fmt.Errorf("Panic in database driver: %v\n%s", rval, string(buf))
-			}
-		}()
-		err = conn.Query(cmd, params, nil, &res.val)
-	}
+	}()
+	err = conn.Query(ctx, cmd, params, nil, &res.val)
 	if ci != nil {
 		*ci = conn.ConnectionInfo()
 	}
@@ -291,9 +250,6 @@ func (cp *ConnPool) query(keepOnClose bool, conn DriverConn, cmd *Command, ci **
 		res.closed = true
 	}
 
-	if cmd.AutoClose > 0 {
-		res.autoClose(cmd.AutoClose)
-	}
 	return res, err
 }
 

@@ -5,6 +5,7 @@
 package ms
 
 import (
+	"context"
 	"testing"
 
 	"github.com/kardianos/rdb"
@@ -22,7 +23,7 @@ func TestReset(t *testing.T) {
 
 	cmd := &rdb.Command{Sql: `select 16384 & @@OPTIONS;`}
 	for i := range [100]struct{}{} {
-		res := db.Query(cmd)
+		res := db.Query(context.Background(), cmd)
 		v := 0
 		res.Scan(&v)
 		res.Close()

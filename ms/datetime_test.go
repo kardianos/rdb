@@ -5,6 +5,7 @@
 package ms
 
 import (
+	"context"
 	"reflect"
 	"testing"
 	"time"
@@ -89,7 +90,8 @@ func TestDateTimeRoundTrip(t *testing.T) {
 		})
 	}
 
-	res := db.Query(cmd, params...)
+	ctx := context.Background()
+	res := db.Query(ctx, cmd, params...)
 	defer res.Close()
 
 	if res.Next() == false {
@@ -163,7 +165,7 @@ from
 		`,
 		Arity: rdb.OneMust,
 	}
-	res := db.Query(cmd)
+	res := db.Query(context.Background(), cmd)
 	defer res.Close()
 
 	res.Prep("dStatic", &dStaticOut)
@@ -190,7 +192,7 @@ func TestDateTZ(t *testing.T) {
 		Sql:   `select DS = convert(nvarchar(100), @d, 101);`,
 		Arity: rdb.OneMust,
 	}
-	res := db.Query(cmd, rdb.Param{Name: "d", Type: rdb.TypeDate, Value: datecheck})
+	res := db.Query(context.Background(), cmd, rdb.Param{Name: "d", Type: rdb.TypeDate, Value: datecheck})
 	defer res.Close()
 
 	var dOut string

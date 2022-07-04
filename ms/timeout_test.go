@@ -5,6 +5,7 @@
 package ms
 
 import (
+	"context"
 	"encoding/hex"
 	"strings"
 	"sync"
@@ -24,21 +25,29 @@ func TestTimeoutDie(t *testing.T) {
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
-	res, err := db.Normal().Query(&rdb.Command{
+	start := time.Now()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	res, err := db.Normal().Query(ctx, &rdb.Command{
 		Sql: `
-			waitfor delay '00:00:02';
-			select 1 as 'ID';
-		`,
-		Arity:        rdb.Any,
-		QueryTimeout: time.Second * 1,
+-- TestTimeoutDie
+waitfor delay '00:00:02';
+select 1 as 'ID';
+`,
+		Arity: rdb.Any,
 	})
 	defer assertFreeConns(t)
 	defer res.Close()
 
+	dur := time.Now().Sub(start)
+	t.Log("duration", dur)
+	t.Log("error", err)
+
 	if err == nil {
 		t.Errorf("Failed to timeout: %v", err)
 	}
-
 }
 
 func TestTimeoutLive(t *testing.T) {
@@ -51,13 +60,16 @@ func TestTimeoutLive(t *testing.T) {
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
-	res, err := db.Normal().Query(&rdb.Command{
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	res, err := db.Normal().Query(ctx, &rdb.Command{
 		Sql: `
-			waitfor delay '00:00:01';
-			select 1 as 'ID';
-		`,
-		Arity:        rdb.Any,
-		QueryTimeout: time.Second * 2,
+-- TestTimeoutLive
+waitfor delay '00:00:01';
+select 1 as 'ID';
+`,
+		Arity: rdb.Any,
 	})
 
 	defer assertFreeConns(t)
@@ -78,7 +90,7 @@ func TestError(t *testing.T) {
 	// Packet size divided by 2 (utf-16) minus packet header.
 	var longText = strings.Repeat("Hello everyone in the world.\n", 100)[:4096/2-10] // -21
 
-	res1, err := db.Normal().Query(&rdb.Command{
+	res1, err := db.Normal().Query(context.Background(), &rdb.Command{
 		Sql: `
 			select top 0 ID = 0;
 		`,
@@ -91,7 +103,7 @@ func TestError(t *testing.T) {
 		t.Fatalf("Error with query: %v", err)
 	}
 
-	_, err = db.Normal().Query(&rdb.Command{
+	_, err = db.Normal().Query(context.Background(), &rdb.Command{
 		Sql: `
 			fooBad top 0 ID = 0;
 		`,
@@ -104,7 +116,7 @@ func TestError(t *testing.T) {
 		t.Fatalf("Expected error (res2).")
 	}
 
-	res3, err := db.Normal().Query(&rdb.Command{
+	res3, err := db.Normal().Query(context.Background(), &rdb.Command{
 		Sql: `
 			select top 1 TX = @Text;
 		`,
@@ -141,7 +153,7 @@ func TestMismatchTypeError(t *testing.T) {
 	defer recoverTest(t)
 
 	timeout(t, time.Second*2, func() {
-		res1, err := db.Normal().Query(&rdb.Command{
+		res1, err := db.Normal().Query(context.Background(), &rdb.Command{
 			Sql: `
 			select MyString = @MyString;
 		`,
@@ -172,15 +184,6 @@ func timeout(t *testing.T, d time.Duration, f func()) {
 }
 
 func TestConnectionPoolExhaustion(t *testing.T) {
-	connPoolTestLoop(t, true)
-}
-
-func TestConnectionPoolRecoverNoClose(t *testing.T) {
-	t.Skip("no longer use AutoClose")
-	connPoolTestLoop(t, false)
-}
-
-func connPoolTestLoop(t *testing.T, closeConn bool) {
 	if testing.Short() {
 		t.Skip()
 	}
@@ -195,20 +198,18 @@ func connPoolTestLoop(t *testing.T, closeConn bool) {
 		go func() {
 			defer wait.Done()
 
-			res, err := db.Normal().Query(&rdb.Command{
+			res, err := db.Normal().Query(context.Background(), &rdb.Command{
 				Sql: `
-			waitfor delay '00:00:01';
-			select ID = 1;
-		`,
-				Arity:     rdb.Any,
-				AutoClose: 1,
+-- TestConnectionPoolExhaustion
+waitfor delay '00:00:01';
+select ID = 1;
+`,
+				Arity: rdb.Any,
 			})
 			if err != nil {
 				t.Errorf("Failed to wait for next connection: %v", err)
 			}
-			if closeConn {
-				res.Close()
-			}
+			res.Close()
 		}()
 	}
 	wc := make(chan struct{}, 3)
@@ -234,7 +235,7 @@ func TestThrowError(t *testing.T) {
 	// Handle multiple result sets.
 	defer recoverTest(t)
 
-	res, err := db.Normal().Query(&rdb.Command{
+	res, err := db.Normal().Query(context.Background(), &rdb.Command{
 		Sql:   `RAISERROR(N'throw an error', 16, 1);`,
 		Arity: rdb.Any,
 	})

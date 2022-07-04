@@ -39,44 +39,6 @@ func (r *Result) updateHit() {
 	r.m.Unlock()
 }
 
-func (r *Result) autoClose(after time.Duration) {
-	if r == nil {
-		return
-	}
-	r.m.RLock()
-	if r.closed {
-		r.m.RUnlock()
-		return
-	}
-	r.m.RUnlock()
-
-	r.lastHit = time.Now()
-	go func() {
-		<-time.After(after)
-		tick := time.NewTicker(time.Millisecond * 100)
-		defer tick.Stop()
-		for {
-			select {
-			case now := <-tick.C:
-				r.m.RLock()
-				if now.Sub(r.lastHit) > after {
-					// Place notification in RLock and before r.Close
-					// to prevent r.cp from getting altered.
-					if r.cp != nil && r.cp.OnAutoClose != nil {
-						go r.cp.OnAutoClose(r.val.cmd.Sql)
-					}
-					r.m.RUnlock()
-					r.Close()
-					return
-				}
-				r.m.RUnlock()
-			case <-r.closing:
-				return
-			}
-		}
-	}()
-}
-
 func (r *Result) RowsAffected() uint64 {
 	return r.val.rowsAffected
 }

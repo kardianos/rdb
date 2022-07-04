@@ -7,6 +7,8 @@
 package must
 
 import (
+	"context"
+
 	"github.com/kardianos/rdb"
 )
 
@@ -85,15 +87,15 @@ func (must ConnPool) Close() {
 	must.norm.Close()
 }
 
-func (must ConnPool) Ping() {
-	err := must.norm.Ping()
+func (must ConnPool) Ping(ctx context.Context) {
+	err := must.norm.Ping(ctx)
 	if err != nil {
 		panic(Error{Err: err})
 	}
 }
 
-func (must ConnPool) ConnectionInfo() *rdb.ConnectionInfo {
-	ci, err := must.norm.ConnectionInfo()
+func (must ConnPool) ConnectionInfo(ctx context.Context) *rdb.ConnectionInfo {
+	ci, err := must.norm.ConnectionInfo(ctx)
 	if err != nil {
 		panic(Error{Err: err})
 	}
@@ -103,8 +105,8 @@ func (must ConnPool) ConnectionInfo() *rdb.ConnectionInfo {
 // Input parameter values can either be specified in the paremeter definition
 // or on each query. If the value is not put in the parameter definition
 // then the command instance may be reused for every query.
-func (must ConnPool) Query(cmd *rdb.Command, params ...rdb.Param) Result {
-	res, err := must.norm.Query(cmd, params...)
+func (must ConnPool) Query(ctx context.Context, cmd *rdb.Command, params ...rdb.Param) Result {
+	res, err := must.norm.Query(ctx, cmd, params...)
 	if err != nil {
 		panic(Error{Err: err})
 	}
@@ -142,8 +144,8 @@ func (must ConnPool) PoolAvailable() (capacity, available int) {
 // Input parameter values can either be specified in the paremeter definition
 // or on each query. If the value is not put in the parameter definition
 // then the command instance may be reused for every query.
-func (must Transaction) Query(cmd *rdb.Command, params ...rdb.Param) Result {
-	res, err := must.norm.Query(cmd, params...)
+func (must Transaction) Query(ctx context.Context, cmd *rdb.Command, params ...rdb.Param) Result {
+	res, err := must.norm.Query(ctx, cmd, params...)
 	if err != nil {
 		panic(Error{Err: err})
 	}

@@ -8,6 +8,7 @@ package batch
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"unicode"
@@ -17,7 +18,7 @@ import (
 
 // ExecuteBatchSql runs the batchSql on the connection pool on a single
 // connection after separating out each commend, joined with separator.
-func ExecuteBatchSql(cp *rdb.ConnPool, batchSql, separator string) error {
+func ExecuteBatchSql(ctx context.Context, cp *rdb.ConnPool, batchSql, separator string) error {
 	ss := BatchSplitSql(batchSql, separator)
 	cmd := &rdb.Command{
 		Arity: rdb.Zero,
@@ -32,7 +33,7 @@ func ExecuteBatchSql(cp *rdb.ConnPool, batchSql, separator string) error {
 	for i := range ss {
 		cmd.Sql = ss[i]
 
-		_, err = conn.Query(cmd)
+		_, err = conn.Query(ctx, cmd)
 		if err != nil {
 			if errList, is := err.(rdb.Errors); is {
 				return SqlErrorWithContext(cmd.Sql, errList, 2)

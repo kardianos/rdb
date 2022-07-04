@@ -6,8 +6,6 @@ package rdb
 
 import (
 	"time"
-
-	"context"
 )
 
 // If the N (Name) field is not specified is not specified, then the order
@@ -114,8 +112,6 @@ const (
 // queries at the same time.
 // The Command MUST be reused if the Prepare field is true.
 type Command struct {
-	Context context.Context
-
 	// The SQL to be used in the command.
 	Sql string
 
@@ -154,11 +150,6 @@ type Command struct {
 	// This is ignored if zero. If this is zero, the connection configuration
 	// QueryTimeout field will be used if non-zero.
 	QueryTimeout time.Duration
-
-	// The duraction before the query is automatically closed. If negative,
-	// autoclose is disabled. If zero, the default is used. If positive that
-	// value is used.
-	AutoClose time.Duration
 
 	// Return strings as strings or bytes.
 	StringMethod StringMethod

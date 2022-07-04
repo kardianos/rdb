@@ -1,6 +1,7 @@
 package ms
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -43,7 +44,7 @@ func TestShortText(t *testing.T) {
 		Arity: rdb.OneMust,
 	}
 
-	res := db.Query(cmd)
+	res := db.Query(context.Background(), cmd)
 	defer res.Close()
 
 	res.Scan()
@@ -90,7 +91,7 @@ func TestLongText(t *testing.T) {
 		Arity: rdb.OneMust,
 	}
 
-	res := db.Query(cmd)
+	res := db.Query(context.Background(), cmd)
 	defer res.Close()
 
 	res.Scan()
