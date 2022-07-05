@@ -5,7 +5,6 @@
 package ms
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -86,5 +85,3 @@ type MsgOrder []uint16
 type recoverError struct {
 	err error
 }
-
-var ErrCancel = errors.New("Query Cancel")

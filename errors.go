@@ -84,3 +84,5 @@ func (dr DriverNotFound) Error() string {
 }
 
 var ArityError = errors.New("Result row count does not match desired arity.")
+
+var ErrCancel = errors.New("Query Cancelled")

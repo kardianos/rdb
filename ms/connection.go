@@ -710,7 +710,7 @@ func (tds *Connection) scan() error {
 			if err != nil {
 				return err
 			}
-			return ErrCancel
+			return rdb.ErrCancel
 		}
 		if tds.col == nil {
 			continue
