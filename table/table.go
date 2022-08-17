@@ -41,6 +41,24 @@ func (row Row) GetN(name string) rdb.Nullable {
 	}
 	return row.Field[index]
 }
+func (row Row) Set(name string, v interface{}) {
+	index, found := row.buffer.nameIndexLookup[name]
+	if !found {
+		panic(rdb.ErrorColumnNotFound{At: "Set", Name: name})
+	}
+	n := rdb.Nullable{Value: v}
+	if v == nil {
+		n.Null = true
+	}
+	row.Field[index] = n
+}
+func (row Row) SetN(name string, v rdb.Nullable) {
+	index, found := row.buffer.nameIndexLookup[name]
+	if !found {
+		panic(rdb.ErrorColumnNotFound{At: "SetN", Name: name})
+	}
+	row.Field[index] = v
+}
 func (row Row) HasColumn(name string) bool {
 	_, found := row.buffer.nameIndexLookup[name]
 	return found
