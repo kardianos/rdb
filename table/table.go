@@ -99,14 +99,14 @@ func FillSet(res *rdb.Result) ([]*Buffer, error) {
 
 		err := tb.SetSchema(res.Schema())
 		if err != nil {
-			return nil, err
+			return set, err
 		}
 		hasRow := false
 		for res.Next() {
 			hasRow = true
 			err = res.Scan()
 			if err != nil {
-				return nil, err
+				return set, err
 			}
 			tb.Row = append(tb.Row, Row{
 				buffer: tb,
@@ -119,7 +119,7 @@ func FillSet(res *rdb.Result) ([]*Buffer, error) {
 
 		nextRes, err := res.NextResult()
 		if err != nil {
-			return nil, err
+			return set, err
 		}
 		if !nextRes {
 			break
