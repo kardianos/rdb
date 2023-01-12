@@ -55,6 +55,17 @@ const (
 	SqlInfo
 )
 
+func (mt MessageType) String() string {
+	switch mt {
+	default:
+		return "?"
+	case SqlError:
+		return "ERROR"
+	case SqlInfo:
+		return "INFO"
+	}
+}
+
 // SQL errors reported by the server.
 // Must always be wrapped by SqlErrors.
 // This is why it doesn't satisfy the error interface.
