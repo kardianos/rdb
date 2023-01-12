@@ -4,10 +4,6 @@
 
 package rdb
 
-import (
-	"time"
-)
-
 // If the N (Name) field is not specified is not specified, then the order
 // of the parameter should be used if the driver supports it.
 type Param struct {
@@ -146,11 +142,9 @@ type Command struct {
 	// Optional name of the command. May be used if logging.
 	Name string
 
-	// QueryTimeout is the timeout for a query this command is executed in.
-	// This is ignored if zero. If this is zero, the connection configuration
-	// QueryTimeout field will be used if non-zero.
-	QueryTimeout time.Duration
-
 	// Return strings as strings or bytes.
 	StringMethod StringMethod
+
+	// Log messages, both info and error messages.
+	Log func(msg *Message)
 }

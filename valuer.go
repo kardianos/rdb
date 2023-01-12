@@ -98,6 +98,9 @@ func (v *valuer) Columns(cc []*Column) error {
 	return nil
 }
 func (v *valuer) Message(msg *Message) {
+	if l := v.cmd.Log; l != nil {
+		l(msg)
+	}
 	switch msg.Type {
 	case SqlInfo:
 		v.infoList = append(v.infoList, msg)
@@ -130,17 +133,20 @@ func (v *valuer) RowsAffected(count uint64) {
 	if (value is null) && (has default value) {
 		set value to default value
 	}
+
 	if no prepped value {
 		if chunked {
 			append to any existing value.
 		}
 	}
+
 	if prepped value {
 		if prepped value is Nullable
 	}
-	If there is a default value for the field, use the default value.
-	If there is no prepped value, put it in a buffer.
-	If using a buffer, append any value
+
+If there is a default value for the field, use the default value.
+If there is no prepped value, put it in a buffer.
+If using a buffer, append any value
 */
 func (v *valuer) WriteField(c *Column, value *DriverValue, assign Assigner) error {
 	// TODO: Respect value.MustCopy.
