@@ -64,7 +64,7 @@ func (b *buffer) Next(needed int) ([]byte, error) {
 	}
 	out := b.backer[b.tail:min(b.tail+needed, b.head)]
 	if len(out) != needed {
-		panic(fmt.Errorf("requested %d, but received %d bytes", needed, len(out)))
+		return out, fmt.Errorf("requested %d, but received %d bytes", needed, len(out))
 	}
 	return out, err
 }
