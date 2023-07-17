@@ -78,6 +78,9 @@ type Buffer struct {
 }
 
 func (b *Buffer) Len() int {
+	if b == nil {
+		return 0
+	}
 	return len(b.Row)
 }
 func Fill(ctx context.Context, res *rdb.Result) (*Buffer, error) {
