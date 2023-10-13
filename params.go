@@ -125,13 +125,6 @@ type Command struct {
 	// If this is set to false text truncation will result in an error.
 	TruncLongText bool
 
-	// If true the connection will attempt to lookup any cached prepared
-	// identifier. If the cached identifier is not found or if it is found
-	// to be invalid, it is renewed.
-	// When the connection or connection pool is closed any prepared statements
-	// are un-prepared.
-	Prepare bool
-
 	// Set the isolation level for the query or transaction.
 	IsoLevel IsolationLevel
 

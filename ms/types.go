@@ -94,6 +94,7 @@ const (
 	typeDateTime2N      driverType = 0x2A
 	typeDateTimeOffsetN driverType = 0x2B
 	typeCharOld         driverType = 0x2F
+	typeNCharOld        driverType = 0xEF
 	typeVarCharOld      driverType = 0x27
 	typeBinaryOld       driverType = 0x2D
 	typeVarBinaryOld    driverType = 0x25
@@ -119,16 +120,17 @@ const (
 )
 
 type typeInfo struct {
-	Name   string // Friendly name.
-	Fixed  bool   // Fixed lengthed type, no need to read field size.
-	Max    bool   // Can this type do "type(max)"?
-	IsText bool   // Is the content text (should it have a collation)?
-	Len    byte   // Length of type of length of length field, in bytes.
-	NChar  bool   // Does the server expect utf16 encoded text?
-	Bytes  bool   // Can the type be treated as a stream of bytes?
-	IsPrSc bool   // Use scale and prec?
-	Table  bool   // Send table name after type info.
-	Dt     byte   // Date Time Flags.
+	Name      string // Friendly name.
+	Fixed     bool   // Fixed lengthed type, no need to read field size.
+	Max       bool   // Can this type do "type(max)"?
+	IsText    bool   // Is the content text (should it have a collation)?
+	NChar     bool   // Does the server expect utf16 encoded text?
+	Bytes     bool   // Can the type be treated as a stream of bytes?
+	IsPrSc    bool   // Use scale and prec?
+	Table     bool   // Send table name after type info.
+	Collation bool   // 5 byte CollationPrefix.
+	Len       byte   // Length of type of length of length field, in bytes.
+	Dt        byte   // Date Time Flags.
 
 	MinVer *semver.Version // Minimum protocol version for type.
 
@@ -156,7 +158,7 @@ var typeInfoLookup = map[driverType]typeInfo{
 	typeDateTimeSmall: {Name: "DateTimeSmall", Fixed: true, Len: 4, Specific: rdb.TypeTimestamp, Generic: rdb.Integer},
 	typeFloat32:       {Name: "Float32", Fixed: true, Len: 4, Specific: rdb.TypeFloat32, Generic: rdb.Float},
 	typeMoney:         {Name: "Money", Fixed: true, Len: 8, Specific: rdb.TypeDecimal, Generic: rdb.Decimal},
-	typeDateTime:      {Name: "DateTime", Fixed: true, Len: 4, Specific: rdb.TypeTimestamp, Generic: rdb.Time},
+	typeDateTime:      {Name: "DateTime", Fixed: true, Len: 8, Specific: rdb.TypeTimestamp, Generic: rdb.Time},
 	typeFloat64:       {Name: "Float64", Fixed: true, Len: 8, Specific: rdb.TypeFloat64, Generic: rdb.Float},
 	typeMoneySmall:    {Name: "MoneySmall", Fixed: true, Len: 4, Specific: rdb.TypeDecimal, Generic: rdb.Decimal},
 	typeInt64:         {Name: "Int64", Fixed: true, Len: 8, Specific: rdb.TypeInt64, Generic: rdb.Integer},
@@ -190,12 +192,14 @@ var typeInfoLookup = map[driverType]typeInfo{
 	typeVarCharOld:   {Name: "VarCharOld", Len: 1, Specific: rdb.TypeAnsiVarChar, Generic: rdb.Text},
 	typeBinaryOld:    {Name: "BinaryOld", Len: 1, Specific: rdb.TypeBinary, Generic: rdb.Binary},
 	typeVarBinaryOld: {Name: "VarBinaryOld", Len: 1, Specific: rdb.TypeBinary, Generic: rdb.Binary},
+	// typeNCharOld:     {Name: "NCharOld", Len: 2, Specific: rdb.TypeChar, Generic: rdb.Text},
 
 	typeVarBinary: {Name: "VarBinary(Big)", Bytes: true, Max: true, Len: 2, Specific: rdb.TypeBinary, Generic: rdb.Binary},
 	typeVarChar:   {Name: "VarChar(Big)", Bytes: true, IsText: true, Max: true, Len: 2, Specific: rdb.TypeAnsiVarChar, Generic: rdb.Text},
 	typeBinary:    {Name: "Binary(Big)", Bytes: true, Max: true, Len: 2, Specific: rdb.TypeBinary, Generic: rdb.Binary},
 	typeChar:      {Name: "Char(Big)", Bytes: true, IsText: true, Len: 2, Specific: rdb.TypeAnsiChar, Generic: rdb.Text},
 	typeNVarChar:  {Name: "NVarChar", Bytes: true, NChar: true, IsText: true, Max: true, Len: 2, Specific: rdb.TypeVarChar, Generic: rdb.Text},
+	typeNCharOld:  {Name: "NVarCharOld", Bytes: true, NChar: true, IsText: true, Max: true, Len: 2, Specific: rdb.TypeVarChar, Generic: rdb.Text},
 	typeNChar:     {Name: "NChar", Bytes: true, NChar: true, IsText: true, Len: 2, Specific: rdb.TypeChar, Generic: rdb.Text},
 	typeText:      {Name: "Text", Bytes: true, IsText: true, Table: true, Len: 4, Specific: rdb.TypeAnsiText, Generic: rdb.Text},
 	typeImage:     {Name: "Image", Bytes: true, Table: true, Len: 4, Specific: rdb.TypeBinary, Generic: rdb.Binary},
