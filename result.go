@@ -218,7 +218,7 @@ func (r *Result) Scan(values ...interface{}) error {
 			}
 		}
 		if err == nil && r.val.cmd.Arity&ArityMust != 0 && r.val.rowCount > 1 {
-			err = ArityError
+			err = ErrArity
 		}
 	}
 

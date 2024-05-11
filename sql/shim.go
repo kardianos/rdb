@@ -146,7 +146,7 @@ func (db *DB) QueryRow(query string, args ...interface{}) *Row {
 	res, err := db.pool.Query(ctx, cmd, params...)
 	row := &Row{res: res}
 	if err != nil {
-		if err == rdb.ArityError {
+		if err == rdb.ErrArity {
 			err = ErrNoRows
 		}
 		row.err = err
@@ -398,7 +398,7 @@ func (s *Stmt) QueryRow(args ...interface{}) *Row {
 	res, err := s.q.Query(ctx, s.cmd, prepParams(args)...)
 	row := &Row{res: res}
 	if err != nil {
-		if err == rdb.ArityError {
+		if err == rdb.ErrArity {
 			err = ErrNoRows
 		}
 		row.err = err
@@ -462,7 +462,7 @@ func (tx *Tx) QueryRow(query string, args ...interface{}) *Row {
 	res, err := tx.tran.Query(ctx, cmd, params...)
 	row := &Row{res: res}
 	if err != nil {
-		if err == rdb.ArityError {
+		if err == rdb.ErrArity {
 			err = ErrNoRows
 		}
 		row.err = err

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a zlib-style
 // license that can be found in the LICENSE file.
 
-// table give a logical in-memory buffer row a database table.
+// Package table give a logical in-memory buffer row a database table.
 /*
 
  */
@@ -15,11 +15,13 @@ import (
 	"github.com/kardianos/rdb"
 )
 
+// Row represents a single buffer row of a table.
 type Row struct {
 	buffer *Buffer
 	Field  []rdb.Nullable
 }
 
+// Index returns the index of column name.
 func (row Row) Index(name string) int {
 	index, found := row.buffer.nameIndexLookup[name]
 	if !found {
@@ -27,6 +29,8 @@ func (row Row) Index(name string) int {
 	}
 	return index
 }
+
+// Get returns the column name as a value, nil if null. Panics if name is not a valid column.
 func (row Row) Get(name string) interface{} {
 	index, found := row.buffer.nameIndexLookup[name]
 	if !found {
@@ -34,6 +38,8 @@ func (row Row) Get(name string) interface{} {
 	}
 	return row.Field[index].Value
 }
+
+// GetN returns a Nullable under the column name. If name does not exist, panics.
 func (row Row) GetN(name string) rdb.Nullable {
 	index, found := row.buffer.nameIndexLookup[name]
 	if !found {
@@ -41,6 +47,8 @@ func (row Row) GetN(name string) rdb.Nullable {
 	}
 	return row.Field[index]
 }
+
+// Set the value v on the row in column name. If name does not exist, panics.
 func (row Row) Set(name string, v interface{}) {
 	index, found := row.buffer.nameIndexLookup[name]
 	if !found {
@@ -52,6 +60,8 @@ func (row Row) Set(name string, v interface{}) {
 	}
 	row.Field[index] = n
 }
+
+// SetN sets the nullable value on column name. If name does not exist, panics.
 func (row Row) SetN(name string, v rdb.Nullable) {
 	index, found := row.buffer.nameIndexLookup[name]
 	if !found {
@@ -59,14 +69,18 @@ func (row Row) SetN(name string, v rdb.Nullable) {
 	}
 	row.Field[index] = v
 }
+
+// HasColumn returns true if the row contains the column name.
 func (row Row) HasColumn(name string) bool {
 	_, found := row.buffer.nameIndexLookup[name]
 	return found
 }
 
+// Buffer represents a table buffer that holds one or more query.
 type Buffer struct {
+	// Name of the table in the buffer. May be manually set for further encoding.
 	Name            string
-	Row             []Row
+	Row             []Row // Row data.
 	schema          []*rdb.Column
 	nameIndexLookup map[string]int
 
@@ -77,12 +91,15 @@ type Buffer struct {
 	Set []*Buffer
 }
 
+// Len is the number of rows in the table buffer.
 func (b *Buffer) Len() int {
 	if b == nil {
 		return 0
 	}
 	return len(b.Row)
 }
+
+// Fill the query result and return the buffer.
 func Fill(ctx context.Context, res *rdb.Result) (*Buffer, error) {
 	set, err := FillSet(res)
 	if err != nil {
@@ -94,6 +111,7 @@ func Fill(ctx context.Context, res *rdb.Result) (*Buffer, error) {
 	return set[0], nil
 }
 
+// FillSet populates a query result and returns a table set.
 func FillSet(res *rdb.Result) ([]*Buffer, error) {
 	defer res.Close()
 	set := make([]*Buffer, 0, 1)
@@ -133,6 +151,8 @@ func FillSet(res *rdb.Result) ([]*Buffer, error) {
 	}
 	return set, nil
 }
+
+// FillCommand runs a query, fills the result, and closes the query result.
 func FillCommand(ctx context.Context, q rdb.Queryer, cmd *rdb.Command, params ...rdb.Param) (*Buffer, error) {
 	res, err := q.Query(ctx, cmd, params...)
 	if err != nil {
@@ -142,8 +162,9 @@ func FillCommand(ctx context.Context, q rdb.Queryer, cmd *rdb.Command, params ..
 	return Fill(ctx, res)
 }
 
-var errSetSchema = errors.New("Can only set the schema when no rows exist.")
+var errSetSchema = errors.New("can only set the schema when no rows exist")
 
+// SetSchema sets the table buffer schema manually.
 func (b *Buffer) SetSchema(schema []*rdb.Column) error {
 	if len(b.Row) != 0 {
 		return errSetSchema
@@ -156,6 +177,7 @@ func (b *Buffer) SetSchema(schema []*rdb.Column) error {
 	return nil
 }
 
+// Schema returns the table column schema
 func (b *Buffer) Schema() []*rdb.Column {
 	return b.schema
 }
@@ -170,6 +192,7 @@ func (b *Buffer) ColumnIndex(name string) int {
 	return index
 }
 
+// AddRow adds a slice of values.
 func (b *Buffer) AddRow(v ...interface{}) *Row {
 	b.Row = append(b.Row, Row{buffer: b, Field: make([]rdb.Nullable, len(b.schema))})
 	r := &b.Row[len(b.Row)-1]
@@ -184,6 +207,7 @@ func (b *Buffer) AddRow(v ...interface{}) *Row {
 	return r
 }
 
+// AddBufferRow adds a new row to the buffer manually.
 func (b *Buffer) AddBufferRow(row Row) {
 	row.buffer = b
 	b.Row = append(b.Row, row)

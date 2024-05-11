@@ -12,13 +12,13 @@ import (
 
 func TestBatchSplit(t *testing.T) {
 	type testItem struct {
-		Sql    string
+		SQL    string
 		Expect []string
 	}
 
 	list := []testItem{
 		{
-			Sql: `use DB
+			SQL: `use DB
 go
 select 1
 go
@@ -33,7 +33,7 @@ select 2
 			},
 		},
 		{
-			Sql: `go
+			SQL: `go
 use DB go
 `,
 			Expect: []string{`
@@ -42,7 +42,7 @@ use DB go
 			},
 		},
 		{
-			Sql: `select 'It''s go time'
+			SQL: `select 'It''s go time'
 go
 select top 1 1`,
 			Expect: []string{`select 'It''s go time'
@@ -51,7 +51,7 @@ select top 1 1`,
 			},
 		},
 		{
-			Sql: `select 1 /* go */
+			SQL: `select 1 /* go */
 go
 select top 1 1`,
 			Expect: []string{`select 1 /* go */
@@ -60,7 +60,7 @@ select top 1 1`,
 			},
 		},
 		{
-			Sql: `select 1 -- go
+			SQL: `select 1 -- go
 go
 select top 1 1`,
 			Expect: []string{`select 1 -- go
@@ -69,7 +69,7 @@ select top 1 1`,
 			},
 		},
 		{
-			Sql: `select 1;
+			SQL: `select 1;
 go
 select 2;
 Go
@@ -87,7 +87,7 @@ select 5;`,
 			},
 		},
 		{
-			Sql: `
+			SQL: `
 create table X (
 	Google bigint
 );
@@ -104,7 +104,7 @@ create table X (
 
 	for i := range list {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			ss := BatchSplitSql(list[i].Sql, "go")
+			ss := SplitSQL(list[i].SQL, "go")
 			if len(ss) != len(list[i].Expect) {
 				t.Fatalf("Test Item index %d; expect %d items, got %d.", i, len(list[i].Expect), len(ss))
 			}

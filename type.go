@@ -92,7 +92,7 @@ const (
 	TypeEnum
 	TypeRange
 	TypeArray
-	TypeJson
-	TypeXml
+	TypeJSON
+	TypeXML
 	TypeTable
 )

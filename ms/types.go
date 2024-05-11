@@ -206,7 +206,7 @@ var typeInfoLookup = map[driverType]typeInfo{
 	typeNText:     {Name: "NText", Bytes: true, NChar: true, IsText: true, Table: true, Len: 4, Specific: rdb.TypeText, Generic: rdb.Text},
 
 	// The following will be unsupported for a time.
-	typeXml:     {Name: "Xml", Max: true, Len: 4, Specific: rdb.TypeXml, Generic: rdb.Other},
+	typeXml:     {Name: "Xml", Max: true, Len: 4, Specific: rdb.TypeXML, Generic: rdb.Other},
 	typeUDT:     {Name: "UDT", Max: true, Len: 0, Generic: rdb.Other},
 	typeVariant: {Name: "Varient", Len: 4, Generic: rdb.Other},
 }

@@ -96,14 +96,6 @@ const (
 	OneMust Arity = One | ArityMust
 )
 
-// Return strings as.
-type StringMethod byte
-
-const (
-	StringAsString StringMethod = iota
-	StringAsBytes
-)
-
 // Command represents a SQL command and can be used from many different
 // queries at the same time.
 // The Command MUST be reused if the Prepare field is true.
@@ -124,9 +116,6 @@ type Command struct {
 	// If set to true silently truncates text longer then the field.
 	// If this is set to false text truncation will result in an error.
 	TruncLongText bool
-
-	// Set the isolation level for the query or transaction.
-	IsoLevel IsolationLevel
 
 	// Converter returns conversion functions per column or parameter. If nil
 	// no conversion is performed.

@@ -331,10 +331,10 @@ func (tds *Connection) Status() rdb.DriverConnStatus {
 }
 
 func (tds *Connection) Prepare(*rdb.Command) (preparedStatementToken interface{}, err error) {
-	return nil, rdb.NotImplemented
+	return nil, rdb.ErrNotImplemented
 }
 func (tds *Connection) Unprepare(preparedStatementToken interface{}) (err error) {
-	return rdb.NotImplemented
+	return rdb.ErrNotImplemented
 }
 
 /*
@@ -378,7 +378,7 @@ func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationL
 	tds.status = rdb.StatusQuery
 	tds.syncClose.Unlock()
 
-	if tds.mr != nil && tds.mr.packetEOM == false {
+	if tds.mr != nil && !tds.mr.packetEOM {
 		panic("Connection not ready to be re-used yet for transaction.")
 	}
 
@@ -488,10 +488,10 @@ func (tds *Connection) Query(ctx context.Context, cmd *rdb.Command, params []rdb
 	if tds.mr != nil && !tds.mr.packetEOM {
 		return fmt.Errorf("connection not ready to be re-used yet for query")
 	}
-	go tds.asyncWaitCancel(ctx, cmd.SQL)
+	go tds.asyncWaitCancel(ctx, cmd.Name)
 	tds.mr = tds.pr.BeginMessage(packetTabularResult)
 
-	err := tds.execute(ctx, cmd.SQL, cmd.TruncLongText, cmd.Arity, params)
+	err := tds.execute(ctx, cmd.SQL, cmd.TruncLongText, params)
 	if err != nil {
 		return err
 	}
@@ -505,7 +505,7 @@ func (tds *Connection) Query(ctx context.Context, cmd *rdb.Command, params []rdb
 	return err
 }
 
-func (tds *Connection) asyncWaitCancel(ctx context.Context, sql string) {
+func (tds *Connection) asyncWaitCancel(ctx context.Context, sqlName string) {
 	select {
 	case <-ctx.Done():
 		// Wait until message is done.
@@ -727,7 +727,7 @@ func (tds *Connection) scan() error {
 	}
 }
 
-func (tds *Connection) execute(ctx context.Context, sql string, truncValue bool, arity rdb.Arity, params []rdb.Param) error {
+func (tds *Connection) execute(ctx context.Context, sql string, truncValue bool, params []rdb.Param) error {
 	tds.syncClose.Lock()
 
 	if tds.status == rdb.StatusDisconnected {
@@ -1036,11 +1036,11 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			case 8:
 				tds.currentTransaction = binary.LittleEndian.Uint64(buf[1:])
 			default:
-				return nil, fmt.Errorf("Unknown length: %d", buf[0])
+				return nil, fmt.Errorf("unknown length: %d", buf[0])
 			}
 		case 15:
 			// Type 15 doesn't obey the length.
-			return nil, fmt.Errorf("Un-handled env-change type: %d", tokenType)
+			return nil, fmt.Errorf("un-handled env-change type: %d", tokenType)
 		case 18:
 			if debugToken {
 				fmt.Printf("\tRESETCONNECTION\n")
@@ -1071,7 +1071,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		case 0x02:
 		// User defined function.
 		default:
-			panic(recoverError{fmt.Errorf("Unknown status value: 0x%X", status)})
+			panic(recoverError{fmt.Errorf("unknown status value: 0x%X", status)})
 		}
 
 		col := decodeColumnInfo(read)
@@ -1096,7 +1096,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 
 		return MsgParamValue{}, nil
 	default:
-		return nil, fmt.Errorf("Unknown response code: 0x%X", token)
+		return nil, fmt.Errorf("unknown response code: 0x%X", token)
 	}
 }
 

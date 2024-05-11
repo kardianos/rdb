@@ -2,7 +2,7 @@
 // Use of this source code is governed by a zlib-style
 // license that can be found in the LICENSE file.
 
-// Proides batch functions for interacting with batched sql statements
+// Package batch functions for interacting with batched sql statements
 // in the same file or string.
 package batch
 
@@ -16,10 +16,10 @@ import (
 	"github.com/kardianos/rdb"
 )
 
-// ExecuteBatchSql runs the batchSql on the connection pool on a single
+// ExecuteSQL runs the batchSql on the connection pool on a single
 // connection after separating out each commend, joined with separator.
-func ExecuteBatchSql(ctx context.Context, cp *rdb.ConnPool, batchSql, separator string) error {
-	ss := BatchSplitSql(batchSql, separator)
+func ExecuteSQL(ctx context.Context, cp *rdb.ConnPool, batchSQL, separator string) error {
+	ss := SplitSQL(batchSQL, separator)
 	cmd := &rdb.Command{
 		Arity: rdb.Zero,
 	}
@@ -36,7 +36,7 @@ func ExecuteBatchSql(ctx context.Context, cp *rdb.ConnPool, batchSql, separator 
 		_, err = conn.Query(ctx, cmd)
 		if err != nil {
 			if errList, is := err.(rdb.Errors); is {
-				return SqlErrorWithContext(cmd.SQL, errList, 2)
+				return SQLErrorWithContext(cmd.SQL, errList, 2)
 			}
 			return err
 		}
@@ -44,9 +44,9 @@ func ExecuteBatchSql(ctx context.Context, cp *rdb.ConnPool, batchSql, separator 
 	return nil
 }
 
-// SqlErrorWithContext highlights errors in the SQL script displaying
+// SQLErrorWithContext highlights errors in the SQL script displaying
 // the number lines of contextLines for each error.
-func SqlErrorWithContext(sql string, msg rdb.Errors, contextLines int) error {
+func SQLErrorWithContext(sql string, msg rdb.Errors, contextLines int) error {
 	if contextLines < 0 {
 		contextLines = 0
 	}
@@ -79,14 +79,14 @@ func SqlErrorWithContext(sql string, msg rdb.Errors, contextLines int) error {
 	return errors.New(localMsg.String())
 }
 
-// BatchSplitCmd takes a single command and uses separator to split them
+// SplitCmd takes a single command and uses separator to split them
 // into mutliple commands.
-func BatchSplitCmd(cmd *rdb.Command, separator string) []*rdb.Command {
+func SplitCmd(cmd *rdb.Command, separator string) []*rdb.Command {
 	sql := cmd.SQL
 	localCmd := *cmd
 	localCmd.SQL = ""
 
-	ss := BatchSplitSql(sql, separator)
+	ss := SplitSQL(sql, separator)
 	ret := make([]*rdb.Command, len(ss))
 	for i, item := range ss {
 		itemCmd := localCmd
@@ -97,13 +97,13 @@ func BatchSplitCmd(cmd *rdb.Command, separator string) []*rdb.Command {
 	return ret
 }
 
-// BatchSplitSql takes SQL text and splits it with separator.
-func BatchSplitSql(sql, separator string) []string {
+// SplitSQL takes SQL text and splits it with separator.
+func SplitSQL(sql, separator string) []string {
 	if len(separator) == 0 || len(sql) < len(separator) {
 		return []string{sql}
 	}
 	l := &lexer{
-		Sql: sql,
+		SQL: sql,
 		Sep: separator,
 		At:  0,
 	}
@@ -116,7 +116,7 @@ func BatchSplitSql(sql, separator string) []string {
 }
 
 type lexer struct {
-	Sql   string
+	SQL   string
 	Sep   string
 	At    int
 	Start int
@@ -133,13 +133,13 @@ func (l *lexer) Add(b string) {
 
 func (l *lexer) Next() bool {
 	l.At++
-	return (l.At < len(l.Sql))
+	return (l.At < len(l.SQL))
 }
 func (l *lexer) AddCurrent() bool {
-	l.Add(l.Sql[l.Start:l.At])
+	l.Add(l.SQL[l.Start:l.At])
 	l.At += len(l.Sep)
 	l.Start = l.At
-	return (l.At < len(l.Sql))
+	return (l.At < len(l.SQL))
 }
 
 type stateFn func(*lexer) stateFn
@@ -152,40 +152,40 @@ const (
 
 func stateText(l *lexer) stateFn {
 	for {
-		ch := l.Sql[l.At]
+		ch := l.SQL[l.At]
 
 		switch {
-		case strings.HasPrefix(l.Sql[l.At:], lineComment):
+		case strings.HasPrefix(l.SQL[l.At:], lineComment):
 			l.At += len(lineComment)
 			return stateLineComment
-		case strings.HasPrefix(l.Sql[l.At:], leftComment):
+		case strings.HasPrefix(l.SQL[l.At:], leftComment):
 			l.At += len(leftComment)
 			return stateMultiComment
 		case ch == '\'':
-			l.At += 1
+			l.At++
 			return stateString
 		case ch == '\r', ch == '\n':
-			l.At += 1
+			l.At++
 			return stateWhitespace
 		default:
-			if l.Next() == false {
+			if !l.Next() {
 				return nil
 			}
 		}
 	}
 }
 func stateWhitespace(l *lexer) stateFn {
-	if l.At >= len(l.Sql) {
+	if l.At >= len(l.SQL) {
 		return nil
 	}
-	ch := l.Sql[l.At]
+	ch := l.SQL[l.At]
 
 	switch {
 	case ch == ' ', ch == '\t', ch == '\r', ch == '\n':
-		l.At += 1
+		l.At++
 		return stateWhitespace
-	case hasPrefixFold(l.Sql[l.At:], l.Sep):
-		next := l.Sql[l.At+len(l.Sep):]
+	case hasPrefixFold(l.SQL[l.At:], l.Sep):
+		next := l.SQL[l.At+len(l.Sep):]
 		space := len(next) == 0 || unicode.IsSpace(rune(next[0]))
 		if !space {
 			return stateText
@@ -200,14 +200,14 @@ func stateWhitespace(l *lexer) stateFn {
 }
 func stateLineComment(l *lexer) stateFn {
 	for {
-		ch := l.Sql[l.At]
+		ch := l.SQL[l.At]
 
 		switch {
 		case ch == '\r', ch == '\n':
-			l.At += 1
+			l.At++
 			return stateWhitespace
 		default:
-			if l.Next() == false {
+			if !l.Next() {
 				return nil
 			}
 		}
@@ -216,7 +216,7 @@ func stateLineComment(l *lexer) stateFn {
 func stateMultiComment(l *lexer) stateFn {
 	for {
 		switch {
-		case strings.HasPrefix(l.Sql[l.At:], rightComment):
+		case strings.HasPrefix(l.SQL[l.At:], rightComment):
 			l.At += len(leftComment)
 			return stateWhitespace
 		default:
@@ -228,20 +228,20 @@ func stateMultiComment(l *lexer) stateFn {
 }
 func stateString(l *lexer) stateFn {
 	for {
-		ch := l.Sql[l.At]
+		ch := l.SQL[l.At]
 		chNext := rune(-1)
-		if l.At+1 < len(l.Sql) {
-			chNext = rune(l.Sql[l.At+1])
+		if l.At+1 < len(l.SQL) {
+			chNext = rune(l.SQL[l.At+1])
 		}
 
 		switch {
 		case ch == '\'' && chNext == '\'':
 			l.At += 2
 		case ch == '\'' && chNext != '\'':
-			l.At += 1
+			l.At++
 			return stateWhitespace
 		default:
-			if l.Next() == false {
+			if !l.Next() {
 				return nil
 			}
 		}

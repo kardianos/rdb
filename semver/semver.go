@@ -38,24 +38,25 @@ func (v *Version) String() string {
 }
 
 // Compare v1 to v2.
-//   -1 if v1 <  v2
-//    0 if v1 == v2
-//   +1 if v1 >  v2
-func (v1 *Version) Comp(v2 *Version) (r int) {
-	if v1.Major != v2.Major {
-		if v1.Major < v2.Major {
+//
+//	-1 if v1 <  v2
+//	 0 if v1 == v2
+//	+1 if v1 >  v2
+func (v *Version) Comp(v2 *Version) (r int) {
+	if v.Major != v2.Major {
+		if v.Major < v2.Major {
 			return -1
 		}
 		return 1
 	}
-	if v1.Minor != v2.Minor {
-		if v1.Minor < v2.Minor {
+	if v.Minor != v2.Minor {
+		if v.Minor < v2.Minor {
 			return -1
 		}
 		return 1
 	}
-	if v1.Patch != v2.Patch {
-		if v1.Patch < v2.Patch {
+	if v.Patch != v2.Patch {
+		if v.Patch < v2.Patch {
 			return -1
 		}
 		return 1

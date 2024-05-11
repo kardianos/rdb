@@ -10,11 +10,11 @@ import (
 	"fmt"
 )
 
-var ScanNullError = errors.New("Can only scan NULL value into a Nullable type.")
-var PreparedTokenNotValid = errors.New("The prepared token is not valid.")
+var ErrScanNull = errors.New("can only scan NULL value into a Nullable type")
+var ErrPreparedTokenNotValid = errors.New("the prepared token is not valid")
 
 // Should be returned by a driver that doesn't implement a feature.
-var NotImplemented = errors.New("The feature has not been implemented.")
+var ErrNotImplemented = errors.New("the feature has not been implemented")
 
 // Used when a column lookup fails, either with a name or index.
 type ErrorColumnNotFound struct {
@@ -94,6 +94,6 @@ func (dr DriverNotFound) Error() string {
 	return fmt.Sprintf("Driver name not found: %s", dr.name)
 }
 
-var ArityError = errors.New("Result row count does not match desired arity.")
+var ErrArity = errors.New("result row count does not match desired arity")
 
 var ErrCancel = errors.New("Query Cancelled")

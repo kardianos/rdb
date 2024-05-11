@@ -134,7 +134,7 @@ func TestRowsQueryNull(t *testing.T) {
 	for norm.Next() {
 		colA = ""
 		err := norm.Scan(&colA)
-		if i == 1 && err != rdb.ScanNullError {
+		if i == 1 && err != rdb.ErrScanNull {
 			t.Errorf("Scanning a null value without a *rdb.Nullable should be an error. Got: %q", colA)
 		}
 		i++

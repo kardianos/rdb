@@ -2,7 +2,7 @@
 // Use of this source code is governed by a zlib-style
 // license that can be found in the LICENSE file.
 
-// SQL Relational Database Client.
+// Package rdb is a SQL Relational Database Client.
 /*
 
 A query is defined through a *Command. Do not create a new *Command structure every

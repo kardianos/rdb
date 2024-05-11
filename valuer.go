@@ -215,7 +215,7 @@ func AssignValue(c *Column, outValue Nullable, prep interface{}, assign Assigner
 	}
 	if outValue.Null || outValue.Value == nil {
 		// Can only scan a null value into a nullable type.
-		return ScanNullError
+		return ErrScanNull
 	}
 	var err error
 	var handled = false

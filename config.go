@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// Database connection configuration.
+// Config Database connection configuration.
 // Drivers may have additional properties held in KV.
 // If a driver is file based, the file name should be in the "Instance" field.
 type Config struct {
@@ -72,28 +72,31 @@ type Config struct {
 
 const optPrefix = "opt_"
 
-// Provides a standard method to parse configuration options from a text.
+// ParseConfigURL provides a standard method to parse configuration options from a text.
 // The instance field can also hold the filename in case of a file based connection.
-//   driver://[username:password@][url[:port]]/[Instance]?db=mydatabase&opt1=valA&opt2=valB
-//   sqlite:///C:/folder/file.sqlite3?opt1=valA&opt2=valB
-//   sqlite:///srv/folder/file.sqlite3?opt1=valA&opt2=valB
-//   ms://TESTU@localhost/SqlExpress?db=master&dial_timeout=3s
+//
+//	driver://[username:password@][url[:port]]/[Instance]?db=mydatabase&opt1=valA&opt2=valB
+//	sqlite:///C:/folder/file.sqlite3?opt1=valA&opt2=valB
+//	sqlite:///srv/folder/file.sqlite3?opt1=valA&opt2=valB
+//	ms://TESTU@localhost/SqlExpress?db=master&dial_timeout=3s
+//
 // This will attempt to find the driver to load additional parameters.
-//   Additional field options:
-//      db=<string>:                  Database
-//      dial_timeout=<time.Duration>: Dial Timeout
-//      max_lifetime=<time.Duration>: Max Connection Lifetime
-//      init_cap=<int>:               Pool Init Capacity
-//      max_cap=<int>:                Pool Max Capacity
-//      idle_timeout=<time.Duration>: Pool Idle Timeout
-//      reset_timeout=<time.Duration>:Reset Connection Timeout
-//      require_encryption=<bool>:    Require Connection Encryption
-//      disable_encryption=<bool>:    Disable Connection Encryption
-//      cert=<string>:                Load the cert file as root CA, repeatable.
-//                                    SQL Server doens't send intermediate certificates.
-//                                    May be required even if root CA is known and trusted.
-//      insecure_skip_verify=<bool>:  INSECURE. Skip  encryption certificate verification.
-//      opt_<any>=<any>:              include values, unchecked here, into KV. "opt_" prefix is stripped.
+//
+//	Additional field options:
+//	   db=<string>:                  Database
+//	   dial_timeout=<time.Duration>: Dial Timeout
+//	   max_lifetime=<time.Duration>: Max Connection Lifetime
+//	   init_cap=<int>:               Pool Init Capacity
+//	   max_cap=<int>:                Pool Max Capacity
+//	   idle_timeout=<time.Duration>: Pool Idle Timeout
+//	   reset_timeout=<time.Duration>:Reset Connection Timeout
+//	   require_encryption=<bool>:    Require Connection Encryption
+//	   disable_encryption=<bool>:    Disable Connection Encryption
+//	   cert=<string>:                Load the cert file as root CA, repeatable.
+//	                                 SQL Server doens't send intermediate certificates.
+//	                                 May be required even if root CA is known and trusted.
+//	   insecure_skip_verify=<bool>:  INSECURE. Skip  encryption certificate verification.
+//	   opt_<any>=<any>:              include values, unchecked here, into KV. "opt_" prefix is stripped.
 func ParseConfigURL(connectionString string) (*Config, error) {
 	if len(connectionString) == 0 {
 		return nil, errors.New("empty DSN")

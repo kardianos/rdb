@@ -242,7 +242,7 @@ func (cp *ConnPool) query(ctx context.Context, keepOnClose bool, conn DriverConn
 			err = serr
 		}
 		if err == nil && res.val.rowCount != 0 && !res.val.eof && res.val.cmd.Arity&ArityMust != 0 {
-			err = ArityError
+			err = ErrArity
 		}
 	}
 	if err != nil {
