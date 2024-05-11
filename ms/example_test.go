@@ -12,6 +12,7 @@ import (
 )
 
 func TestErrorQuery(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -41,6 +42,7 @@ func TestErrorQuery(t *testing.T) {
 }
 
 func TestSimpleQuery(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -66,6 +68,7 @@ func TestSimpleQuery(t *testing.T) {
 }
 
 func TestRowsQuerySimple(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -115,6 +118,7 @@ func TestRowsQuerySimple(t *testing.T) {
 
 }
 func TestRowsQueryNull(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -143,6 +147,7 @@ func TestRowsQueryNull(t *testing.T) {
 	assertFreeConns(t)
 }
 func TestLargerQuery(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}

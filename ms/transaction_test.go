@@ -13,6 +13,7 @@ import (
 )
 
 func TestTransaction(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}

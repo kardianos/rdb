@@ -49,7 +49,7 @@ type Connection struct {
 
 	mr     *MessageReader
 	val    rdb.DriverValuer
-	col    []*SqlColumn
+	col    []*SQLColumn
 	params []rdb.Param
 
 	allHeaders            []byte
@@ -491,7 +491,7 @@ func (tds *Connection) Query(ctx context.Context, cmd *rdb.Command, params []rdb
 	go tds.asyncWaitCancel(ctx, cmd.Name)
 	tds.mr = tds.pr.BeginMessage(packetTabularResult)
 
-	err := tds.execute(ctx, cmd.SQL, cmd.TruncLongText, params)
+	err := tds.execute(ctx, cmd, params)
 	if err != nil {
 		return err
 	}
@@ -727,7 +727,7 @@ func (tds *Connection) scan() error {
 	}
 }
 
-func (tds *Connection) execute(ctx context.Context, sql string, truncValue bool, params []rdb.Param) error {
+func (tds *Connection) execute(ctx context.Context, cmd *rdb.Command, params []rdb.Param) error {
 	tds.syncClose.Lock()
 
 	if tds.status == rdb.StatusDisconnected {
@@ -742,14 +742,40 @@ func (tds *Connection) execute(ctx context.Context, sql string, truncValue bool,
 	tds.syncClose.Unlock()
 
 	if debugToken {
-		fmt.Printf("SQL: %q\n", sql)
+		fmt.Printf("SQL: %q\n", cmd.SQL)
 	}
 
 	var err error
-	if len(params) == 0 {
-		err = tds.sendSimpleQuery(ctx, sql, tds.resetNext)
-	} else {
-		err = tds.sendRpc(ctx, sql, truncValue, params, tds.resetNext)
+	switch {
+	default:
+		err = tds.sendSimpleQuery(ctx, cmd.SQL, tds.resetNext)
+	case cmd.Bulk != nil:
+		bulk := cmd.Bulk
+		prefixSQL := cmd.SQL
+		if len(prefixSQL) == 0 || len(params) == 0 {
+			startSQL, startParams, err := bulk.Start()
+			if err != nil {
+				return err
+			}
+			if len(prefixSQL) == 0 {
+				prefixSQL = startSQL
+			}
+			if len(params) == 0 {
+				params = startParams
+			}
+		}
+		if len(prefixSQL) > 0 {
+			err = tds.sendSimpleQuery(ctx, prefixSQL, tds.resetNext)
+			if err != nil {
+				return err
+			}
+		}
+		if len(params) == 0 {
+			return fmt.Errorf("missing params for bulk insert")
+		}
+		err = tds.sendBulk(ctx, cmd.Bulk, cmd.TruncLongText, params, tds.resetNext)
+	case len(params) > 0:
+		err = tds.sendRPC(ctx, cmd.SQL, cmd.TruncLongText, params, tds.resetNext)
 	}
 	tds.resetNext = false
 	if err != nil {
@@ -775,13 +801,13 @@ func (tds *Connection) sendSimpleQuery(ctx context.Context, sql string, reset bo
 	if err != nil {
 		return err
 	}
-
 	w.WriteBuffer(tds.getAllHeaders())
+
 	w.WriteBuffer(uconv.Encode.FromString(sql))
 	return w.EndMessage()
 }
 
-func (tds *Connection) sendRpc(ctx context.Context, sql string, truncValue bool, params []rdb.Param, reset bool) error {
+func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool, params []rdb.Param, reset bool) error {
 	// To make a SQL Query with params:
 	// * RPC Param 1 = {Name: "", Type: NText, Field: SqlQuery}
 	// * RPC Param 2 = {Name: "", Type: NText, Field: "@MySqlParam1 int,@Foo varchar(400)"}
@@ -798,17 +824,16 @@ func (tds *Connection) sendRpc(ctx context.Context, sql string, truncValue bool,
 	var procID uint16 = sp_ExecuteSql
 
 	w := tds.pw
-	err := w.BeginMessage(ctx, packetRpc, reset)
+	err := w.BeginMessage(ctx, packetRPC, reset)
 	if err != nil {
 		return err
 	}
+	w.WriteBuffer(tds.getAllHeaders())
 
 	var options uint16 = 0
 	if withRecomp {
 		options = 1
 	}
-
-	w.WriteBuffer(tds.getAllHeaders())
 
 	if !isProc {
 		w.WriteUint16(0xffff) // ProcIDSwitch
@@ -853,7 +878,74 @@ func (tds *Connection) sendRpc(ctx context.Context, sql string, truncValue bool,
 			return err
 		}
 	}
-	w.WriteByte(0xFF)
+	w.WriteByte(byte(tokenDoneInProc))
+
+	return w.EndMessage()
+}
+
+func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue bool, params []rdb.Param, reset bool) error {
+	w := tds.pw
+	err := w.BeginMessage(ctx, packetBulkLoad, reset)
+	if err != nil {
+		return err
+	}
+	w.WriteByte(byte(tokenColumnMetaData))
+	w.WriteUint16(uint16(len(params)))
+	tdsVer := tds.ProtocolVersion
+	// Write column metadata.
+	meta := make([]paramTypeInfo, len(params))
+	for i, p := range params {
+		// UserType ULONG
+		// Flags
+		// TYPE_INFO
+		// ColName (B_VARCHAR)
+
+		var userType uint32
+		w.WriteUint32(userType)
+		flags := colFlags{}
+		w.Write(colFlagsToSlice(flags))
+
+		ti, err := getParamTypeInfo(tdsVer, p.Type)
+		if err != nil {
+			return err
+		}
+		meta[i] = ti
+		err = encodeType(w, ti, &p)
+		if err != nil {
+			return err
+		}
+		nameU16 := uconv.Encode.FromString(p.Name)
+		l := len(nameU16) / 2
+		if l > 0xff {
+			return fmt.Errorf("parameter name too long %q", p.Name)
+		}
+		w.WriteByte(byte(l))
+		w.WriteBuffer(nameU16)
+	}
+
+	for {
+		err = ctx.Err()
+		if err != nil {
+			return err
+		}
+		err = bulk.Next(params)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+		// Write column data.
+		w.WriteByte(byte(tokenRow))
+		for i, p := range params {
+			ti := meta[i]
+			err = encodeValue(w, ti, &p, truncValue, p.Value)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	w.WriteByte(byte(tokenDone))
 
 	return w.EndMessage()
 }
@@ -934,7 +1026,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		assignPeek()
 		return sqlMsg, nil
 	case tokenColumnMetaData:
-		var columns []*SqlColumn
+		var columns []*SQLColumn
 		count := int(binary.LittleEndian.Uint16(read(2)))
 		if count == 0xffff {
 			count = 0

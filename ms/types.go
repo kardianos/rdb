@@ -244,8 +244,8 @@ func (t *typeWidth) TypeString(param *rdb.Param) string {
 	}
 }
 
-func decimalLength(param *rdb.Param) (byte, error) {
-	p := param.Precision
+func decimalLength(precision int) (byte, error) {
+	p := precision
 	switch {
 	case 1 <= p && p <= 9:
 		return 4 + 1, nil
@@ -291,7 +291,7 @@ const (
 	TypeNumeric
 )
 
-var sqlTypeLookup = map[rdb.Type]*typeWidth{
+var sqlTypeLookup = map[rdb.Type]typeWidth{
 	TypeOldBool:    {T: typeBool, SqlName: "bit"},
 	TypeOldByte:    {T: typeByte, SqlName: "tinyint"},
 	TypeOldInt16:   {T: typeInt16, SqlName: "smallint"},

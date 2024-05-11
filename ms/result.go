@@ -65,7 +65,7 @@ func (done MsgDone) Error() string {
 	return done.Status()
 }
 
-type SqlColumn struct {
+type SQLColumn struct {
 	rdb.Column
 
 	Collation [5]byte

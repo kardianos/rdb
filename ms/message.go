@@ -355,7 +355,7 @@ func (tds *PacketWriter) Login(config *rdb.Config) error {
 		prevOffset = t.offset
 	}
 
-	tds.BeginMessage(context.TODO(), packetTds7Login, false)
+	tds.BeginMessage(context.TODO(), packetTDS7Login, false)
 
 	tds.Write(buf)
 

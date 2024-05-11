@@ -13,6 +13,7 @@ import (
 )
 
 func TestReset(t *testing.T) {
+	checkSkip(t)
 	config := must.Config(rdb.ParseConfigURL(testConnectionString))
 	config.PoolInitCapacity = 1
 	config.PoolMaxCapacity = 1

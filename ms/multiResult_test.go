@@ -14,6 +14,7 @@ import (
 )
 
 func TestMultiResultSimple(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -75,6 +76,7 @@ func TestMultiResultSimple(t *testing.T) {
 }
 
 func TestMultiResultHalt(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -108,6 +110,7 @@ func TestMultiResultHalt(t *testing.T) {
 }
 
 func TestMultiResultLoop(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -160,6 +163,7 @@ func TestMultiResultLoop(t *testing.T) {
 }
 
 func TestMultiResultEmpty1(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -239,6 +243,7 @@ where
 }
 
 func TestMultiResultEmpty2(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -321,6 +326,7 @@ func TestMultiResultEmpty2(t *testing.T) {
 }
 
 func TestMultiResultEmpty3(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -398,6 +404,7 @@ func TestMultiResultEmpty3(t *testing.T) {
 	}
 }
 func TestMultiResultNotEmpty1(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -422,6 +429,7 @@ func TestMultiResultNotEmpty1(t *testing.T) {
 }
 
 func TestMultiResultAnotherTest(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}

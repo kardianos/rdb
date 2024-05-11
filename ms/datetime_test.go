@@ -14,6 +14,8 @@ import (
 )
 
 func TestDateTimeRoundTrip(t *testing.T) {
+	checkSkip(t)
+
 	if parallel {
 		t.Parallel()
 	}
@@ -135,6 +137,7 @@ func TestDateTimeRoundTrip(t *testing.T) {
 }
 
 func TestDateTimePull(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -181,6 +184,7 @@ from
 }
 
 func TestDateTZ(t *testing.T) {
+	checkSkip(t)
 	defer assertFreeConns(t)
 	defer recoverTest(t)
 

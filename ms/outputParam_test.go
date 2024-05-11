@@ -13,6 +13,7 @@ import (
 )
 
 func TestOutputParam(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -58,6 +59,7 @@ end
 }
 
 func TestOutputParamTypes(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}

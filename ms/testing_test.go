@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"testing"
+	"time"
 
 	"github.com/kardianos/rdb"
 	"github.com/kardianos/rdb/must"
@@ -23,17 +24,28 @@ var config *rdb.Config
 var db must.ConnPool
 
 func TestMain(m *testing.M) {
-	if db.Normal() != nil {
+	if db.Valid() {
 		return
+	}
+	if len(testConnectionString) == 0 {
+		os.Exit(m.Run())
 	}
 	config = must.Config(rdb.ParseConfigURL(testConnectionString))
 	config.PoolInitCapacity = runtime.NumCPU()
+	config.DialTimeout = time.Millisecond * 100
 	db = must.Open(config)
-	if false {
-		db.Ping(context.Background())
+	err := db.Normal().Ping(context.Background())
+	if err != nil {
+		db = must.ConnPool{}
 	}
 
 	os.Exit(m.Run())
+}
+
+func checkSkip(t *testing.T) {
+	if !db.Valid() {
+		t.Skip("DB connection not configured, check APP_DSN")
+	}
 }
 
 func assertFreeConns(t *testing.T) {

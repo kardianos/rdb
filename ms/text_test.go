@@ -11,6 +11,7 @@ import (
 )
 
 func TestShortText(t *testing.T) {
+	checkSkip(t)
 	t.Skipf("Long text values not supported.")
 	defer recoverTest(t)
 
@@ -23,12 +24,12 @@ func TestShortText(t *testing.T) {
 		Value string
 	}
 	var list = []*TI{
-		&TI{Name: "AsText", Limit: false},
-		// &TI{Name: "AsNText", Limit: false},
-		&TI{Name: "AsVarChar", Limit: true},
-		&TI{Name: "AsNVarChar", Limit: true},
-		&TI{Name: "AsVarCharMax", Limit: false},
-		&TI{Name: "AsNVarCharMax", Limit: false},
+		{Name: "AsText", Limit: false},
+		// {Name: "AsNText", Limit: false},
+		{Name: "AsVarChar", Limit: true},
+		{Name: "AsNVarChar", Limit: true},
+		{Name: "AsVarCharMax", Limit: false},
+		{Name: "AsNVarCharMax", Limit: false},
 	}
 
 	cmd := &rdb.Command{
@@ -67,6 +68,7 @@ func TestShortText(t *testing.T) {
 	}
 }
 func TestLongText(t *testing.T) {
+	checkSkip(t)
 	t.Skipf("Long text values not supported.") // Text that spans packets are not supported.
 
 	defer recoverTest(t)
@@ -80,7 +82,7 @@ func TestLongText(t *testing.T) {
 		Value string
 	}
 	var list = []*TI{
-		&TI{Name: "AsText", Limit: false},
+		{Name: "AsText", Limit: false},
 	}
 
 	cmd := &rdb.Command{

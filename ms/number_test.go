@@ -14,6 +14,7 @@ import (
 )
 
 func TestNumber(t *testing.T) {
+	checkSkip(t)
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{
@@ -67,6 +68,7 @@ func TestNumber(t *testing.T) {
 }
 
 func TestDecimal(t *testing.T) {
+	checkSkip(t)
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{
@@ -100,12 +102,13 @@ select
 	}
 }
 func TestDecimal2(t *testing.T) {
+	checkSkip(t)
 	defer assertFreeConns(t)
 	defer recoverTest(t)
 
 	list := []struct {
 		Name  string
-		Input *big.Rat
+		Input interface{}
 		Scale int
 		Want  string
 	}{
@@ -115,12 +118,24 @@ func TestDecimal2(t *testing.T) {
 			Scale: 2,
 			Want:  "35.84",
 		},
+		{
+			Name:  "NULL1",
+			Input: nil,
+			Scale: 2,
+			Want:  "NULL",
+		},
+		{
+			Name:  "NULL2",
+			Input: rdb.Null,
+			Scale: 2,
+			Want:  "NULL",
+		},
 	}
 
 	cmd := &rdb.Command{
 		SQL: `
 declare @D decimal(36,2) = @V;
-select S = convert(nvarchar(100), @D);
+select S = isnull(convert(nvarchar(100), @D), 'NULL');
 `,
 		Arity: rdb.OneMust,
 	}
@@ -145,6 +160,7 @@ select S = convert(nvarchar(100), @D);
 }
 
 func TestBytesValue(t *testing.T) {
+	checkSkip(t)
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{
@@ -178,6 +194,7 @@ func TestBytesValue(t *testing.T) {
 }
 
 func TestNullNumbers(t *testing.T) {
+	checkSkip(t)
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{
@@ -203,6 +220,7 @@ func TestNullNumbers(t *testing.T) {
 }
 
 func TestGUID(t *testing.T) {
+	checkSkip(t)
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{

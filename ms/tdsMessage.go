@@ -30,7 +30,7 @@ type PacketType byte
 const (
 	packetSqlBatch      PacketType = 1
 	packetOldLogin      PacketType = 2
-	packetRpc           PacketType = 3
+	packetRPC           PacketType = 3
 	packetTabularResult PacketType = 4 // Server response.
 	packetTransaction   PacketType = 0x0E
 
@@ -39,8 +39,8 @@ const (
 
 	packetTransactionManagerRequest PacketType = 14
 
-	packetTds7Login PacketType = 16
-	packetSspi      PacketType = 17
+	packetTDS7Login PacketType = 16
+	packetSSPI      PacketType = 17
 	packetPreLogin  PacketType = 18
 )
 

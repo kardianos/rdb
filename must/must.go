@@ -87,6 +87,10 @@ func (must ConnPool) Close() {
 	must.norm.Close()
 }
 
+func (must ConnPool) Valid() bool {
+	return must.norm != nil
+}
+
 func (must ConnPool) Ping(ctx context.Context) {
 	err := must.norm.Ping(ctx)
 	if err != nil {

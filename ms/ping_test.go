@@ -10,6 +10,7 @@ import (
 )
 
 func TestPing(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -20,6 +21,7 @@ func TestPing(t *testing.T) {
 }
 
 func TestVersion(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}

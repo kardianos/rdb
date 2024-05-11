@@ -16,6 +16,7 @@ import (
 )
 
 func TestTimeoutDie(t *testing.T) {
+	checkSkip(t)
 	if testing.Short() {
 		t.Skip()
 	}
@@ -51,6 +52,7 @@ select 1 as 'ID';
 }
 
 func TestTimeoutLive(t *testing.T) {
+	checkSkip(t)
 	if testing.Short() {
 		t.Skip()
 	}
@@ -81,6 +83,7 @@ select 1 as 'ID';
 }
 
 func TestError(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -146,6 +149,7 @@ func TestError(t *testing.T) {
 }
 
 func TestMismatchTypeError(t *testing.T) {
+	checkSkip(t)
 	if parallel {
 		t.Parallel()
 	}
@@ -184,6 +188,7 @@ func timeout(t *testing.T, d time.Duration, f func()) {
 }
 
 func TestConnectionPoolExhaustion(t *testing.T) {
+	checkSkip(t)
 	if testing.Short() {
 		t.Skip()
 	}
@@ -228,6 +233,7 @@ select ID = 1;
 }
 
 func TestThrowError(t *testing.T) {
+	checkSkip(t)
 	if testing.Short() {
 		t.Skip()
 	}

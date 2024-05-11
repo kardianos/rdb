@@ -23,65 +23,26 @@ var minDateTime = time.Date(1753, time.January, 1, 0, 0, 0, 0, time.UTC)
 
 var zeroDateN = time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC)
 
-func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, param *rdb.Param, value interface{}) error {
-	// TODO: Handle collation.
-	collation := []byte{0x09, 0x04, 0xD0, 0x00, 0x34}
-
-	nullValue := false
-	if value == rdb.Null || value == nil || param.Null {
-		nullValue = true
-	}
-
-	// Write field name.
-	if len(param.Name) == 0 {
-		w.WriteByte(0) // No name. Length zero.
-	} else {
-		nameUtf16 := uconv.Encode.FromString("@" + param.Name)
-		w.WriteByte(byte(len(nameUtf16) / 2))
-		w.WriteBuffer(nameUtf16)
-	}
-	// Status flag. 0 = normal, 1 = output parameter.
-	if param.Out {
-		w.WriteByte(1)
-	} else {
-		w.WriteByte(0)
-	}
-
-	st, found := sqlTypeLookup[param.Type]
-	if !found {
-		return fmt.Errorf("sql type not setup: %d", param.Type)
-	}
-
-	info, found := typeInfoLookup[driverType(st.T)]
-	if !found {
-		return fmt.Errorf("Driver type not found: %d", st.T)
-	}
-
-	if info.MinVer != nil && tdsVer.Comp(info.MinVer) < 0 {
-		return fmt.Errorf("param type %s does not work with %s", st.SqlName, tdsVer.String())
-	}
-
-	typeLength := uint32(0)
-	writeMaxValue := false
-
+func encodeType(w *PacketWriter, ti paramTypeInfo, param *rdb.Param) error {
 	// Start TYPE_INFO.
 	// Write the type of field this is.
-	w.WriteByte(byte(st.T))
+	w.WriteByte(byte(ti.T))
 
-	if info.Bytes {
-		if st.IsMaxParam(param) {
+	switch {
+	case ti.Bytes:
+		var typeLength uint32
+		if ti.IsMaxParam(param) {
 			typeLength = 0xFFFF
-			writeMaxValue = true
 		} else {
 			typeLength = uint32(param.Length)
-			if info.NChar {
+			if ti.NChar {
 				// Double the stated length if utf16 sized text.
 				typeLength += typeLength
 			}
 		}
 
 		// Write type length. This is different then the field length.
-		switch info.Len {
+		switch ti.Len {
 		case 1:
 			w.WriteByte(uint8(typeLength))
 		case 2:
@@ -89,9 +50,47 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		case 4:
 			w.WriteUint32(typeLength)
 		}
-		if info.IsText {
+		if ti.IsText {
+			// TODO: Handle collation.
+			collation := []byte{0x09, 0x04, 0xD0, 0x00, 0x34}
 			w.WriteBuffer(collation)
 		}
+	case ti.T == typeIntN:
+		w.WriteByte(ti.W) // TYPE_INFO width.
+	case ti.T == typeBitN:
+		w.WriteByte(ti.W) // TYPE_INFO width.
+	case ti.IsPrSc:
+		typeLength, err := decimalLength(param.Precision)
+		if err != nil {
+			return err
+		}
+		w.WriteByte(typeLength) // TYPE_INFO width.
+		w.WriteByte(byte(param.Precision))
+		w.WriteByte(byte(param.Scale))
+	case ti.T == typeFloatN:
+		w.WriteByte(ti.W) // TYPE_INFO width.
+	case ti.T == typeDateTimeN:
+		w.WriteByte(ti.W) // TYPE_INFO width.
+	case ti.Dt != 0:
+		switch ti.Len {
+		case 0:
+		case 1:
+			w.WriteByte(7) // TYPE_INFO scale.
+		}
+	}
+	return nil
+}
+
+func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValues bool, value interface{}) error {
+	var nullValue bool
+	if value == rdb.Null || value == nil || param.Null {
+		nullValue = true
+	}
+
+	switch {
+	default:
+		return fmt.Errorf("unhandled type for param @%s", param.Name)
+	case ti.Bytes:
 		// End TYPE_INFO.
 		// Start ParamLenData.
 		// This uses type info, but lengths refer to the actual field value.
@@ -102,7 +101,19 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		case *[]byte:
 			value = *v
 		}
-		if writeMaxValue {
+		var typeLength uint32
+		var maxLen bool
+		if ti.IsMaxParam(param) {
+			typeLength = 0xFFFF
+			maxLen = true
+		} else {
+			typeLength = uint32(param.Length)
+			if ti.NChar {
+				// Double the stated length if utf16 sized text.
+				typeLength += typeLength
+			}
+		}
+		if maxLen {
 			if nullValue {
 				w.WriteUint64(0xFFFFFFFFFFFFFFFF)
 				return nil
@@ -123,7 +134,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 					}
 
 					writeBb := bb[n:]
-					if info.NChar {
+					if ti.NChar {
 						writeBb = uconv.Encode.FromBytes(bb)
 					}
 					w.WriteUint32(uint32(len(writeBb)))
@@ -141,13 +152,13 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			var writeBb []byte
 			switch v := value.(type) {
 			case string:
-				if info.NChar {
+				if ti.NChar {
 					writeBb = uconv.Encode.FromString(v)
 				} else {
 					writeBb = []byte(v)
 				}
 			case []byte:
-				if info.NChar {
+				if ti.NChar {
 					writeBb = uconv.Encode.FromBytes(v)
 				} else {
 					writeBb = v
@@ -160,19 +171,19 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 					return fmt.Errorf("max unsupported type: %[1]T=%[1]s, kind=%[2]v", value, k)
 				case reflect.Int32:
 					s := string(rune(rv.Int()))
-					if info.NChar {
+					if ti.NChar {
 						writeBb = uconv.Encode.FromString(s)
 					} else {
 						writeBb = []byte(s)
 					}
 				case reflect.String:
-					if info.NChar {
+					if ti.NChar {
 						writeBb = uconv.Encode.FromString(rv.String())
 					} else {
 						writeBb = []byte(rv.String())
 					}
 				case reflect.Slice:
-					if info.NChar {
+					if ti.NChar {
 						writeBb = uconv.Encode.FromBytes(rv.Bytes())
 					} else {
 						writeBb = rv.Bytes()
@@ -204,16 +215,16 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		// A non-max value.
 		var writeBb []byte
 		switch {
-		case info.Bytes:
+		case ti.Bytes:
 			switch v := value.(type) {
 			case string:
-				if info.NChar {
+				if ti.NChar {
 					writeBb = uconv.Encode.FromString(v)
 				} else {
 					writeBb = []byte(v)
 				}
 			case []byte:
-				if info.NChar {
+				if ti.NChar {
 					writeBb = uconv.Encode.FromBytes(v)
 				} else {
 					writeBb = v
@@ -226,19 +237,19 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 					return fmt.Errorf("len unsupported type: %[1]T=%[1]s, kind=%[2]v", value, k)
 				case reflect.Int32:
 					s := string(rune(rv.Int()))
-					if info.NChar {
+					if ti.NChar {
 						writeBb = uconv.Encode.FromString(s)
 					} else {
 						writeBb = []byte(s)
 					}
 				case reflect.String:
-					if info.NChar {
+					if ti.NChar {
 						writeBb = uconv.Encode.FromString(rv.String())
 					} else {
 						writeBb = []byte(rv.String())
 					}
 				case reflect.Array:
-					if info.NChar {
+					if ti.NChar {
 						writeBb = uconv.Encode.FromBytes(rv.Bytes())
 					} else {
 						writeBb = rv.Bytes()
@@ -257,20 +268,16 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			w.WriteUint16(fieldLen) // Field length.
 			w.WriteBuffer(writeBb)
 		default:
-			return fmt.Errorf("unsupported type: %[1]T=%[1]s", info.Name)
+			return fmt.Errorf("unsupported type: %[1]T=%[1]s", ti.Name)
 		}
 		return nil
-	}
-
-	if st.T == typeIntN {
-		w.WriteByte(st.W) // TYPE_INFO width.
-
+	case ti.T == typeIntN:
 		if nullValue {
 			w.WriteByte(0)
 			return nil
 		}
-		w.WriteByte(st.W) // Row field width.
-		switch st.W {
+		w.WriteByte(ti.W) // Row field width.
+		switch ti.W {
 		case 1:
 			switch v := value.(type) {
 			case int8:
@@ -509,16 +516,12 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			}
 		}
 		return nil
-	}
-
-	if st.T == typeBitN {
-		w.WriteByte(st.W) // TYPE_INFO width.
-
+	case ti.T == typeBitN:
 		if nullValue {
 			w.WriteByte(0)
 			return nil
 		}
-		w.WriteByte(st.W) // Row field width.
+		w.WriteByte(ti.W) // Row field width.
 
 		switch v := value.(type) {
 		case *bool:
@@ -542,24 +545,15 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		}
 		w.WriteByte(writeValue)
 		return nil
-	}
-
-	if info.IsPrSc {
+	case ti.IsPrSc:
 		// byte type
 		// byte length (5, 9, 13, 17)
 		// byte prec
 		// byte scale
 		if nullValue {
-			w.Write([]byte{0, 0, 0, 0})
+			w.Write([]byte{0})
 			return nil
 		}
-		typeLength, err := decimalLength(param)
-		if err != nil {
-			return err
-		}
-		w.WriteByte(typeLength) // TYPE_INFO width.
-		w.WriteByte(byte(param.Precision))
-		w.WriteByte(byte(param.Scale))
 		var pv big.Rat
 		var rv *big.Rat
 		type rater interface {
@@ -573,8 +567,16 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			}
 			return fmt.Errorf("need *big.Rat for param @%s", param.Name)
 		case **big.Rat:
+			if v == nil || *v == nil {
+				w.Write([]byte{0})
+				return nil
+			}
 			pv = **v
 		case *big.Rat:
+			if v == nil {
+				w.Write([]byte{0})
+				return nil
+			}
 			pv = *v
 		}
 		rv = &pv
@@ -595,7 +597,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 		num.Div(num, denom)
 		bb := num.Bytes()
 		if len(bb) > 16 {
-			return fmt.Errorf("decimal value of (%s) too large for param %s %s", rv.String(), param.Name, st.TypeString(param))
+			return fmt.Errorf("decimal value of (%s) too large for param %s %s", rv.String(), param.Name, ti.TypeString(param))
 		}
 		// Big.Bytes writes out in big-endian.
 		// Want little endian so reverse bytes.
@@ -619,15 +621,12 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			w.WriteBuffer(filler)
 		}
 		return nil
-	}
-
-	if st.T == typeFloatN {
-		w.WriteByte(st.W) // TYPE_INFO width.
+	case ti.T == typeFloatN:
 		if nullValue {
 			w.WriteByte(0)
 			return nil
 		}
-		w.WriteByte(st.W) // Row field width.
+		w.WriteByte(ti.W) // Row field width.
 
 		var writeValue float64
 		switch v := value.(type) {
@@ -685,20 +684,18 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			}
 		}
 
-		if st.W == 4 {
+		if ti.W == 4 {
 			w.WriteUint32(math.Float32bits(float32(writeValue)))
 		} else {
 			w.WriteUint64(math.Float64bits(writeValue))
 		}
 		return nil
-	}
-	if st.T == typeDateTimeN {
-		w.WriteByte(st.W) // TYPE_INFO width.
+	case ti.T == typeDateTimeN:
 		if nullValue {
 			w.WriteByte(0)
 			return nil
 		}
-		w.WriteByte(st.W) // Row field width.
+		w.WriteByte(ti.W) // Row field width.
 
 		switch v := value.(type) {
 		case *time.Time:
@@ -716,14 +713,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			return fmt.Errorf("need time.Time for param @%s", param.Name)
 		}
 		return nil
-	}
-
-	if info.Dt != 0 {
-		switch info.Len {
-		case 0:
-		case 1:
-			w.WriteByte(7) // TYPE_INFO scale.
-		}
+	case ti.Dt != 0:
 		if nullValue {
 			w.WriteByte(0)
 			return nil
@@ -750,15 +740,15 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			return nil
 		}
 
-		w.WriteByte(st.W) // Row field width.
+		w.WriteByte(ti.W) // Row field width.
 
 		_, sec := v.Zone()
 		year, month, day := v.Date()
-		if (info.Dt & dtDate) != 0 {
+		if (ti.Dt & dtDate) != 0 {
 			v = v.UTC()
 		}
 
-		if (info.Dt & dtTime) != 0 {
+		if (ti.Dt & dtTime) != 0 {
 			var nano time.Duration
 			if dur == 0 {
 				nano += time.Duration(v.Hour()) * time.Hour
@@ -774,9 +764,9 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			binary.LittleEndian.PutUint64(bb, uint64(encoded))
 			w.WriteBuffer(bb[:5])
 		}
-		if (info.Dt & dtDate) != 0 {
+		if (ti.Dt & dtDate) != 0 {
 			var vDate time.Time
-			if (info.Dt & dtTime) != 0 {
+			if (ti.Dt & dtTime) != 0 {
 				vDate = v.Truncate(time.Hour * 24)
 			} else {
 				vDate = time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
@@ -802,18 +792,104 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 			binary.LittleEndian.PutUint32(bb, days)
 			w.WriteBuffer(bb[:3])
 		}
-		if (info.Dt & dtZone) != 0 {
+		if (ti.Dt & dtZone) != 0 {
 			w.WriteUint16(uint16(sec / 60))
 		}
 		return nil
 	}
-
-	return fmt.Errorf("unhandled type for param @%s", param.Name)
 }
 
-func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
+type paramTypeInfo struct {
+	typeWidth
+	typeInfo
+}
+
+func getParamTypeInfo(tdsVer *semver.Version, paramType rdb.Type) (paramTypeInfo, error) {
+	var ti paramTypeInfo
+	var found bool
+
+	ti.typeWidth, found = sqlTypeLookup[paramType]
+	if !found {
+		return ti, fmt.Errorf("sql type not setup: %d", paramType)
+	}
+	ti.typeInfo, found = typeInfoLookup[driverType(ti.T)]
+	if !found {
+		return ti, fmt.Errorf("Driver type not found: %d", ti.T)
+	}
+	if ti.MinVer != nil && tdsVer.Comp(ti.MinVer) < 0 {
+		return ti, fmt.Errorf("param type %s does not work with %s", ti.SqlName, tdsVer.String())
+	}
+	return ti, nil
+}
+
+func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, param *rdb.Param, value interface{}) error {
+	// Write field name.
+	if len(param.Name) == 0 {
+		w.WriteByte(0) // No name. Length zero.
+	} else {
+		nameUtf16 := uconv.Encode.FromString("@" + param.Name)
+		w.WriteByte(byte(len(nameUtf16) / 2))
+		w.WriteBuffer(nameUtf16)
+	}
+	// Status flag. 0 = normal, 1 = output parameter.
+	if param.Out {
+		w.WriteByte(1)
+	} else {
+		w.WriteByte(0)
+	}
+
+	ti, err := getParamTypeInfo(tdsVer, param.Type)
+	if err != nil {
+		return err
+	}
+
+	err = encodeType(w, ti, param)
+	if err != nil {
+		return err
+	}
+	return encodeValue(w, ti, param, truncValues, value)
+}
+
+type colFlags struct {
+	Nullable        bool
+	Serial          bool
+	Key             bool
+	SparseColumnSet bool
+	NullableUnknown bool
+}
+
+func colFlagsFromSlice(flags []byte) colFlags {
+	return colFlags{
+		Nullable:        flags[0]&(1<<0) != 0,
+		Serial:          flags[0]&(1<<4) != 0,
+		SparseColumnSet: flags[1]&(1<<2) != 0,
+		Key:             flags[1]&(1<<6) != 0,
+		NullableUnknown: flags[1]&(1<<7) != 0,
+	}
+}
+func colFlagsToSlice(cf colFlags) []byte {
+	var f0, f1 byte
+	if cf.Nullable {
+		f0 |= (1 << 0)
+	}
+	if cf.Serial {
+		f0 |= (1 << 4)
+	}
+	if cf.SparseColumnSet {
+		f1 |= (1 << 2)
+	}
+	if cf.Key {
+		f1 |= (1 << 6)
+	}
+	if cf.NullableUnknown {
+		f1 |= (1 << 7)
+	}
+	return []byte{f0, f1}
+}
+
+func decodeColumnInfo(read uconv.PanicReader) *SQLColumn {
 	userType := binary.LittleEndian.Uint32(read(4)) // userType
-	flags := read(2)
+	flags := colFlagsFromSlice(read(2))
 	driverType := driverType(read(1)[0])
 
 	info, ok := typeInfoLookup[driverType]
@@ -840,15 +916,14 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 		6 fKey
 		7 fNullableUnknown
 	*/
-	sparseColumnSet := flags[1]&(1<<2) != 0
-	if sparseColumnSet {
+	if flags.SparseColumnSet {
 		panic(recoverError{fmt.Errorf("sparse column set requested, but not supported")})
 	}
-	column := &SqlColumn{
+	column := &SQLColumn{
 		Column: rdb.Column{
-			Nullable: flags[0]&(1<<0) != 0,
-			Serial:   flags[0]&(1<<4) != 0,
-			Key:      flags[1]&(1<<6) != 0,
+			Nullable: flags.Nullable,
+			Serial:   flags.Serial,
+			Key:      flags.Key,
 		},
 		code: driverType,
 		info: info,
@@ -888,7 +963,7 @@ func decodeColumnInfo(read uconv.PanicReader) *SqlColumn {
 
 type writeField func(c *rdb.Column, value *rdb.DriverValue, assign rdb.Assigner) error
 
-func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SqlColumn, resultWf writeField, reportRow bool) {
+func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColumn, resultWf writeField, reportRow bool) {
 	sc := &column.Column
 	var err error
 	defer func() {

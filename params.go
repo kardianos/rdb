@@ -96,12 +96,27 @@ const (
 	OneMust Arity = One | ArityMust
 )
 
+// Bulk data upload.
+type Bulk interface {
+	// Start returns an optional SQL to execute at the beginning of the bulk operation.
+	// If no SQL is returned, nothing is executed.
+	Start() (sql string, col []Param, err error)
+
+	// Next must set the value on each row field.
+	// If no more rows, return [io.EOF].
+	Next(row []Param) error
+}
+
 // Command represents a SQL command and can be used from many different
 // queries at the same time.
 // The Command MUST be reused if the Prepare field is true.
 type Command struct {
 	// The SQL to be used in the command.
 	SQL string
+
+	// Bulk data upload.
+	// If set and if the driver supports it, setting this will bulk upload data.
+	Bulk Bulk
 
 	// Number of rows expected.
 	//   If Arity is One or OneOnly, only the first row is returned.
