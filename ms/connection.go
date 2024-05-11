@@ -293,7 +293,7 @@ func (tds *Connection) Reset(c *rdb.Config) error {
 		ctx, cancel = context.WithTimeout(ctx, c.ResetConnectionTimeout)
 		defer cancel()
 	}
-	return tds.Query(ctx, &rdb.Command{Sql: c.ResetQuery}, nil, nil, nil)
+	return tds.Query(ctx, &rdb.Command{SQL: c.ResetQuery}, nil, nil, nil)
 }
 
 func (tds *Connection) ConnectionInfo() *rdb.ConnectionInfo {
@@ -485,13 +485,13 @@ func (tds *Connection) Query(ctx context.Context, cmd *rdb.Command, params []rdb
 	}
 	tds.val = valuer
 
-	if tds.mr != nil && tds.mr.packetEOM == false {
-		return fmt.Errorf("Connection not ready to be re-used yet for query.")
+	if tds.mr != nil && !tds.mr.packetEOM {
+		return fmt.Errorf("connection not ready to be re-used yet for query")
 	}
-	go tds.asyncWaitCancel(ctx, cmd.Sql)
+	go tds.asyncWaitCancel(ctx, cmd.SQL)
 	tds.mr = tds.pr.BeginMessage(packetTabularResult)
 
-	err := tds.execute(ctx, cmd.Sql, cmd.TruncLongText, cmd.Arity, params)
+	err := tds.execute(ctx, cmd.SQL, cmd.TruncLongText, cmd.Arity, params)
 	if err != nil {
 		return err
 	}
@@ -790,7 +790,7 @@ func (tds *Connection) sendRpc(ctx context.Context, sql string, truncValue bool,
 	// Simple! Once figured out.
 
 	tds.params = params
-	isProc := strings.IndexAny(sql, " \t\r\n") < 0
+	isProc := !strings.ContainsAny(sql, " \t\r\n")
 	withRecomp := false
 
 	// collation := []byte{0x09, 0x04, 0xD0, 0x00, 0x34}

@@ -19,7 +19,7 @@ func TestTransaction(t *testing.T) {
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{
-		Sql: `
+		SQL: `
 			select
 				v1 = @v1
 		`,

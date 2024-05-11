@@ -21,7 +21,7 @@ func TestReset(t *testing.T) {
 	db := must.Open(config)
 	defer db.Close()
 
-	cmd := &rdb.Command{Sql: `select 16384 & @@OPTIONS;`}
+	cmd := &rdb.Command{SQL: `select 16384 & @@OPTIONS;`}
 	for i := range [100]struct{}{} {
 		res := db.Query(context.Background(), cmd)
 		v := 0

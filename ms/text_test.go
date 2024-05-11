@@ -32,7 +32,7 @@ func TestShortText(t *testing.T) {
 	}
 
 	cmd := &rdb.Command{
-		Sql: fmt.Sprintf(`
+		SQL: fmt.Sprintf(`
 			select
 				AsText = cast('%[1]s' as Text),
 				AsNText = cast('%[1]s' as NText),
@@ -84,7 +84,7 @@ func TestLongText(t *testing.T) {
 	}
 
 	cmd := &rdb.Command{
-		Sql: fmt.Sprintf(`
+		SQL: fmt.Sprintf(`
 			select
 				AsText = cast('%[1]s' as Text)
 		`, testText, testLimit),

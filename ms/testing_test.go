@@ -29,7 +29,9 @@ func TestMain(m *testing.M) {
 	config = must.Config(rdb.ParseConfigURL(testConnectionString))
 	config.PoolInitCapacity = runtime.NumCPU()
 	db = must.Open(config)
-	db.Ping(context.Background())
+	if false {
+		db.Ping(context.Background())
+	}
 
 	os.Exit(m.Run())
 }

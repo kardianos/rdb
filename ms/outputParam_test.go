@@ -19,13 +19,13 @@ func TestOutputParam(t *testing.T) {
 	defer recoverTest(t)
 
 	createProcDrop := &rdb.Command{
-		Sql: `
+		SQL: `
 if object_id('AddTen') is not null drop proc AddTen
 		`,
 		Arity: rdb.ZeroMust,
 	}
 	createProc := &rdb.Command{
-		Sql: `
+		SQL: `
 create proc dbo.AddTen (
 	@p1 int,
 	@p2 int output
@@ -39,7 +39,7 @@ end
 	}
 
 	callProc := &rdb.Command{
-		Sql:   `AddTen`,
+		SQL:   `AddTen`,
 		Arity: rdb.ZeroMust,
 	}
 
@@ -64,13 +64,13 @@ func TestOutputParamTypes(t *testing.T) {
 	defer recoverTest(t)
 
 	createProcDrop := &rdb.Command{
-		Sql: `
+		SQL: `
 if object_id('DataTypes') is not null drop proc DataTypes
 		`,
 		Arity: rdb.ZeroMust,
 	}
 	createProc := &rdb.Command{
-		Sql: `
+		SQL: `
 create proc dbo.DataTypes (
 	@p1 nvarchar(max) output,
 	@p2 int output,
@@ -85,7 +85,7 @@ end
 	}
 
 	callProc := &rdb.Command{
-		Sql:   `DataTypes`,
+		SQL:   `DataTypes`,
 		Arity: rdb.ZeroMust,
 	}
 

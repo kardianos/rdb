@@ -17,7 +17,7 @@ func TestErrorQuery(t *testing.T) {
 	}
 	defer recoverTest(t)
 	res, err := db.Normal().Query(context.Background(), &rdb.Command{
-		Sql: `
+		SQL: `
 			s3l3c1 @animal as 'MyAnimal';`,
 		Arity:         rdb.OneMust,
 		TruncLongText: true,
@@ -47,7 +47,7 @@ func TestSimpleQuery(t *testing.T) {
 	defer recoverTest(t)
 	var myFav string
 	db.Query(context.Background(), &rdb.Command{
-		Sql: `
+		SQL: `
 			select @animal as 'MyAnimal';
 		`,
 		Arity:         rdb.OneMust,
@@ -73,7 +73,7 @@ func TestRowsQuerySimple(t *testing.T) {
 	defer recoverTest(t)
 	var myFav string
 	res := db.Query(context.Background(), &rdb.Command{
-		Sql: `
+		SQL: `
 			select @animal as 'MyAnimal'
 			union all
 			select N'Hello again!'
@@ -121,7 +121,7 @@ func TestRowsQueryNull(t *testing.T) {
 	defer recoverTest(t)
 	var colA string
 	cmd := &rdb.Command{
-		Sql: `
+		SQL: `
 			select N'Sleep well' as 'ColA'
 			union all
 			select NULL
@@ -148,7 +148,7 @@ func TestLargerQuery(t *testing.T) {
 	}
 	defer recoverTest(t)
 	cmd := &rdb.Command{
-		Sql: `
+		SQL: `
 			select
 				432 as ID,
 				987.654 as Val,

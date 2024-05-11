@@ -109,7 +109,7 @@ const (
 // The Command MUST be reused if the Prepare field is true.
 type Command struct {
 	// The SQL to be used in the command.
-	Sql string
+	SQL string
 
 	// Number of rows expected.
 	//   If Arity is One or OneOnly, only the first row is returned.
@@ -134,9 +134,6 @@ type Command struct {
 
 	// Optional name of the command. May be used if logging.
 	Name string
-
-	// Return strings as strings or bytes.
-	StringMethod StringMethod
 
 	// Log messages, both info and error messages.
 	Log func(msg *Message)

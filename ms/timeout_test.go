@@ -31,7 +31,7 @@ func TestTimeoutDie(t *testing.T) {
 	defer cancel()
 
 	res, err := db.Normal().Query(ctx, &rdb.Command{
-		Sql: `
+		SQL: `
 -- TestTimeoutDie
 waitfor delay '00:00:02';
 select 1 as 'ID';
@@ -64,7 +64,7 @@ func TestTimeoutLive(t *testing.T) {
 	defer cancel()
 
 	res, err := db.Normal().Query(ctx, &rdb.Command{
-		Sql: `
+		SQL: `
 -- TestTimeoutLive
 waitfor delay '00:00:01';
 select 1 as 'ID';
@@ -91,7 +91,7 @@ func TestError(t *testing.T) {
 	var longText = strings.Repeat("Hello everyone in the world.\n", 100)[:4096/2-10] // -21
 
 	res1, err := db.Normal().Query(context.Background(), &rdb.Command{
-		Sql: `
+		SQL: `
 			select top 0 ID = 0;
 		`,
 		Arity: rdb.Any,
@@ -104,7 +104,7 @@ func TestError(t *testing.T) {
 	}
 
 	_, err = db.Normal().Query(context.Background(), &rdb.Command{
-		Sql: `
+		SQL: `
 			fooBad top 0 ID = 0;
 		`,
 		Arity: rdb.Any,
@@ -117,7 +117,7 @@ func TestError(t *testing.T) {
 	}
 
 	res3, err := db.Normal().Query(context.Background(), &rdb.Command{
-		Sql: `
+		SQL: `
 			select top 1 TX = @Text;
 		`,
 		Arity: rdb.Any,
@@ -154,7 +154,7 @@ func TestMismatchTypeError(t *testing.T) {
 
 	timeout(t, time.Second*2, func() {
 		res1, err := db.Normal().Query(context.Background(), &rdb.Command{
-			Sql: `
+			SQL: `
 			select MyString = @MyString;
 		`,
 			Arity: rdb.Any,
@@ -199,7 +199,7 @@ func TestConnectionPoolExhaustion(t *testing.T) {
 			defer wait.Done()
 
 			res, err := db.Normal().Query(context.Background(), &rdb.Command{
-				Sql: `
+				SQL: `
 -- TestConnectionPoolExhaustion
 waitfor delay '00:00:01';
 select ID = 1;
@@ -236,7 +236,7 @@ func TestThrowError(t *testing.T) {
 	defer recoverTest(t)
 
 	res, err := db.Normal().Query(context.Background(), &rdb.Command{
-		Sql:   `RAISERROR(N'throw an error', 16, 1);`,
+		SQL:   `RAISERROR(N'throw an error', 16, 1);`,
 		Arity: rdb.Any,
 	})
 	if err == nil {

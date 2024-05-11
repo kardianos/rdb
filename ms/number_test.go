@@ -17,7 +17,7 @@ func TestNumber(t *testing.T) {
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{
-		Sql: `
+		SQL: `
 			select
 				bt = @bt, bf = @bf,
 				i8 = @i8, i16 = @i16, i64 = @i64,
@@ -70,7 +70,7 @@ func TestDecimal(t *testing.T) {
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{
-		Sql: `
+		SQL: `
 declare @ld decimal(38,3) = @d;
 select
 	d = @ld,
@@ -118,7 +118,7 @@ func TestDecimal2(t *testing.T) {
 	}
 
 	cmd := &rdb.Command{
-		Sql: `
+		SQL: `
 declare @D decimal(36,2) = @V;
 select S = convert(nvarchar(100), @D);
 `,
@@ -148,7 +148,7 @@ func TestBytesValue(t *testing.T) {
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{
-		Sql: `
+		SQL: `
 			select @bytesEmpty, @bytesOne
 		`,
 		Arity: rdb.OneMust,
@@ -181,7 +181,7 @@ func TestNullNumbers(t *testing.T) {
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{
-		Sql: `
+		SQL: `
 			select @decimal
 		`,
 		Arity: rdb.OneMust,
@@ -206,7 +206,7 @@ func TestGUID(t *testing.T) {
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{
-		Sql: `
+		SQL: `
 			select newid();
 		`,
 		Arity: rdb.OneMust,

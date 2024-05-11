@@ -183,7 +183,8 @@ func (v *valuer) WriteField(c *Column, value *DriverValue, assign Assigner) erro
 				return fmt.Errorf("Type not supported for chunked read: %T", in)
 			}
 			if !value.More && convert != nil {
-				convert(c, &v.buffer[c.Index])
+				nv := &v.buffer[c.Index]
+				convert(c, nv)
 			}
 			return nil
 		}

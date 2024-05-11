@@ -31,12 +31,12 @@ func ExecuteBatchSql(ctx context.Context, cp *rdb.ConnPool, batchSql, separator 
 	defer conn.Close()
 
 	for i := range ss {
-		cmd.Sql = ss[i]
+		cmd.SQL = ss[i]
 
 		_, err = conn.Query(ctx, cmd)
 		if err != nil {
 			if errList, is := err.(rdb.Errors); is {
-				return SqlErrorWithContext(cmd.Sql, errList, 2)
+				return SqlErrorWithContext(cmd.SQL, errList, 2)
 			}
 			return err
 		}
@@ -82,15 +82,15 @@ func SqlErrorWithContext(sql string, msg rdb.Errors, contextLines int) error {
 // BatchSplitCmd takes a single command and uses separator to split them
 // into mutliple commands.
 func BatchSplitCmd(cmd *rdb.Command, separator string) []*rdb.Command {
-	sql := cmd.Sql
+	sql := cmd.SQL
 	localCmd := *cmd
-	localCmd.Sql = ""
+	localCmd.SQL = ""
 
 	ss := BatchSplitSql(sql, separator)
 	ret := make([]*rdb.Command, len(ss))
 	for i, item := range ss {
 		itemCmd := localCmd
-		itemCmd.Sql = item
+		itemCmd.SQL = item
 		ret[i] = &itemCmd
 	}
 

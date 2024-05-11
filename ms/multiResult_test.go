@@ -23,7 +23,7 @@ func TestMultiResultSimple(t *testing.T) {
 	defer recoverTest(t)
 
 	set, err := table.FillCommand(context.Background(), db.Normal(), &rdb.Command{
-		Sql: `
+		SQL: `
 			select @animal as 'MyAnimal';
 			-- New query.
 			select 3 as 'Pants', cast(1 as bit) as 'Shirt';
@@ -43,7 +43,7 @@ func TestMultiResultSimple(t *testing.T) {
 
 	var myFav string
 	res := db.Query(context.Background(), &rdb.Command{
-		Sql: `
+		SQL: `
 			select @animal as 'MyAnimal';
 			-- New query.
 			select 3 as 'Pants', cast(1 as bit) as 'Shirt';
@@ -83,7 +83,7 @@ func TestMultiResultHalt(t *testing.T) {
 
 	var myFav string
 	res := db.Query(context.Background(), &rdb.Command{
-		Sql: `
+		SQL: `
 			select @animal as 'MyAnimal';
 			-- New query.
 			select 3 as 'Pants', cast(1 as bit) as 'Shirt';
@@ -116,7 +116,7 @@ func TestMultiResultLoop(t *testing.T) {
 
 	var myFav string
 	res := db.Query(context.Background(), &rdb.Command{
-		Sql: `
+		SQL: `
 			select @animal as 'MyAnimal';
 			-- New query.
 			select 3 as 'Pants', cast(1 as bit) as 'Shirt';
@@ -170,7 +170,7 @@ func TestMultiResultEmpty1(t *testing.T) {
 	defer recoverTest(t)
 
 	res := db.Query(context.Background(), &rdb.Command{
-		Sql: `
+		SQL: `
 declare @T table(ID int);
 insert into @T
 select 1;
@@ -249,7 +249,7 @@ func TestMultiResultEmpty2(t *testing.T) {
 	defer recoverTest(t)
 
 	res := db.Query(context.Background(), &rdb.Command{
-		Sql: `
+		SQL: `
 	declare @SampleSelect table (ID bigint)
 	declare @Sample table (ID bigint);
 	declare @Locus table (ID bigint);
@@ -331,7 +331,7 @@ func TestMultiResultEmpty3(t *testing.T) {
 	defer recoverTest(t)
 
 	res := db.Query(context.Background(), &rdb.Command{
-		Sql: `
+		SQL: `
 	declare @SampleSelect table (ID bigint)
 	declare @Sample table (ID bigint);
 	declare @Locus table (ID bigint);
@@ -408,7 +408,7 @@ func TestMultiResultNotEmpty1(t *testing.T) {
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{
-		Sql:   `select name from sys.tables order by name asc;`,
+		SQL:   `select name from sys.tables order by name asc;`,
 		Arity: rdb.Any,
 	}
 
@@ -432,7 +432,7 @@ func TestMultiResultAnotherTest(t *testing.T) {
 	defer recoverTest(t)
 
 	cmd := &rdb.Command{
-		Sql: `
+		SQL: `
 
 	select
 		1 as set1

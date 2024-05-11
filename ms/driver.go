@@ -73,7 +73,7 @@ func (dr *Driver) DriverInfo() *rdb.DriverInfo {
 }
 
 var pingCommand = &rdb.Command{
-	Sql:   "select top 0 1;",
+	SQL:   "select top 0 1;",
 	Arity: rdb.ZeroMust,
 }
 

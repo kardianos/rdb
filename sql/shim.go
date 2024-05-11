@@ -96,7 +96,7 @@ func prep(arity rdb.Arity, query string, args []interface{}) (*rdb.Command, []rd
 		params[i].Value = value
 	}
 	return &rdb.Command{
-		Sql:   query,
+		SQL:   query,
 		Arity: arity,
 	}, params
 }
@@ -112,7 +112,7 @@ func (db *DB) Exec(query string, args ...interface{}) (Result, error) {
 	return result{res: res}, nil
 }
 
-//  Ping verifies a connection to the database is still alive, establishing a connection if necessary.
+// Ping verifies a connection to the database is still alive, establishing a connection if necessary.
 func (db *DB) Ping() error {
 	ctx := context.Background()
 	return db.pool.Ping(ctx)
@@ -123,7 +123,7 @@ func (db *DB) Prepare(query string) (*Stmt, error) {
 	return &Stmt{
 		q: db.pool,
 		cmd: &rdb.Command{
-			Sql: query,
+			SQL: query,
 		},
 	}, nil
 }
@@ -193,7 +193,7 @@ func (n *NullFloat64) Scan(value interface{}) error {
 	return nil
 }
 
-//Value implements the driver Valuer interface.
+// Value implements the driver Valuer interface.
 func (n NullFloat64) Value() (driver.Value, error) {
 	return nil, nil
 }
@@ -217,13 +217,13 @@ func (n NullInt64) Value() (driver.Value, error) {
 // NullString represents a string that may be null. NullString implements the Scanner interface so it can be used as a scan destination:
 //
 //	var s NullString
-// 	err := db.QueryRow("SELECT name FROM foo WHERE id=?", id).Scan(&s)
-// 	...
-// 	if s.Valid {
-// 	   // use s.String
-// 	} else {
-// 	  // NULL value
-// 	}
+//	err := db.QueryRow("SELECT name FROM foo WHERE id=?", id).Scan(&s)
+//	...
+//	if s.Valid {
+//	   // use s.String
+//	} else {
+//	  // NULL value
+//	}
 type NullString struct {
 	String string
 	Valid  bool // Valid is true if String is not NULL
@@ -274,6 +274,7 @@ func (r *Row) Scan(dest ...interface{}) error {
 // Rows is the result of a query. Its cursor starts before the first row of the result set. Use Next to advance through the rows:
 
 // rows, err := db.Query("SELECT ...")
+//
 //	...
 //	defer rows.Close()
 //	for rows.Next() {
@@ -376,9 +377,9 @@ func (s *Stmt) Query(args ...interface{}) (*Rows, error) {
 	return &Rows{res: res}, nil
 }
 
-//QueryRow executes a prepared query statement with the given arguments. If an error occurs during the execution of the statement, that error will be returned by a call to Scan on the returned *Row, which is always non-nil. If the query selects no rows, the *Row's Scan will return ErrNoRows. Otherwise, the *Row's Scan scans the first selected row and discards the rest.
+// QueryRow executes a prepared query statement with the given arguments. If an error occurs during the execution of the statement, that error will be returned by a call to Scan on the returned *Row, which is always non-nil. If the query selects no rows, the *Row's Scan will return ErrNoRows. Otherwise, the *Row's Scan scans the first selected row and discards the rest.
 //
-//Example usage:
+// Example usage:
 //
 //	var name string
 //	err := nameByUseridStmt.QueryRow(id).Scan(&name)
@@ -386,11 +387,12 @@ func (s *Stmt) Query(args ...interface{}) (*Rows, error) {
 //	type Tx struct {
 //	    // contains filtered or unexported fields
 //	}
-//Tx is an in-progress database transaction.
 //
-//A transaction must end with a call to Commit or Rollback.
+// Tx is an in-progress database transaction.
 //
-//After a call to Commit or Rollback, all operations on the transaction fail with ErrTxDone.
+// A transaction must end with a call to Commit or Rollback.
+//
+// After a call to Commit or Rollback, all operations on the transaction fail with ErrTxDone.
 func (s *Stmt) QueryRow(args ...interface{}) *Row {
 	ctx := context.Background()
 	res, err := s.q.Query(ctx, s.cmd, prepParams(args)...)
@@ -437,7 +439,7 @@ func (tx *Tx) Prepare(query string) (*Stmt, error) {
 	return &Stmt{
 		q: tx.tran,
 		cmd: &rdb.Command{
-			Sql: query,
+			SQL: query,
 		},
 	}, nil
 }
@@ -479,9 +481,9 @@ func (tx *Tx) Rollback() error {
 //
 //	updateMoney, err := db.Prepare("UPDATE balance SET money=money+? WHERE id=?")
 //	...
-// 	tx, err := db.Begin()
-// 	...
-// 	res, err := tx.Stmt(updateMoney).Exec(123.45, 98293203)
+//	tx, err := db.Begin()
+//	...
+//	res, err := tx.Stmt(updateMoney).Exec(123.45, 98293203)
 func (tx *Tx) Stmt(stmt *Stmt) *Stmt {
 	ns := *stmt
 	s := &ns

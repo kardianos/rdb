@@ -36,7 +36,7 @@ func TestDateTimeRoundTrip(t *testing.T) {
 	dto2 := time.Date(2000, 1, 1, 11, 45, 01, 0, loc)
 
 	cmd := &rdb.Command{
-		Sql: `
+		SQL: `
 			if object_id('tempdb..##timeTemp') is not null begin
 				truncate table ##timeTemp
 
@@ -146,7 +146,7 @@ func TestDateTimePull(t *testing.T) {
 	var dStaticOut time.Time
 
 	cmd := &rdb.Command{
-		Sql: `
+		SQL: `
 if object_id('tempdb..#timeTemp') is not null begin
 	drop table #timeTemp
 end
@@ -189,7 +189,7 @@ func TestDateTZ(t *testing.T) {
 	const wantDate = "01/09/2017"
 
 	cmd := &rdb.Command{
-		Sql:   `select DS = convert(nvarchar(100), @d, 101);`,
+		SQL:   `select DS = convert(nvarchar(100), @d, 101);`,
 		Arity: rdb.OneMust,
 	}
 	res := db.Query(context.Background(), cmd, rdb.Param{Name: "d", Type: rdb.TypeDate, Value: datecheck})
