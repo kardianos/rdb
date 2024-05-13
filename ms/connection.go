@@ -949,6 +949,7 @@ func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue b
 	}
 
 	var ct uint64
+loop:
 	for {
 		err = ctx.Err()
 		if err != nil {
@@ -956,10 +957,14 @@ func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue b
 		}
 		err = bulk.Next(params)
 		if err != nil {
-			if err == io.EOF {
-				break
+			switch err {
+			default:
+				return err
+			case io.EOF:
+				break loop
+			case rdb.ErrBulkSkip:
+				continue loop
 			}
-			return err
 		}
 		// Write column data.
 		ct++

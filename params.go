@@ -4,6 +4,8 @@
 
 package rdb
 
+import "errors"
+
 // If the N (Name) field is not specified is not specified, then the order
 // of the parameter should be used if the driver supports it.
 type Param struct {
@@ -98,6 +100,9 @@ const (
 	OneMust Arity = One | ArityMust
 )
 
+// ErrBulkSkip may be returned from Bulk.Next.
+var ErrBulkSkip = errors.New("skip batch row")
+
 // Bulk data upload.
 type Bulk interface {
 	// Start returns an optional SQL to execute at the beginning of the bulk operation.
@@ -105,6 +110,7 @@ type Bulk interface {
 	Start() (sql string, col []Param, err error)
 
 	// Next must set the value on each row field.
+	// To ignore this row, return [ErrBulkSkip].
 	// If no more rows, return [io.EOF].
 	Next(row []Param) error
 }
