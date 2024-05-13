@@ -13,6 +13,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -60,9 +61,6 @@ type Connection struct {
 	opened              time.Time
 	defaultResetTimeout time.Duration
 
-	// Next token type.
-	peek tdsToken
-
 	// The next byte of ucs2 if split between packets.
 	ucs2Next []byte
 }
@@ -93,6 +91,9 @@ func (tds *Connection) getAllHeaders() []byte {
 }
 
 func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
+	if debugToken {
+		fmt.Printf("\tOPEN\n")
+	}
 	if tds.Status() != rdb.StatusDisconnected {
 		return nil, connectionOpenError
 	}
@@ -392,9 +393,9 @@ func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationL
 	switch iso {
 	case rdb.LevelDefault:
 		level = levelDefault
-	case rdb.LevelReadUncommited:
+	case rdb.LevelReadUncommitted:
 		level = levelReadUncommitted
-	case rdb.LevelReadCommited:
+	case rdb.LevelReadCommitted:
 		level = levelReadCommited
 	case rdb.LevelRepeatableRead:
 		level = levelRepeatableRead
@@ -715,7 +716,8 @@ func (tds *Connection) scan() error {
 		if tds.col == nil {
 			continue
 		}
-		switch tds.peek {
+		pb, err := tds.mr.PeekByte()
+		switch tdsToken(pb) {
 		case tokenColumnMetaData:
 			tds.status = rdb.StatusResultDone
 			return nil
@@ -742,7 +744,11 @@ func (tds *Connection) execute(ctx context.Context, cmd *rdb.Command, params []r
 	tds.syncClose.Unlock()
 
 	if debugToken {
-		fmt.Printf("SQL: %q\n", cmd.SQL)
+		if cmd.Bulk != nil {
+			fmt.Printf("BULK\n")
+		} else {
+			fmt.Printf("SQL: %q\n", cmd.SQL)
+		}
 	}
 
 	var err error
@@ -773,7 +779,27 @@ func (tds *Connection) execute(ctx context.Context, cmd *rdb.Command, params []r
 		if len(params) == 0 {
 			return fmt.Errorf("missing params for bulk insert")
 		}
-		err = tds.sendBulk(ctx, cmd.Bulk, cmd.TruncLongText, params, tds.resetNext)
+		err = tds.sendBulk(ctx, cmd.Bulk, cmd.TruncLongText, params, false)
+		if err != nil {
+			return err
+		}
+
+		// After Bulk Import, the server sends back two packets both marked EOM.
+		// Read them both.
+		withLock(&tds.syncClose, func() {
+			_, err = tds.getSingleResponse(tds.mr, false)
+			if err == io.EOF {
+				err = nil
+			}
+			if err != nil {
+				return
+			}
+			tds.mr.packetEOM = false
+			_, err = tds.getSingleResponse(tds.mr, false)
+			if err == io.EOF {
+				err = nil
+			}
+		})
 	case len(params) > 0:
 		err = tds.sendRPC(ctx, cmd.SQL, cmd.TruncLongText, params, tds.resetNext)
 	}
@@ -818,8 +844,6 @@ func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool,
 	tds.params = params
 	isProc := !strings.ContainsAny(sql, " \t\r\n")
 	withRecomp := false
-
-	// collation := []byte{0x09, 0x04, 0xD0, 0x00, 0x34}
 
 	var procID uint16 = sp_ExecuteSql
 
@@ -889,6 +913,7 @@ func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue b
 	if err != nil {
 		return err
 	}
+
 	w.WriteByte(byte(tokenColumnMetaData))
 	w.WriteUint16(uint16(len(params)))
 	tdsVer := tds.ProtocolVersion
@@ -923,6 +948,7 @@ func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue b
 		w.WriteBuffer(nameU16)
 	}
 
+	var ct uint64
 	for {
 		err = ctx.Err()
 		if err != nil {
@@ -936,6 +962,7 @@ func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue b
 			return err
 		}
 		// Write column data.
+		ct++
 		w.WriteByte(byte(tokenRow))
 		for i, p := range params {
 			ti := meta[i]
@@ -946,57 +973,53 @@ func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue b
 		}
 	}
 	w.WriteByte(byte(tokenDone))
+	w.WriteUint16(0x10) // Status.
+	w.WriteUint16(0)    // Current Command.
+	w.WriteUint64(ct)   // Row Count.
 
 	return w.EndMessage()
 }
 
 func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (response interface{}, err error) {
-	var bb []byte
-
 	if debugToken {
 		fmt.Printf("getSingleResponse\n")
 		defer func() {
-			fmt.Printf("<getSingleResponse MSG %[1]T : %[1]v (peek: 0x%[2]X)\n", response, tds.peek)
+			fmt.Printf("<getSingleResponse MSG %[1]T : %[1]v\n", response)
 		}()
 	}
 
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			if re, is := recovered.(recoverError); is {
-				if re.err == io.EOF {
-					response = MsgEom{}
-					return
-				}
 				err = re.err
 				return
 			}
-			panic(recovered)
+			panic(fmt.Errorf("getSingleResponse panic: %v\n%s", recovered, debug.Stack()))
 		}
 	}()
+
+	var bb []byte
 	read := func(n int) []byte {
 		var readErr error
 		bb, readErr = m.Fetch(n)
+		if len(bb) > 0 {
+			return bb
+		}
 		if readErr != nil {
 			panic(recoverError{err: readErr})
 		}
 		return bb
 	}
-	assignPeek := func() {
-		tds.peek = tdsToken(read(1)[0])
-		if tds.peek == 0 {
-			panic("bad peek")
-			// panic(recoverError{err: errors.New("bad peek")})
+	tokenBuf, err := m.Fetch(1)
+	if err != nil {
+		if len(tokenBuf) != 1 && err == io.EOF {
+			return MsgEom{}, nil
 		}
+		return nil, err
 	}
-	var token tdsToken
-	if tds.peek == 0 {
-		token = tdsToken(read(1)[0])
-		if token == 0 {
-			return nil, errors.New("bad token, is zero")
-		}
-	} else {
-		token = tds.peek
-		tds.peek = 0
+	token := tdsToken(tokenBuf[0])
+	if token == 0 {
+		return nil, errors.New("bad token, is zero")
 	}
 
 	switch token {
@@ -1023,7 +1046,6 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		sqlMsg.State = state
 		sqlMsg.Class = class
 
-		assignPeek()
 		return sqlMsg, nil
 	case tokenColumnMetaData:
 		var columns []*SQLColumn
@@ -1043,8 +1065,6 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			column.Index = i
 			columns = append(columns, column)
 		}
-
-		assignPeek()
 
 		tds.col = columns
 		cc := make([]*rdb.Column, len(tds.col))
@@ -1077,7 +1097,6 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		if msg.StatusCode&doneAttn != 0 || msg.StatusCode&doneServerError != 0 || msg.StatusCode&doneError != 0 {
 			return MsgCancel{}, nil
 		}
-		assignPeek()
 		if msg.StatusCode&0x10 != 0 {
 			return MsgRowCount{Count: msg.Rows}, nil
 		}
@@ -1087,7 +1106,6 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			tds.decodeFieldValue(read, column, tds.val.WriteField, reportRow)
 		}
 
-		assignPeek()
 		return MsgRow{}, nil
 	case tokenNBCRow:
 		bitlen := (len(tds.col) + 7) / 8
@@ -1105,7 +1123,6 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			tds.decodeFieldValue(read, column, tds.val.WriteField, reportRow)
 		}
 
-		assignPeek()
 		return MsgRow{}, nil
 	case tokenOrder:
 		// Just read the token.
@@ -1114,7 +1131,6 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		for i := uint16(0); i < length; i++ {
 			order[i] = binary.LittleEndian.Uint16(read(2))
 		}
-		assignPeek()
 		return order, nil
 	case tokenEnvChange:
 		length := int(binary.LittleEndian.Uint16(read(2)) - 1)
@@ -1143,7 +1159,6 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		}
 		// Currently ignore all the data.
 
-		assignPeek()
 		return MsgEnvChange{}, nil
 	case tokenReturnValue:
 		//ParamOrdinal ushort
@@ -1179,12 +1194,14 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		}
 		tds.decodeFieldValue(read, col, wf, true)
 
+		if len(tds.params) <= col.Index {
+			return nil, fmt.Errorf("INDEX OUT OF RANGE (params=%#v, col=%#v)", tds.params, *col)
+		}
+
 		err := rdb.AssignValue(&col.Column, outValue, tds.params[col.Index].Value, nil)
 		if err != nil {
 			return nil, err
 		}
-
-		assignPeek()
 
 		return MsgParamValue{}, nil
 	default:

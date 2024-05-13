@@ -311,14 +311,54 @@ func (r *MessageReader) FetchAll() (ret []byte, err error) {
 	return r.Fetch(r.length)
 }
 
+func (r *MessageReader) PeekByte() (out byte, err error) {
+	if r == nil {
+		return 0, io.EOF
+	}
+
+	const n = 1
+	if len(r.current) >= n {
+		return r.current[0], nil
+	}
+	if r.packetEOM {
+		return 0, io.EOF
+	}
+	for len(r.current) < n {
+		err = r.fill()
+		if err != nil {
+			return 0, err
+		}
+	}
+	return r.current[1], nil
+}
+
+func (r *MessageReader) fill() error {
+	if r.packetEOM {
+		return io.ErrUnexpectedEOF
+	}
+	next, err := r.Next()
+	if err != nil {
+		if err != io.EOF {
+			return err
+		}
+		r.packetEOM = true
+	}
+	// TODO(kardianos): find a way to make the bytes immutable, and normally avoid the copy.
+	x := next
+	next = make([]byte, len(x))
+	copy(next, x)
+	if len(r.current) == 0 {
+		r.current = next
+	} else {
+		r.current = append(r.current, next...)
+	}
+	return nil
+}
 func (r *MessageReader) Fetch(n int) (ret []byte, err error) {
 	if r == nil {
 		return nil, io.EOF
 	}
 	if n == 0 {
-		if r.packetEOM && len(r.current) == 0 {
-			return nil, io.EOF
-		}
 		return nil, nil
 	}
 	if len(r.current) >= n {
@@ -329,26 +369,10 @@ func (r *MessageReader) Fetch(n int) (ret []byte, err error) {
 	if r.packetEOM {
 		return nil, io.EOF
 	}
-	var next []byte
 	for len(r.current) < n {
-		if r.packetEOM {
-			return r.current, io.ErrUnexpectedEOF
-		}
-		next, err = r.Next()
+		err = r.fill()
 		if err != nil {
-			if err != io.EOF {
-				return nil, err
-			}
-			r.packetEOM = true
-		}
-		// TODO(kardianos): find a way to make the bytes immutable, and normally avoid the copy.
-		x := next
-		next = make([]byte, len(x))
-		copy(next, x)
-		if len(r.current) == 0 {
-			r.current = next
-		} else {
-			r.current = append(r.current, next...)
+			return nil, err
 		}
 	}
 	ret = r.current[:n:n]

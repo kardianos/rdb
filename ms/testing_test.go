@@ -6,8 +6,8 @@ package ms
 
 import (
 	"context"
+	"fmt"
 	"os"
-	"runtime"
 	"runtime/debug"
 	"testing"
 	"time"
@@ -31,11 +31,18 @@ func TestMain(m *testing.M) {
 		os.Exit(m.Run())
 	}
 	config = must.Config(rdb.ParseConfigURL(testConnectionString))
-	config.PoolInitCapacity = runtime.NumCPU()
+	if false {
+		config.PoolInitCapacity = 100 // runtime.NumCPU()
+	} else {
+		// Force all test on to a single connection to find connection re-use errors.
+		config.PoolInitCapacity = 1
+		config.PoolMaxCapacity = 1
+	}
 	config.DialTimeout = time.Millisecond * 100
 	db = must.Open(config)
 	err := db.Normal().Ping(context.Background())
 	if err != nil {
+		fmt.Printf("DB PING error (tests will skip): %v\n", err)
 		db = must.ConnPool{}
 	}
 

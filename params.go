@@ -64,13 +64,15 @@ type Field struct {
 	Null interface{}
 }
 
+//go:generate stringer -type=IsolationLevel -trimprefix Level
+
 type IsolationLevel byte
 
 const (
 	LevelDefault IsolationLevel = iota
-	LevelReadUncommited
-	LevelReadCommited
-	LevelWriteCommited
+	LevelReadUncommitted
+	LevelReadCommitted
+	LevelWriteCommitted
 	LevelRepeatableRead
 	LevelSerializable
 	LevelSnapshot

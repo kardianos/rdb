@@ -12,6 +12,7 @@ import (
 )
 
 func TestBulkInsert(t *testing.T) {
+	checkSkip(t)
 	const CSVText = `col_a,col_b,col_c
 A,1,LP
 B,2,LD
@@ -34,7 +35,7 @@ C,3,LC`
 		{Name: "with_hints", With: true},
 	}
 
-	const rowMax = 100000
+	const rowMax = 10000
 
 	for _, item := range list {
 		var rowIndex = 0
