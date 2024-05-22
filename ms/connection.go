@@ -39,10 +39,11 @@ type Connection struct {
 	onDone  chan struct{} // Write to when message is done.
 	onClose chan struct{} // Close to when connection closes
 
+	syncClose sync.Mutex
 	status    rdb.DriverConnStatus
+
 	available bool
 	resetNext bool
-	syncClose sync.Mutex
 
 	ProductVersion  *semver.Version
 	ProtocolVersion *semver.Version
@@ -715,6 +716,7 @@ func (tds *Connection) scan() error {
 			return err
 		case MsgCancel:
 			err = tds.done()
+
 			if hasCol {
 				tds.syncClose.Lock()
 				if tds.status != rdb.StatusDisconnected {
@@ -722,19 +724,18 @@ func (tds *Connection) scan() error {
 				}
 				tds.syncClose.Unlock()
 			}
+
 			if err != nil {
 				return err
 			}
-			if v.IsAttention {
+			// Often attentions come through as an DONE with Error, not Attention bit on.
+			if v.IsAttention || v.IsError {
 				return rdb.ErrCancel
 			}
 			if lastMessage != nil {
 				return rdb.Errors{lastMessage}
 			}
-			if v.IsServerError {
-				return fmt.Errorf("unknown server error, check messages")
-			}
-			return fmt.Errorf("unknown error, check messages")
+			return fmt.Errorf("unknown server error, check messages")
 		}
 		if tds.col == nil {
 			continue
@@ -1120,18 +1121,19 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			return MsgFinalDone{}, nil
 		}
 		const (
+			doneCount       = 0x10
 			doneError       = 0x2
 			doneAttn        = 0x20
 			doneServerError = 0x100
 		)
-		if msg.StatusCode&doneAttn != 0 || msg.StatusCode&doneServerError != 0 || msg.StatusCode&doneError != 0 {
+		if attn, serr, err := msg.StatusCode&doneAttn != 0, msg.StatusCode&doneServerError != 0, msg.StatusCode&doneError != 0; attn || serr || err {
 			return MsgCancel{
-				IsAttention:   msg.StatusCode&doneAttn != 0,
-				IsServerError: msg.StatusCode&doneServerError != 0,
-				IsError:       msg.StatusCode&doneError != 0,
+				IsAttention:   attn,
+				IsServerError: serr,
+				IsError:       err,
 			}, nil
 		}
-		if msg.StatusCode&0x10 != 0 {
+		if msg.StatusCode&doneCount != 0 {
 			return MsgRowCount{Count: msg.Rows}, nil
 		}
 		return msg, nil
