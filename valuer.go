@@ -111,7 +111,6 @@ func (v *valuer) Message(msg *Message) {
 }
 func (v *valuer) RowScanned() {
 	v.rowCount += 1
-	return
 }
 
 func (v *valuer) Done() error {
@@ -126,7 +125,7 @@ func (v *valuer) Done() error {
 }
 
 func (v *valuer) RowsAffected(count uint64) {
-	v.rowsAffected = count
+	v.rowsAffected += count
 }
 
 /*

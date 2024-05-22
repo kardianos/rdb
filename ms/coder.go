@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/big"
 	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/kardianos/rdb"
@@ -81,6 +82,11 @@ func encodeType(w *PacketWriter, ti paramTypeInfo, param *rdb.Param) error {
 	return nil
 }
 
+const (
+	textNULL    = 0xFFFFFFFFFFFFFFFF
+	textUnknown = 0xFFFFFFFFFFFFFFFE
+)
+
 func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValues bool, value interface{}) error {
 	var nullValue bool
 	if value == rdb.Null || value == nil || param.Null {
@@ -115,13 +121,13 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 		}
 		if maxLen {
 			if nullValue {
-				w.WriteUint64(0xFFFFFFFFFFFFFFFF)
+				w.WriteUint64(textNULL)
 				return nil
 			}
 			if reader, ok := value.(io.Reader); ok {
 				// Size Unknown.
 				var bb = make([]byte, 4000)
-				w.WriteUint64(0xFFFFFFFFFFFFFFFE)
+				w.WriteUint64(textUnknown)
 				var err error
 				var n int
 				for {
@@ -191,7 +197,7 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 				}
 			}
 			if writeBb == nil {
-				w.WriteUint64(0xFFFFFFFFFFFFFFFF)
+				w.WriteUint64(textNULL)
 				return nil
 			}
 			if len(writeBb) == 0 {
@@ -200,7 +206,7 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 				return nil
 			}
 
-			w.WriteUint64(uint64(len(writeBb)))
+			w.WriteUint64(textUnknown)
 			w.WriteUint32(uint32(len(writeBb)))
 			w.WriteBuffer(writeBb)
 			w.WriteUint32(0)
@@ -304,6 +310,12 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 				w.WriteByte(byte(v))
 			case float64:
 				w.WriteByte(byte(v))
+			case string:
+				iv, err := strconv.ParseInt(v, 10, 8)
+				if err != nil {
+					return fmt.Errorf("cannot convert string to int8 for param %q", param.Name)
+				}
+				w.WriteByte(byte(iv))
 
 			case *int8:
 				w.WriteByte(byte(*v))
@@ -331,10 +343,17 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 				w.WriteByte(byte(*v))
 			default:
 				rv := reflect.ValueOf(v)
-				if rv.CanInt() {
-					w.WriteByte(byte(rv.Int()))
-				} else {
+				switch {
+				default:
 					return fmt.Errorf("need byte or smaller for param @%s", param.Name)
+				case rv.CanInt():
+					w.WriteByte(byte(rv.Int()))
+				case rv.Kind() == reflect.String:
+					iv, err := strconv.ParseInt(rv.String(), 10, 8)
+					if err != nil {
+						return fmt.Errorf("cannot convert string to int8 for param %q", param.Name)
+					}
+					w.WriteByte(byte(iv))
 				}
 			}
 		case 2:
@@ -363,6 +382,12 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 				w.WriteUint16(uint16(v))
 			case float64:
 				w.WriteUint16(uint16(v))
+			case string:
+				iv, err := strconv.ParseInt(v, 10, 16)
+				if err != nil {
+					return fmt.Errorf("cannot convert string to int16 for param %q", param.Name)
+				}
+				w.WriteUint16(uint16(iv))
 
 			case *int8:
 				w.WriteUint16(uint16(*v))
@@ -390,10 +415,17 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 				w.WriteUint16(uint16(*v))
 			default:
 				rv := reflect.ValueOf(v)
-				if rv.CanInt() {
-					w.WriteUint16(uint16(rv.Int()))
-				} else {
+				switch {
+				default:
 					return fmt.Errorf("need uint16 or smaller for param @%s", param.Name)
+				case rv.CanInt():
+					w.WriteUint16(uint16(rv.Int()))
+				case rv.Kind() == reflect.String:
+					iv, err := strconv.ParseInt(rv.String(), 10, 16)
+					if err != nil {
+						return fmt.Errorf("cannot convert string to int16 for param %q", param.Name)
+					}
+					w.WriteUint16(uint16(iv))
 				}
 			}
 		case 4:
@@ -422,6 +454,12 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 				w.WriteUint32(uint32(v))
 			case float64:
 				w.WriteUint32(uint32(v))
+			case string:
+				iv, err := strconv.ParseInt(v, 10, 32)
+				if err != nil {
+					return fmt.Errorf("cannot convert string to int32 for param %q", param.Name)
+				}
+				w.WriteUint32(uint32(iv))
 
 			case *int8:
 				w.WriteUint32(uint32(*v))
@@ -449,10 +487,17 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 				w.WriteUint32(uint32(*v))
 			default:
 				rv := reflect.ValueOf(v)
-				if rv.CanInt() {
-					w.WriteUint32(uint32(rv.Int()))
-				} else {
+				switch {
+				default:
 					return fmt.Errorf("need uint32 or smaller for param @%s", param.Name)
+				case rv.CanInt():
+					w.WriteUint32(uint32(rv.Int()))
+				case rv.Kind() == reflect.String:
+					iv, err := strconv.ParseInt(rv.String(), 10, 32)
+					if err != nil {
+						return fmt.Errorf("cannot convert string to int32 for param %q", param.Name)
+					}
+					w.WriteUint32(uint32(iv))
 				}
 			}
 		case 8:
@@ -481,6 +526,12 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 				w.WriteUint64(uint64(v))
 			case float64:
 				w.WriteUint64(uint64(v))
+			case string:
+				iv, err := strconv.ParseInt(v, 10, 64)
+				if err != nil {
+					return fmt.Errorf("cannot convert string to int64 for param %q", param.Name)
+				}
+				w.WriteUint64(uint64(iv))
 
 			case *int8:
 				w.WriteUint64(uint64(*v))
@@ -508,10 +559,17 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 				w.WriteUint64(uint64(*v))
 			default:
 				rv := reflect.ValueOf(v)
-				if rv.CanInt() {
-					w.WriteUint64(uint64(rv.Int()))
-				} else {
+				switch {
+				default:
 					return fmt.Errorf("need uint64 or smaller for param @%s", param.Name)
+				case rv.CanInt():
+					w.WriteUint64(uint64(rv.Int()))
+				case rv.Kind() == reflect.String:
+					iv, err := strconv.ParseInt(rv.String(), 10, 64)
+					if err != nil {
+						return fmt.Errorf("cannot convert string to int64 for param %q", param.Name)
+					}
+					w.WriteUint64(uint64(iv))
 				}
 			}
 		}
@@ -983,13 +1041,13 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 		totalSize := binary.LittleEndian.Uint64(read(8))
 		sizeUnknown := false
 
-		if totalSize == 0xFFFFFFFFFFFFFFFF {
+		if totalSize == textNULL {
 			wf(&rdb.DriverValue{
 				Null: true,
 			})
 			return
 		}
-		if totalSize == 0xFFFFFFFFFFFFFFFE {
+		if totalSize == textUnknown {
 			sizeUnknown = true
 		}
 		useChunks := false

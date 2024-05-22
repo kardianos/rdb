@@ -489,10 +489,17 @@ func (tds *Connection) Query(ctx context.Context, cmd *rdb.Command, params []rdb
 	if tds.mr != nil && !tds.mr.packetEOM {
 		return fmt.Errorf("connection not ready to be re-used yet for query")
 	}
-	go tds.asyncWaitCancel(ctx, cmd.Name)
-	tds.mr = tds.pr.BeginMessage(packetTabularResult)
 
-	err := tds.execute(ctx, cmd, params)
+	go tds.asyncWaitCancel(ctx, cmd.Name)
+top:
+	select {
+	default:
+		// Nothing
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	moreExec, err := tds.execute(ctx, cmd, params)
 	if err != nil {
 		return err
 	}
@@ -503,6 +510,15 @@ func (tds *Connection) Query(ctx context.Context, cmd *rdb.Command, params []rdb
 	if doNext {
 		_, err = tds.nextResult()
 	}
+
+	if moreExec {
+		// err = tds.NextQuery()
+		// if err != nil {
+		// 	return err
+		// }
+		goto top
+	}
+
 	return err
 }
 
@@ -652,6 +668,7 @@ func (tds *Connection) scan() error {
 	}
 	tds.syncClose.Unlock()
 
+	var lastMessage *rdb.Message
 	hasCol := false
 	for {
 		var res interface{}
@@ -676,6 +693,7 @@ func (tds *Connection) scan() error {
 			}
 			return err
 		case *rdb.Message:
+			lastMessage = v
 			tds.val.Message(v)
 		case MsgColumn:
 			hasCol = true
@@ -711,7 +729,16 @@ func (tds *Connection) scan() error {
 			if err != nil {
 				return err
 			}
-			return rdb.ErrCancel
+			if v.IsAttention {
+				return rdb.ErrCancel
+			}
+			if lastMessage != nil {
+				return rdb.Errors{lastMessage}
+			}
+			if v.IsServerError {
+				return fmt.Errorf("unknown server error, check messages")
+			}
+			return fmt.Errorf("unknown error, check messages")
 		}
 		if tds.col == nil {
 			continue
@@ -729,16 +756,16 @@ func (tds *Connection) scan() error {
 	}
 }
 
-func (tds *Connection) execute(ctx context.Context, cmd *rdb.Command, params []rdb.Param) error {
+func (tds *Connection) execute(ctx context.Context, cmd *rdb.Command, params []rdb.Param) (more bool, err error) {
 	tds.syncClose.Lock()
 
 	if tds.status == rdb.StatusDisconnected {
 		tds.syncClose.Unlock()
-		return connectionNotOpenError
+		return false, connectionNotOpenError
 	}
 	if tds.status != rdb.StatusReady {
 		tds.syncClose.Unlock()
-		return connectionInUseError
+		return false, connectionInUseError
 	}
 	tds.status = rdb.StatusQuery
 	tds.syncClose.Unlock()
@@ -751,7 +778,8 @@ func (tds *Connection) execute(ctx context.Context, cmd *rdb.Command, params []r
 		}
 	}
 
-	var err error
+	tds.mr = tds.pr.BeginMessage(packetTabularResult)
+
 	switch {
 	default:
 		err = tds.sendSimpleQuery(ctx, cmd.SQL, tds.resetNext)
@@ -761,7 +789,7 @@ func (tds *Connection) execute(ctx context.Context, cmd *rdb.Command, params []r
 		if len(prefixSQL) == 0 || len(params) == 0 {
 			startSQL, startParams, err := bulk.Start()
 			if err != nil {
-				return err
+				return more, err
 			}
 			if len(prefixSQL) == 0 {
 				prefixSQL = startSQL
@@ -773,42 +801,32 @@ func (tds *Connection) execute(ctx context.Context, cmd *rdb.Command, params []r
 		if len(prefixSQL) > 0 {
 			err = tds.sendSimpleQuery(ctx, prefixSQL, tds.resetNext)
 			if err != nil {
-				return err
+				return more, err
+			}
+			var resp interface{}
+			withLock(&tds.syncClose, func() {
+				resp, err = tds.getSingleResponse(tds.mr, false)
+				if _, ok := resp.(MsgFinalDone); ok && !more {
+					tds.mr.packetEOM = false
+				}
+			})
+			if err != nil {
+				return more, err
 			}
 		}
 		if len(params) == 0 {
-			return fmt.Errorf("missing params for bulk insert")
+			return more, fmt.Errorf("missing params for bulk insert")
 		}
-		err = tds.sendBulk(ctx, cmd.Bulk, cmd.TruncLongText, params, false)
-		if err != nil {
-			return err
-		}
-
-		// After Bulk Import, the server sends back two packets both marked EOM.
-		// Read them both.
-		withLock(&tds.syncClose, func() {
-			_, err = tds.getSingleResponse(tds.mr, false)
-			if err == io.EOF {
-				err = nil
-			}
-			if err != nil {
-				return
-			}
-			tds.mr.packetEOM = false
-			_, err = tds.getSingleResponse(tds.mr, false)
-			if err == io.EOF {
-				err = nil
-			}
-		})
+		more, err = tds.sendBulk(ctx, cmd.Bulk, cmd.TruncLongText, params, false)
 	case len(params) > 0:
 		err = tds.sendRPC(ctx, cmd.SQL, cmd.TruncLongText, params, tds.resetNext)
 	}
 	tds.resetNext = false
 	if err != nil {
-		return err
+		return more, err
 	}
 
-	return tds.scan()
+	return more, tds.scan()
 }
 
 const (
@@ -907,12 +925,19 @@ func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool,
 	return w.EndMessage()
 }
 
-func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue bool, params []rdb.Param, reset bool) error {
+func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue bool, params []rdb.Param, reset bool) (more bool, err error) {
 	w := tds.pw
-	err := w.BeginMessage(ctx, packetBulkLoad, reset)
+	err = w.BeginMessage(ctx, packetBulkLoad, reset)
 	if err != nil {
-		return err
+		return false, err
 	}
+	var complete bool
+	defer func() {
+		if complete {
+			return
+		}
+		w.EndMessage()
+	}()
 
 	w.WriteByte(byte(tokenColumnMetaData))
 	w.WriteUint16(uint16(len(params)))
@@ -932,38 +957,41 @@ func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue b
 
 		ti, err := getParamTypeInfo(tdsVer, p.Type)
 		if err != nil {
-			return err
+			return false, err
 		}
 		meta[i] = ti
 		err = encodeType(w, ti, &p)
 		if err != nil {
-			return err
+			return false, err
 		}
 		nameU16 := uconv.Encode.FromString(p.Name)
 		l := len(nameU16) / 2
 		if l > 0xff {
-			return fmt.Errorf("parameter name too long %q", p.Name)
+			return false, fmt.Errorf("parameter name too long %q", p.Name)
 		}
 		w.WriteByte(byte(l))
 		w.WriteBuffer(nameU16)
 	}
 
-	var ct uint64
+	var ct int
 loop:
 	for {
 		err = ctx.Err()
 		if err != nil {
-			return err
+			return false, err
 		}
-		err = bulk.Next(params)
+		err = bulk.Next(ct, params)
 		if err != nil {
 			switch err {
 			default:
-				return err
+				return false, err
 			case io.EOF:
 				break loop
 			case rdb.ErrBulkSkip:
 				continue loop
+			case rdb.ErrBulkBatchDone:
+				more = true
+				break loop
 			}
 		}
 		// Write column data.
@@ -973,16 +1001,17 @@ loop:
 			ti := meta[i]
 			err = encodeValue(w, ti, &p, truncValue, p.Value)
 			if err != nil {
-				return err
+				return false, err
 			}
 		}
 	}
+	complete = true
 	w.WriteByte(byte(tokenDone))
-	w.WriteUint16(0x10) // Status.
-	w.WriteUint16(0)    // Current Command.
-	w.WriteUint64(ct)   // Row Count.
+	w.WriteUint16(0x10)       // Status.
+	w.WriteUint16(0)          // Current Command.
+	w.WriteUint64(uint64(ct)) // Row Count.
 
-	return w.EndMessage()
+	return more, w.EndMessage()
 }
 
 func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (response interface{}, err error) {
@@ -1100,7 +1129,11 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 			doneServerError = 0x100
 		)
 		if msg.StatusCode&doneAttn != 0 || msg.StatusCode&doneServerError != 0 || msg.StatusCode&doneError != 0 {
-			return MsgCancel{}, nil
+			return MsgCancel{
+				IsAttention:   msg.StatusCode&doneAttn != 0,
+				IsServerError: msg.StatusCode&doneServerError != 0,
+				IsError:       msg.StatusCode&doneError != 0,
+			}, nil
 		}
 		if msg.StatusCode&0x10 != 0 {
 			return MsgRowCount{Count: msg.Rows}, nil

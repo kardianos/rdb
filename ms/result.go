@@ -15,7 +15,11 @@ type MsgEom struct{}
 type MsgRow struct{}
 type MsgColumn struct{}
 type MsgFinalDone struct{}
-type MsgCancel struct{}
+type MsgCancel struct {
+	IsAttention   bool
+	IsServerError bool
+	IsError       bool
+}
 type MsgRowCount struct {
 	Count uint64
 }

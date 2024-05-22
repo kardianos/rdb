@@ -67,7 +67,7 @@ func (mt MessageType) String() string {
 }
 
 // SQL errors reported by the server.
-// Must always be wrapped by SqlErrors.
+// Must always be wrapped by Errors.
 // This is why it doesn't satisfy the error interface.
 type Message struct {
 	Type       MessageType

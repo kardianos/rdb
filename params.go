@@ -103,6 +103,9 @@ const (
 // ErrBulkSkip may be returned from Bulk.Next.
 var ErrBulkSkip = errors.New("skip batch row")
 
+// ErrBulkBatchDone may be returned from Bulk.Next.
+var ErrBulkBatchDone = errors.New("batch is complete, more data to follow")
+
 // Bulk data upload.
 type Bulk interface {
 	// Start returns an optional SQL to execute at the beginning of the bulk operation.
@@ -112,7 +115,7 @@ type Bulk interface {
 	// Next must set the value on each row field.
 	// To ignore this row, return [ErrBulkSkip].
 	// If no more rows, return [io.EOF].
-	Next(row []Param) error
+	Next(batchCount int, row []Param) error
 }
 
 // Command represents a SQL command and can be used from many different

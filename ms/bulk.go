@@ -87,9 +87,12 @@ func (b *Bulk) Start() (sql string, col []rdb.Param, err error) {
 	ret := buf.String()
 	return ret, b.Columns, nil
 }
-func (b *Bulk) Next(row []rdb.Param) error {
+func (b *Bulk) Next(batchCount int, row []rdb.Param) error {
 	if b == nil || b.Row == nil {
 		return io.EOF
+	}
+	if b.RowsPerBatch > 0 && batchCount >= b.RowsPerBatch {
+		return rdb.ErrBulkBatchDone
 	}
 	return b.Row(row)
 }
