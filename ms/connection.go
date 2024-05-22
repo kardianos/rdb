@@ -512,10 +512,6 @@ top:
 	}
 
 	if moreExec {
-		// err = tds.NextQuery()
-		// if err != nil {
-		// 	return err
-		// }
 		goto top
 	}
 
