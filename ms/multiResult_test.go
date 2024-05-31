@@ -303,7 +303,7 @@ func TestMultiResultEmpty2(t *testing.T) {
 
 	for {
 		if res.Next() {
-			t.Fatal("No next rows")
+			t.Fatalf("No next rows, got %d", results)
 		}
 		if len(res.Schema()) == 0 {
 			t.Fatal("column schema not populating in empty result set")
@@ -374,7 +374,9 @@ func TestMultiResultEmpty3(t *testing.T) {
 	;
 		`,
 		Arity: rdb.Any,
-	})
+	},
+		rdb.Param{Name: "P1", Type: rdb.Integer, Value: 1},
+	)
 
 	defer res.Close()
 
@@ -468,7 +470,7 @@ func TestMultiResultAnotherTest(t *testing.T) {
 		Arity: rdb.Any,
 	}
 
-	tb, err := table.FillCommand(context.Background(), db.Normal(), cmd)
+	tb, err := table.FillCommand(context.Background(), db.Normal(), cmd, rdb.Param{Name: "P1", Type: rdb.Integer, Value: 5000001})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,6 +483,94 @@ func TestMultiResultAnotherTest(t *testing.T) {
 	for index, tb := range set {
 		if len(tb.Row) != list[index] {
 			t.Errorf("in result set index %d, wanted %d rows, got %d", index, list[index], len(tb.Row))
+		}
+	}
+
+}
+
+func TestMultiResultPopulate4(t *testing.T) {
+	checkSkip(t)
+	if parallel {
+		t.Parallel()
+	}
+
+	defer assertFreeConns(t)
+
+	// Handle multiple result sets.
+	defer recoverTest(t)
+
+	cmd := &rdb.Command{
+		SQL: `
+select top 3
+	t.name as R11,
+	t.name as R12,
+	t.name as R13,
+	t.name as R14,
+	t.name as R15,
+	t.name as R16,
+	t.name as R17
+from
+	sys.tables t
+where 1=1
+;
+
+select top 2
+	t.name as R21,
+	t.name as R22,
+	t.name as R23,
+	t.name as R24,
+	t.name as R25,
+	t.name as R26,
+	t.name as R27
+from
+	sys.tables t
+where 1=1
+;
+select top 1
+	t.name as R31,
+	t.name as R32,
+	t.name as R33,
+	t.name as R34,
+	t.name as R35,
+	t.name as R36,
+	t.name as R37
+from
+	sys.tables t
+where 1=1
+;
+select top 4
+	t.name as R41,
+	t.name as R42,
+	t.name as R43,
+	t.name as R44,
+	t.name as R45,
+	t.name as R46,
+	t.name as R47
+from
+	sys.tables t
+where 1=1
+;
+	`,
+		Arity: rdb.Any,
+	}
+
+	tb, err := table.FillCommand(context.Background(), db.Normal(), cmd, rdb.Param{Name: "P1", Type: rdb.Integer, Value: 5000001})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	set := tb.Set
+	list := []int{3, 2, 1, 4}
+	if len(set) != len(list) {
+		t.Fatalf("expected %d result sets, got %d", len(list), len(set))
+	}
+	for index, tb := range set {
+		if len(tb.Row) != list[index] {
+			t.Errorf("in result set index %d, wanted %d rows, got %d", index, list[index], len(tb.Row))
+		}
+		for _, row := range tb.Row {
+			cn := fmt.Sprintf("R%d7", index+1)
+			_ = row.Get(cn)
 		}
 	}
 

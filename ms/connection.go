@@ -740,8 +740,22 @@ func (tds *Connection) scan() error {
 		if tds.col == nil {
 			continue
 		}
-		pb, err := tds.mr.PeekByte()
-		switch tdsToken(pb) {
+		var pb byte
+		withLock(&tds.syncClose, func() {
+			pb, err = tds.mr.PeekByte()
+		})
+		if err == io.EOF {
+			continue
+		}
+		peek := tdsToken(pb)
+		if debugToken {
+			fmt.Printf("\tPEEK: %v\n", peek)
+		}
+		switch peek {
+		default:
+			return fmt.Errorf("unknown token peek: %v", peek)
+		case tokenDone, tokenDoneInProc, tokenDoneProc, tokenEnvChange, tokenError, tokenInfo, tokenLoginAck, tokenOrder, tokenReturnStatus, tokenReturnValue:
+			// Nothing.
 		case tokenColumnMetaData:
 			tds.status = rdb.StatusResultDone
 			return nil

@@ -329,7 +329,7 @@ func (r *MessageReader) PeekByte() (out byte, err error) {
 			return 0, err
 		}
 	}
-	return r.current[1], nil
+	return r.current[0], nil
 }
 
 func (r *MessageReader) fill() error {
