@@ -46,20 +46,27 @@ func TestDateTimeRoundTrip(t *testing.T) {
 				values ('DTO', @dto), ('DTO2', @dto2)
 			end
 			select
-				dtV = cast(@dtS as datetime),
-				dtS = cast(@dtS as nvarchar(max)),
-				dt2V = cast(@dt2S as datetime2),
-				dt2S = cast(@dt2S as nvarchar(max)),
-				dtoS = cast(@dto as nvarchar(max)),
+				dt_old = @dt_old,
 				dt = @dt,
+				dt2 = @dt2,
 				d = @d,
 				t = @t,
-				t2 = format(@t2, 'hh\:mm', 'en-us'),
-				-- dt2 = @dt2,
+				t_str = format(@t_str, 'hh\:mm', 'en-us'),
+				t2_str = format(@t2_str, 'hh\:mm', 'en-us'),
 				dto = @dto,
-				dto2 = @dto2
+				dto2 = @dto2,
+				dto_str = convert(nvarchar(100), @dto_str),
+				dto2_str = convert(nvarchar(100), @dto2_str),
+				dt_str = convert(nvarchar(100), @dt_str),
+				dt2_str = convert(nvarchar(100), @dt2_str),
+				dt_v1_str = convert(nvarchar(100), @dt_v1_str),
+				dt2_v1_str = convert(nvarchar(100), @dt2_v1_str)
 		`,
 		Arity: rdb.OneMust,
+	}
+
+	inZone := func(x time.Time, loc *time.Location) time.Time {
+		return time.Date(x.Year(), x.Month(), x.Day(), x.Hour(), x.Minute(), x.Second(), x.Nanosecond(), loc)
 	}
 
 	list := []struct {
@@ -70,16 +77,28 @@ func TestDateTimeRoundTrip(t *testing.T) {
 		got  interface{}
 		proc func(interface{}) interface{}
 	}{
-		{name: "dt", t: TypeOldTD, in: dt, want: dt, proc: func(v interface{}) interface{} {
-			return v.(time.Time).Round(truncTo)
+		{name: "dt_old", t: TypeOldTD, in: dt, want: dt, proc: func(v interface{}) interface{} {
+			x := v.(time.Time).Round(truncTo)
+			return inZone(x, time.Local)
 		}},
 		{name: "d", t: rdb.TypeDate, in: d, want: d},
 		{name: "t", t: rdb.TypeTime, in: tm, want: tm},
-		{name: "t2", t: rdb.TypeTime, in: dto2, want: "11:45"},
+		{name: "t_str", t: rdb.TypeTime, in: dto, want: "22:45"},
+		{name: "t2_str", t: rdb.TypeTime, in: dto2, want: "11:45"},
 		{name: "dto", t: rdb.TypeTimestampz, in: dto, want: dto},
 		{name: "dto2", t: rdb.TypeTimestampz, in: dto2, want: dto2},
-		{name: "dtS", t: TypeOldTD, in: dto, want: "Jan  2 2000  6:45AM"},
-		{name: "dt2S", t: rdb.TypeTimestamp, in: dto, want: "2000-01-02 06:45:01.0000000"},
+		{name: "dto_str", t: rdb.TypeTimestampz, in: dto, want: "2000-01-01 22:45:01.0000000 -08:00"},
+		{name: "dto2_str", t: rdb.TypeTimestampz, in: dto2, want: "2000-01-01 11:45:01.0000000 -08:00"},
+		{name: "dt_v1_str", t: TypeOldTD, in: dto, want: "Jan  1 2000 10:45PM"},
+		{name: "dt2_v1_str", t: TypeOldTD, in: dto2, want: "Jan  1 2000 11:45AM"},
+		{name: "dt_str", t: rdb.TypeTimestamp, in: dto, want: "2000-01-01 22:45:01.0000000"},
+		{name: "dt2_str", t: rdb.TypeTimestamp, in: dto2, want: "2000-01-01 11:45:01.0000000"},
+		{name: "dt", t: rdb.TypeTimestamp, in: dto, want: dto, proc: func(i interface{}) interface{} {
+			return inZone(i.(time.Time), loc)
+		}},
+		{name: "dt2", t: rdb.TypeTimestamp, in: dto2, want: dto2, proc: func(i interface{}) interface{} {
+			return inZone(i.(time.Time), loc)
+		}},
 	}
 
 	params := make([]rdb.Param, 0, len(list))

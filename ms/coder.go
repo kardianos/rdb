@@ -19,10 +19,13 @@ import (
 	"github.com/kardianos/rdb/semver"
 )
 
-var zeroDateTime = time.Date(1900, time.January, 1, 0, 0, 0, 0, time.UTC)
 var minDateTime = time.Date(1753, time.January, 1, 0, 0, 0, 0, time.UTC)
 
-var zeroDateN = time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC)
+var zeroDateTime = time.Date(1900, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+func zeroDateN(loc *time.Location) time.Time {
+	return time.Date(1, time.January, 1, 0, 0, 0, 0, loc)
+}
 
 func encodeType(w *PacketWriter, ti paramTypeInfo, param *rdb.Param) error {
 	// Start TYPE_INFO.
@@ -764,9 +767,11 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 			if v.Before(minDateTime) {
 				return fmt.Errorf("time for @%s must be after %s", param.Name, minDateTime.String())
 			}
-			vNoTime := v.Truncate(24 * time.Hour)
-			w.WriteUint32(uint32(vNoTime.Sub(zeroDateTime).Hours() / 24))
-			w.WriteUint32(uint32(v.Sub(vNoTime).Seconds() * 300))
+			vNoTime := time.Date(v.Year(), v.Month(), v.Day(), 0, 0, 0, 0, v.Location())
+			day := int64(vNoTime.Sub(zeroDateTime).Hours()) / 24
+			sec := v.Sub(vNoTime).Seconds()
+			w.WriteUint32(uint32(day))
+			w.WriteUint32(uint32(sec * 300))
 		default:
 			return fmt.Errorf("need time.Time for param @%s", param.Name)
 		}
@@ -800,58 +805,67 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 
 		w.WriteByte(ti.W) // Row field width.
 
-		_, sec := v.Zone()
-		year, month, day := v.Date()
-		if (ti.Dt & dtDate) != 0 {
+		// Days from 0001-01-01 in Gregorian.
+		gregorianDays := func(year, yearday int) int {
+			year0 := year - 1
+			return year0*365 + year0/4 - year0/100 + year0/400 + yearday - 1
+		}
+
+		dateTime2 := func(t time.Time) (days int, seconds int, ns int) {
+			// Days from 0001-01-01 (in same TZ as t).
+			days = gregorianDays(t.Year(), t.YearDay())
+			seconds = t.Second() + t.Minute()*60 + t.Hour()*60*60
+			ns = t.Nanosecond()
+			if days < 0 {
+				days = 0
+				seconds = 0
+				ns = 0
+			}
+			max := gregorianDays(9999, 365)
+			if days > max {
+				days = max
+				seconds = 59 + 59*60 + 23*60*60
+				ns = 999999900
+			}
+			return
+		}
+		encodeTimeInt := func(w *PacketWriter, seconds, ns, scale int) {
+			ns_total := int64(seconds)*1000*1000*1000 + int64(ns)
+			t := ns_total / int64(math.Pow10(int(scale)*-1)*1e9)
+			w.WriteByte(byte(t))
+			w.WriteByte(byte(t >> 8))
+			w.WriteByte(byte(t >> 16))
+			w.WriteByte(byte(t >> 24))
+			w.WriteByte(byte(t >> 32))
+		}
+
+		const timeScale = 7
+		_, offset := v.Zone()
+		if (ti.Dt & dtZone) != 0 {
 			v = v.UTC()
+		}
+		days, seconds, ns := dateTime2(v)
+
+		if dur > 0 {
+			const NANO = 1_000_000_000
+			nsX := dur.Nanoseconds()
+			sX := nsX / NANO
+			ns = int(nsX - (sX * NANO))
+			seconds = int(sX)
 		}
 
 		if (ti.Dt & dtTime) != 0 {
-			var nano time.Duration
-			if dur == 0 {
-				nano += time.Duration(v.Hour()) * time.Hour
-				nano += time.Duration(v.Minute()) * time.Minute
-				nano += time.Duration(v.Second()) * time.Second
-				nano += time.Duration(v.Nanosecond()) * time.Nanosecond
-			} else {
-				nano = dur
-			}
-			encoded := nano / 100
-
-			bb := make([]byte, 8)
-			binary.LittleEndian.PutUint64(bb, uint64(encoded))
-			w.WriteBuffer(bb[:5])
+			encodeTimeInt(w, seconds, ns, timeScale)
 		}
+
 		if (ti.Dt & dtDate) != 0 {
-			var vDate time.Time
-			if (ti.Dt & dtTime) != 0 {
-				vDate = v.Truncate(time.Hour * 24)
-			} else {
-				vDate = time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
-			}
-			dt := zeroDateN
-			dtNext := dt
-
-			dayChunkCount := uint32(250 * 365)
-			dayChunk := time.Duration(dayChunkCount*24) * time.Hour
-			var days uint32
-
-			for {
-				dtNext = dt.Add(dayChunk)
-				if vDate.Before(dtNext) {
-					break
-				}
-				dt = dtNext
-				days += dayChunkCount
-			}
-			days += uint32(vDate.Sub(dt).Hours() / 24)
-
-			bb := make([]byte, 4)
-			binary.LittleEndian.PutUint32(bb, days)
-			w.WriteBuffer(bb[:3])
+			w.WriteByte(byte(days))
+			w.WriteByte(byte(days >> 8))
+			w.WriteByte(byte(days >> 16))
 		}
+
 		if (ti.Dt & dtZone) != 0 {
-			w.WriteUint16(uint16(sec / 60))
+			w.WriteUint16(uint16(offset / 60))
 		}
 		return nil
 	}
@@ -1317,7 +1331,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			// tmf counts 300 per second, from midnight.
 			tm := time.Duration(int64(tmf / 300 * 1000000000))
 
-			v := zeroDateTime.Add(dt).Add(tm).Local()
+			v := zeroDateTime.Add(dt).Add(tm)
 			wf(&rdb.DriverValue{
 				Value: v,
 			})
@@ -1366,7 +1380,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			// time.Duration can't hold more then 290 years at a time.
 			// Add days in increments.
 
-			dt = zeroDateN
+			dt = zeroDateN(time.UTC)
 			dayChunkCount := int32(250 * 365)
 			dayChunk := time.Duration(dayChunkCount*24) * time.Hour
 			for days > dayChunkCount {
