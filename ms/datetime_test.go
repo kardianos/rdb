@@ -34,33 +34,54 @@ func TestDateTimeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not load location: %s, %v", locName, err)
 	}
-	dto := time.Date(2000, 1, 1, 22, 45, 01, 0, loc)
-	dto2 := time.Date(2000, 1, 1, 11, 45, 01, 0, loc)
+	dto1 := time.Date(2000, 1, 1, 23, 45, 01, 0, loc)
+	dto2 := time.Date(2000, 1, 1, 1, 45, 01, 0, loc)
+	dto3 := time.Date(2000, 1, 1, 23, 45, 01, 0, time.UTC)
+	dto4 := time.Date(2000, 1, 1, 1, 45, 01, 0, time.UTC)
 
 	cmd := &rdb.Command{
 		SQL: `
-			if object_id('tempdb..##timeTemp') is not null begin
-				truncate table ##timeTemp
+select
+	dt_old = @dt_old,
+	d = @d,
+	t = @t,
 
-				insert into ##timeTemp (Name, TM)
-				values ('DTO', @dto), ('DTO2', @dto2)
-			end
-			select
-				dt_old = @dt_old,
-				dt = @dt,
-				dt2 = @dt2,
-				d = @d,
-				t = @t,
-				t_str = format(@t_str, 'hh\:mm', 'en-us'),
-				t2_str = format(@t2_str, 'hh\:mm', 'en-us'),
-				dto = @dto,
-				dto2 = @dto2,
-				dto_str = convert(nvarchar(100), @dto_str),
-				dto2_str = convert(nvarchar(100), @dto2_str),
-				dt_str = convert(nvarchar(100), @dt_str),
-				dt2_str = convert(nvarchar(100), @dt2_str),
-				dt_v1_str = convert(nvarchar(100), @dt_v1_str),
-				dt2_v1_str = convert(nvarchar(100), @dt2_v1_str)
+	d1_str = convert(nvarchar(100), @d1_str),
+	d2_str = convert(nvarchar(100), @d2_str),
+	d1u_str = convert(nvarchar(100), @d1u_str),
+	d2u_str = convert(nvarchar(100), @d2u_str),
+
+	dt1_v1_str = convert(nvarchar(100), @dt1_v1_str),
+	dt2_v1_str = convert(nvarchar(100), @dt2_v1_str),
+	dt1 = @dt1,
+	dt2 = @dt2,
+	t1_str = format(@t1_str, 'hh\:mm', 'en-us'),
+	t2_str = format(@t2_str, 'hh\:mm', 'en-us'),
+
+	dto1 = @dto1,
+	dto2 = @dto2,
+	dtx1 = @dtx1,
+	dtx2 = @dtx2,
+	dto1_str = convert(nvarchar(100), @dto1_str),
+	dto2_str = convert(nvarchar(100), @dto2_str),
+	dt1_str = convert(nvarchar(100), @dt1_str),
+	dt2_str = convert(nvarchar(100), @dt2_str),
+
+	dto3 = @dto3,
+	dto4 = @dto4,
+	dto3_str = convert(nvarchar(100), @dto3_str),
+	dto4_str = convert(nvarchar(100), @dto4_str),
+	dt3_str = convert(nvarchar(100), @dt3_str),
+	dt4_str = convert(nvarchar(100), @dt4_str),
+
+	dto1u = @dto1u,
+	dto2u = @dto2u,
+	dt1u = @dt1u,
+	dt2u = @dt2u,
+	dto1u_str = convert(nvarchar(100), @dto1u_str),
+	dto2u_str = convert(nvarchar(100), @dto2u_str),
+	dt1u_str = convert(nvarchar(100), @dt1u_str),
+	dt2u_str = convert(nvarchar(100), @dt2u_str)
 		`,
 		Arity: rdb.OneMust,
 	}
@@ -82,23 +103,47 @@ func TestDateTimeRoundTrip(t *testing.T) {
 			return inZone(x, time.Local)
 		}},
 		{name: "d", t: rdb.TypeDate, in: d, want: d},
+		{name: "d1_str", t: rdb.TypeDate, in: dto1, want: "2000-01-01"},
+		{name: "d2_str", t: rdb.TypeDate, in: dto2, want: "2000-01-01"},
+		{name: "d1u_str", t: rdb.TypeDate, in: dto1.UTC(), want: "2000-01-02"},
+		{name: "d2u_str", t: rdb.TypeDate, in: dto2.UTC(), want: "2000-01-01"},
 		{name: "t", t: rdb.TypeTime, in: tm, want: tm},
-		{name: "t_str", t: rdb.TypeTime, in: dto, want: "22:45"},
-		{name: "t2_str", t: rdb.TypeTime, in: dto2, want: "11:45"},
-		{name: "dto", t: rdb.TypeTimestampz, in: dto, want: dto},
-		{name: "dto2", t: rdb.TypeTimestampz, in: dto2, want: dto2},
-		{name: "dto_str", t: rdb.TypeTimestampz, in: dto, want: "2000-01-01 22:45:01.0000000 -08:00"},
-		{name: "dto2_str", t: rdb.TypeTimestampz, in: dto2, want: "2000-01-01 11:45:01.0000000 -08:00"},
-		{name: "dt_v1_str", t: TypeOldTD, in: dto, want: "Jan  1 2000 10:45PM"},
-		{name: "dt2_v1_str", t: TypeOldTD, in: dto2, want: "Jan  1 2000 11:45AM"},
-		{name: "dt_str", t: rdb.TypeTimestamp, in: dto, want: "2000-01-01 22:45:01.0000000"},
-		{name: "dt2_str", t: rdb.TypeTimestamp, in: dto2, want: "2000-01-01 11:45:01.0000000"},
-		{name: "dt", t: rdb.TypeTimestamp, in: dto, want: dto, proc: func(i interface{}) interface{} {
+		{name: "t1_str", t: rdb.TypeTime, in: dto1, want: "23:45"},
+		{name: "t2_str", t: rdb.TypeTime, in: dto2, want: "01:45"},
+		{name: "dt1_v1_str", t: TypeOldTD, in: dto1, want: "Jan  1 2000 11:45PM"},
+		{name: "dt2_v1_str", t: TypeOldTD, in: dto2, want: "Jan  1 2000  1:45AM"},
+		{name: "dt1", t: rdb.TypeTimestamp, in: dto1, want: dto1, proc: func(i interface{}) interface{} {
 			return inZone(i.(time.Time), loc)
 		}},
 		{name: "dt2", t: rdb.TypeTimestamp, in: dto2, want: dto2, proc: func(i interface{}) interface{} {
 			return inZone(i.(time.Time), loc)
 		}},
+
+		{name: "dto1", t: rdb.TypeTimestampz, in: dto1, want: dto1},
+		{name: "dto2", t: rdb.TypeTimestampz, in: dto2, want: dto2},
+		{name: "dtx1", t: rdb.TypeTimestampz, in: dto1, want: "2000-01-01 23:45:01 -0800 UTC -8:00"},
+		{name: "dtx2", t: rdb.TypeTimestampz, in: dto2, want: "2000-01-01 01:45:01 -0800 UTC -8:00"},
+		{name: "dto1_str", t: rdb.TypeTimestampz, in: dto1, want: "2000-01-01 23:45:01.0000000 -08:00"},
+		{name: "dto2_str", t: rdb.TypeTimestampz, in: dto2, want: "2000-01-01 01:45:01.0000000 -08:00"},
+		{name: "dt1_str", t: rdb.TypeTimestamp, in: dto1, want: "2000-01-01 23:45:01.0000000"},
+		{name: "dt2_str", t: rdb.TypeTimestamp, in: dto2, want: "2000-01-01 01:45:01.0000000"},
+
+		{name: "dto3", t: rdb.TypeTimestampz, in: dto3, want: dto3},
+		{name: "dto4", t: rdb.TypeTimestampz, in: dto4, want: dto4},
+		{name: "dto3_str", t: rdb.TypeTimestampz, in: dto3, want: "2000-01-01 23:45:01.0000000 +00:00"},
+		{name: "dto4_str", t: rdb.TypeTimestampz, in: dto4, want: "2000-01-01 01:45:01.0000000 +00:00"},
+		{name: "dt3_str", t: rdb.TypeTimestamp, in: dto3, want: "2000-01-01 23:45:01.0000000"},
+		{name: "dt4_str", t: rdb.TypeTimestamp, in: dto4, want: "2000-01-01 01:45:01.0000000"},
+
+		{name: "dto1u", t: rdb.TypeTimestampz, in: dto1.UTC(), want: "2000-01-02 07:45:01 +0000 UTC"},
+		{name: "dto2u", t: rdb.TypeTimestampz, in: dto2.UTC(), want: "2000-01-01 09:45:01 +0000 UTC"},
+		{name: "dt1u", t: rdb.TypeTimestamp, in: dto1.UTC(), want: "2000-01-02 07:45:01 +0000 UTC"},
+		{name: "dt2u", t: rdb.TypeTimestamp, in: dto2.UTC(), want: "2000-01-01 09:45:01 +0000 UTC"},
+
+		{name: "dto1u_str", t: rdb.TypeTimestampz, in: dto1.UTC(), want: "2000-01-02 07:45:01.0000000 +00:00"},
+		{name: "dto2u_str", t: rdb.TypeTimestampz, in: dto2.UTC(), want: "2000-01-01 09:45:01.0000000 +00:00"},
+		{name: "dt1u_str", t: rdb.TypeTimestamp, in: dto1.UTC(), want: "2000-01-02 07:45:01.0000000"},
+		{name: "dt2u_str", t: rdb.TypeTimestamp, in: dto2.UTC(), want: "2000-01-01 09:45:01.0000000"},
 	}
 
 	params := make([]rdb.Param, 0, len(list))
@@ -135,16 +180,27 @@ func TestDateTimeRoundTrip(t *testing.T) {
 	for _, item := range list {
 		t.Run(item.name, func(t *testing.T) {
 			diff := false
-			switch x := item.want.(type) {
+			switch w := item.want.(type) {
 			default:
-				if !reflect.DeepEqual(item.got, x) {
+				if !reflect.DeepEqual(item.got, w) {
 					diff = true
+				}
+			case string:
+				switch g := item.got.(type) {
+				default:
+					t.Fatal("unsupported got type")
+				case string:
+					diff = (g != w)
+				case time.Duration:
+					diff = (g.String() != w)
+				case time.Time:
+					diff = (g.String() != w)
 				}
 			case time.Duration:
 				z := item.got.(time.Duration)
-				diff = (z / 1_000) != (x / 1_000)
+				diff = (z / 1_000) != (w / 1_000)
 			case time.Time:
-				if !x.Equal(item.got.(time.Time)) {
+				if !w.Equal(item.got.(time.Time)) {
 					diff = true
 				}
 			}

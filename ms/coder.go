@@ -1394,13 +1394,13 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 		}
 		dt = dt.Add(tm)
 
-		loc := time.UTC
+		dt = time.Date(dt.Year(), dt.Month(), dt.Day(), dt.Hour(), dt.Minute(), dt.Second(), dt.Nanosecond(), time.UTC)
 		if offset != 0 {
 			hrs := offset / 60
 			mins := offset % 60
-			loc = time.FixedZone(fmt.Sprintf("UTC %d:%02d", hrs, mins), int(offset)*60)
+			loc := time.FixedZone(fmt.Sprintf("UTC %d:%02d", hrs, mins), int(offset)*60)
+			dt = dt.In(loc)
 		}
-		dt = time.Date(dt.Year(), dt.Month(), dt.Day(), dt.Hour(), dt.Minute(), dt.Second(), dt.Nanosecond(), time.UTC).In(loc)
 		wf(&rdb.DriverValue{
 			Value: dt,
 		})
