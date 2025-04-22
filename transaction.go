@@ -12,6 +12,7 @@ import (
 // Although nested transactions are unsupported, savepoints are supported.
 // A transaction should end with either a Commit() or Rollback() call.
 type Transaction struct {
+	ctx  context.Context
 	cp   *ConnPool
 	conn DriverConn
 
@@ -19,11 +20,11 @@ type Transaction struct {
 	level IsolationLevel
 }
 
-var transactionClosed = errors.New("Transaction already closed.")
+var errTransactionClosed = errors.New("transaction already closed")
 
 func (tran *Transaction) Query(ctx context.Context, cmd *Command, params ...Param) (*Result, error) {
 	if tran.done {
-		return nil, transactionClosed
+		return nil, errTransactionClosed
 	}
 	return tran.cp.query(ctx, true, tran.conn, cmd, nil, params...)
 }
@@ -32,10 +33,10 @@ func (tran *Transaction) Query(ctx context.Context, cmd *Command, params ...Para
 // just returns the connection without any action being taken.
 func (tran *Transaction) Commit() error {
 	if tran.done {
-		return transactionClosed
+		return errTransactionClosed
 	}
 	tran.done = true
-	err := tran.conn.Commit()
+	err := tran.conn.Commit(tran.ctx)
 	tran.cp.releaseConn(tran.conn, tran.conn.Status() != StatusReady)
 	return err
 }
@@ -50,8 +51,9 @@ func (tran *Transaction) Rollback() error {
 // be called after calling RollbackTo.
 func (tran *Transaction) RollbackTo(savepoint string) error {
 	if tran.done {
-		return transactionClosed
+		return errTransactionClosed
 	}
+
 	err := tran.conn.Rollback(savepoint)
 	if len(savepoint) == 0 {
 		tran.done = true
@@ -63,9 +65,9 @@ func (tran *Transaction) RollbackTo(savepoint string) error {
 // Create a save point in the transaction.
 func (tran *Transaction) SavePoint(name string) error {
 	if tran.done {
-		return transactionClosed
+		return errTransactionClosed
 	}
-	return tran.conn.SavePoint(name)
+	return tran.conn.SavePoint(tran.ctx, name)
 }
 
 // Return true if the transaction has not been either commited or entirely rolled back.

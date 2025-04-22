@@ -62,7 +62,7 @@ const (
 )
 
 // Pre-Login
-func (tds *PacketWriter) PreLogin(instance string, encrypt EncryptAvailable) error {
+func (tds *PacketWriter) PreLogin(ctx context.Context, instance string, encrypt EncryptAvailable) error {
 	var err error
 	type option struct {
 		t byte
@@ -88,7 +88,7 @@ func (tds *PacketWriter) PreLogin(instance string, encrypt EncryptAvailable) err
 		addToken(preloginInstance, uconv.Encode.FromString(instance))
 	}
 
-	tds.BeginMessage(context.TODO(), packetPreLogin, false)
+	tds.BeginMessage(ctx, packetPreLogin, false)
 
 	tokenListLen := uint16((5 * len(opts)) + 1)
 	payload := make([]byte, 0, 20)
@@ -99,22 +99,22 @@ func (tds *PacketWriter) PreLogin(instance string, encrypt EncryptAvailable) err
 		binary.BigEndian.PutUint16(token[1:], tokenListLen+uint16(len(payload))) // Offset.
 		binary.BigEndian.PutUint16(token[3:], uint16(len(option.d)))             // Length.
 		payload = append(payload, option.d...)
-		_, err = tds.Write(token)
+		_, err = tds.Write(ctx, token)
 		if err != nil {
 			return err
 		}
 	}
-	_, err = tds.Write([]byte{0xff})
+	_, err = tds.Write(ctx, []byte{0xff})
 	if err != nil {
 		return err
 	}
 
-	_, err = tds.Write(payload)
+	_, err = tds.Write(ctx, payload)
 	if err != nil {
 		return err
 	}
 
-	err = tds.EndMessage()
+	err = tds.EndMessage(ctx)
 	if err != nil {
 		return err
 	}
@@ -145,10 +145,10 @@ func (si *ServerInfo) String() string {
 	return fmt.Sprintf("%s %d.%d.%d", si.ProgramName, si.MajorVersion, si.MinorVersion, si.BuildNumber)
 }
 
-func (tds *PacketReader) Prelogin() (*ServerConnection, error) {
-	read := tds.BeginMessage(packetTabularResult)
+func (tds *PacketReader) Prelogin(ctx context.Context) (*ServerConnection, error) {
+	read := tds.BeginMessage(ctx, packetTabularResult)
 
-	bb, err := read.Next()
+	bb, err := read.Next(ctx)
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
@@ -208,7 +208,7 @@ func (tds *PacketReader) Prelogin() (*ServerConnection, error) {
 }
 
 // Write LOGIN7. Page 53.
-func (tds *PacketWriter) Login(config *rdb.Config) error {
+func (tds *PacketWriter) Login(ctx context.Context, config *rdb.Config) error {
 	var err error
 	/*
 		Versions:
@@ -355,11 +355,14 @@ func (tds *PacketWriter) Login(config *rdb.Config) error {
 		prevOffset = t.offset
 	}
 
-	tds.BeginMessage(context.TODO(), packetTDS7Login, false)
+	tds.BeginMessage(ctx, packetTDS7Login, false)
 
-	tds.Write(buf)
+	_, err = tds.Write(ctx, buf)
+	if err != nil {
+		return err
+	}
 
-	err = tds.EndMessage()
+	err = tds.EndMessage(ctx)
 	if err != nil {
 		return err
 	}
@@ -367,17 +370,17 @@ func (tds *PacketWriter) Login(config *rdb.Config) error {
 	return nil
 }
 
-func (tds *PacketReader) LoginAck() (*ServerInfo, error) {
+func (tds *PacketReader) LoginAck(ctx context.Context) (*ServerInfo, error) {
 	// Page 95.
-	read := tds.BeginMessage(packetTabularResult)
+	read := tds.BeginMessage(ctx, packetTabularResult)
 
-	bb, err := read.Next()
+	bb, err := read.Next(ctx)
 	if err != nil && err != io.EOF {
 		return nil, fmt.Errorf("login ack next: %w", err)
 	}
 	defer read.Close()
 	if len(bb) == 0 {
-		return nil, errors.New("Unable to authenticate to server or database.")
+		return nil, errors.New("unable to authenticate to server or database")
 	}
 
 	at := 0

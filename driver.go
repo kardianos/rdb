@@ -56,7 +56,7 @@ type ConnectionInfo struct {
 type Driver interface {
 	// Open a database. An actual connection does not need to be established
 	// at this time.
-	Open(c *Config) (DriverConn, error)
+	Open(ctx context.Context, c *Config) (DriverConn, error)
 
 	// Return information about the database drivers capabilities.
 	// Should not reflect any actual server any connections to it.
@@ -95,13 +95,13 @@ type DriverConn interface {
 
 	// Read the next row from the connection. For each field in the row
 	// call the Valuer.WriteField(...) method. Propagate the reportRow field.
-	Scan() error
+	Scan(ctx context.Context) error
 
 	// NextResult advances to the next result if there are multiple results.
-	NextResult() (more bool, err error)
+	NextResult(ctx context.Context) (more bool, err error)
 
 	// NextQuery stops the active query and gets the connection for the next one.
-	NextQuery() (err error)
+	NextQuery(ctx context.Context) (err error)
 
 	// The isolation level is set by the command.
 	// Should return "PreparedTokenNotValid" if the preparedToken was not recognized.
@@ -126,8 +126,8 @@ type DriverConn interface {
 	Prepare(*Command) (preparedToken interface{}, err error)
 	Unprepare(preparedToken interface{}) (err error)
 
-	Begin(iso IsolationLevel) error
+	Begin(ctx context.Context, iso IsolationLevel) error
 	Rollback(savepoint string) error
-	Commit() error
-	SavePoint(name string) error
+	Commit(ctx context.Context) error
+	SavePoint(ctx context.Context, name string) error
 }

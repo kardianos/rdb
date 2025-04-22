@@ -24,7 +24,7 @@ func ExecuteSQL(ctx context.Context, cp *rdb.ConnPool, batchSQL, separator strin
 		Arity: rdb.Zero,
 	}
 
-	conn, err := cp.Connection()
+	conn, err := cp.Connection(ctx)
 	if err != nil {
 		return err
 	}

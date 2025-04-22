@@ -120,8 +120,8 @@ func (must ConnPool) Query(ctx context.Context, cmd *rdb.Command, params ...rdb.
 }
 
 // Same as Query but will panic on an error.
-func (must ConnPool) Begin() Transaction {
-	tran, err := must.norm.Begin()
+func (must ConnPool) Begin(ctx context.Context) Transaction {
+	tran, err := must.norm.Begin(ctx)
 	if err != nil {
 		panic(Error{Err: err})
 	}
@@ -131,8 +131,8 @@ func (must ConnPool) Begin() Transaction {
 }
 
 // Same as Query but will panic on an error.
-func (must ConnPool) BeginLevel(level rdb.IsolationLevel) Transaction {
-	tran, err := must.norm.BeginLevel(level)
+func (must ConnPool) BeginLevel(ctx context.Context, level rdb.IsolationLevel) Transaction {
+	tran, err := must.norm.BeginLevel(ctx, level)
 	if err != nil {
 		panic(Error{Err: err})
 	}

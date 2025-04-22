@@ -7,6 +7,7 @@ package ms
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestPing(t *testing.T) {
@@ -18,6 +19,17 @@ func TestPing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ping error: %v", err)
 	}
+}
+
+func TestPingInvalidHost(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 900*time.Millisecond)
+	defer cancel()
+
+	err := dbInvalidHost.Normal().Ping(ctx)
+	if err == nil {
+		t.Fatalf("unexpected Ping no error")
+	}
+	t.Logf("error: %v", err)
 }
 
 func TestVersion(t *testing.T) {

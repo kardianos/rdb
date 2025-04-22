@@ -113,7 +113,7 @@ col_b nvarchar(max)
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*40)
 			defer cancel()
 
-			conn, err := db.Normal().Connection()
+			conn, err := db.Normal().Connection(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}

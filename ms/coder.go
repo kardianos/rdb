@@ -5,6 +5,7 @@
 package ms
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -90,7 +91,7 @@ const (
 	textUnknown = 0xFFFFFFFFFFFFFFFE
 )
 
-func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValues bool, value interface{}) error {
+func encodeValue(ctx context.Context, w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValues bool, value interface{}) error {
 	var nullValue bool
 	if value == rdb.Null || value == nil || param.Null {
 		nullValue = true
@@ -149,7 +150,7 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 					w.WriteUint32(uint32(len(writeBb)))
 					// Use w.Write() to write to buffer and attempt to send.
 					// This should prevent the internal buffer from getting too big.
-					_, err = w.Write(writeBb)
+					_, err = w.Write(ctx, writeBb)
 					if err != nil {
 						return fmt.Errorf("failed to write internal buffer: %w", err)
 					}
@@ -612,8 +613,8 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 		// byte prec
 		// byte scale
 		if nullValue {
-			w.Write([]byte{0})
-			return nil
+			_, err := w.Write(ctx, []byte{0})
+			return err
 		}
 		var pv big.Rat
 		var rv *big.Rat
@@ -629,14 +630,14 @@ func encodeValue(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, truncValue
 			return fmt.Errorf("need *big.Rat for param @%s", param.Name)
 		case **big.Rat:
 			if v == nil || *v == nil {
-				w.Write([]byte{0})
-				return nil
+				_, err := w.Write(ctx, []byte{0})
+				return err
 			}
 			pv = **v
 		case *big.Rat:
 			if v == nil {
-				w.Write([]byte{0})
-				return nil
+				_, err := w.Write(ctx, []byte{0})
+				return err
 			}
 			pv = *v
 		}
@@ -894,7 +895,7 @@ func getParamTypeInfo(tdsVer *semver.Version, paramType rdb.Type) (paramTypeInfo
 	return ti, nil
 }
 
-func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, param *rdb.Param, value interface{}) error {
+func encodeParam(ctx context.Context, w *PacketWriter, truncValues bool, tdsVer *semver.Version, param *rdb.Param, value interface{}) error {
 	// Write field name.
 	if len(param.Name) == 0 {
 		w.WriteByte(0) // No name. Length zero.
@@ -919,7 +920,7 @@ func encodeParam(w *PacketWriter, truncValues bool, tdsVer *semver.Version, para
 	if err != nil {
 		return err
 	}
-	return encodeValue(w, ti, param, truncValues, value)
+	return encodeValue(ctx, w, ti, param, truncValues, value)
 }
 
 type colFlags struct {

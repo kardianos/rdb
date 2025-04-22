@@ -28,21 +28,29 @@ func TestTimeoutDie(t *testing.T) {
 
 	start := time.Now()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
 	res, err := db.Normal().Query(ctx, &rdb.Command{
 		SQL: `
 -- TestTimeoutDie
-waitfor delay '00:00:02';
+waitfor delay '00:00:02.000';
 select 1 as 'ID';
 `,
 		Arity: rdb.Any,
 	})
 	defer assertFreeConns(t)
 	defer res.Close()
+	if res != nil && err == nil {
+		var id int64
+		err = res.Scan(&id)
+		if err != nil {
+			t.Log("error", err)
+		}
+		t.Log("id", id)
+	}
 
-	dur := time.Now().Sub(start)
+	dur := time.Since(start)
 	t.Log("duration", dur)
 	t.Log("error", err)
 
@@ -197,13 +205,14 @@ func TestConnectionPoolExhaustion(t *testing.T) {
 	defer recoverTest(t)
 
 	wait := &sync.WaitGroup{}
+	ctx := context.Background()
 
 	for i := 0; i < 10; i++ {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
 
-			res, err := db.Normal().Query(context.Background(), &rdb.Command{
+			res, err := db.Normal().Query(ctx, &rdb.Command{
 				SQL: `
 -- TestConnectionPoolExhaustion
 waitfor delay '00:00:01';

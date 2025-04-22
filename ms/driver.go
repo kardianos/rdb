@@ -5,8 +5,10 @@
 package ms
 
 import (
-	"fmt"
+	"context"
 	"net"
+	"strconv"
+	"time"
 
 	"github.com/kardianos/rdb"
 	"github.com/kardianos/rdb/ms/ssrp"
@@ -18,7 +20,7 @@ func init() {
 
 type Driver struct{}
 
-func (dr *Driver) Open(c *rdb.Config) (rdb.DriverConn, error) {
+func (dr *Driver) Open(ctx context.Context, c *rdb.Config) (rdb.DriverConn, error) {
 	hostname := c.Hostname
 	if len(c.Hostname) == 0 || c.Hostname == "." {
 		hostname = "localhost"
@@ -33,22 +35,26 @@ func (dr *Driver) Open(c *rdb.Config) (rdb.DriverConn, error) {
 			port = 1433
 		}
 	}
-	var conn net.Conn
-	var err error
+	d := net.Dialer{
+		Timeout: c.DialTimeout,
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable: true,
+			// Suggested defaults be TDS protocol.
+			Idle:     30 * time.Second,
+			Interval: 1 * time.Second,
 
-	addr := fmt.Sprintf("%s:%d", hostname, port)
-	if c.DialTimeout == 0 {
-		conn, err = net.Dial("tcp", addr)
-	} else {
-		conn, err = net.DialTimeout("tcp", addr, c.DialTimeout)
+			Count: 3,
+		},
 	}
+	addr := net.JoinHostPort(hostname, strconv.FormatInt(int64(port), 10))
+	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 
-	tds := NewConnection(conn, c.ResetConnectionTimeout)
+	tds := NewConnection(conn, c.ResetConnectionTimeout, c.RollbackTimeout)
 
-	_, err = tds.Open(c)
+	_, err = tds.Open(ctx, c)
 	if err != nil {
 		tds.Close()
 		return nil, err

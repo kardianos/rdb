@@ -9,8 +9,11 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"os"
+	"time"
 
 	"github.com/kardianos/rdb/internal/pools/sync2"
 	"github.com/kardianos/rdb/internal/sbuffer"
@@ -60,8 +63,13 @@ const (
 	maxPacketSizeBody = maxPacketSize - 8
 )
 
+type connWriteDeadline interface {
+	io.Writer
+	SetWriteDeadline(t time.Time) error
+}
+
 type PacketWriter struct {
-	w          io.Writer
+	w          connWriteDeadline
 	PacketType PacketType
 
 	buffer *bytes.Buffer
@@ -73,7 +81,7 @@ type PacketWriter struct {
 	single *sync2.Semaphore
 }
 
-func NewPacketWriter(w io.Writer) *PacketWriter {
+func NewPacketWriter(w connWriteDeadline) *PacketWriter {
 	return &PacketWriter{
 		w:      w,
 		buffer: &bytes.Buffer{},
@@ -95,8 +103,8 @@ func (tds *PacketWriter) BeginMessage(ctx context.Context, PacketType PacketType
 	return nil
 }
 
-func (tds *PacketWriter) Write(bb []byte) (n int, err error) {
-	return tds.writeClose(bb, false)
+func (tds *PacketWriter) Write(ctx context.Context, bb []byte) (n int, err error) {
+	return tds.writeClose(ctx, bb, false)
 }
 
 func (tds *PacketWriter) WriteBuffer(v []byte) (n int) {
@@ -126,20 +134,18 @@ func (tds *PacketWriter) WriteUint64(v uint64) (n int) {
 	return 8
 }
 
-func (tds *PacketWriter) EndMessage() error {
+func (tds *PacketWriter) EndMessage(ctx context.Context) error {
 	if !tds.open {
 		tds.single.Release()
 		return nil
 	}
-	_, err := tds.writeClose(nil, true)
+	_, err := tds.writeClose(ctx, nil, true)
 	return err
 }
 
-func (tds *PacketWriter) abort() {
-	tds.single.Release()
-}
+const writeContextCheckPeriod = time.Millisecond * 120
 
-func (tds *PacketWriter) writeClose(bb []byte, closeMessage bool) (int, error) {
+func (tds *PacketWriter) writeClose(ctx context.Context, bb []byte, closeMessage bool) (int, error) {
 	var SPID uint16
 
 	var n, localN int
@@ -195,12 +201,31 @@ func (tds *PacketWriter) writeClose(bb []byte, closeMessage bool) (int, error) {
 			fmt.Println("Client -> Server")
 			fmt.Println(hex.Dump(buf))
 		}
-		localN, err = tds.w.Write(buf)
-		if err != nil {
-			tds.single.Release()
-			return n, err
+
+		for {
+			err = tds.w.SetWriteDeadline(time.Now().Add(writeContextCheckPeriod))
+			if err != nil {
+				tds.single.Release()
+				return bufN, err
+			}
+			localN, err = tds.w.Write(buf)
+			buf = buf[localN:]
+			n += localN
+			if err != nil {
+				if errors.Is(err, os.ErrDeadlineExceeded) {
+					err = nil
+					if len(buf) == 0 {
+						break
+					}
+					continue
+				}
+				tds.single.Release()
+				return bufN, err
+			}
+			if len(buf) == 0 {
+				break
+			}
 		}
-		n += localN
 		if statusEOM&status != 0 {
 			tds.single.Release()
 			return bufN, err
@@ -213,13 +238,13 @@ type PacketReader struct {
 	buffer sbuffer.Buffer
 }
 
-func NewPacketReader(r io.Reader) *PacketReader {
+func NewPacketReader(r sbuffer.ConnReadDeadline) *PacketReader {
 	return &PacketReader{
 		buffer: sbuffer.NewBuffer(r, maxPacketSize),
 	}
 }
 
-func (tds *PacketReader) BeginMessage(expectType PacketType) *MessageReader {
+func (tds *PacketReader) BeginMessage(_ context.Context, expectType PacketType) *MessageReader {
 	return &MessageReader{
 		packet:  tds,
 		msgType: expectType,
@@ -237,7 +262,7 @@ type MessageReader struct {
 }
 
 // Read another packet.
-func (mr *MessageReader) Next() ([]byte, error) {
+func (mr *MessageReader) Next(ctx context.Context) ([]byte, error) {
 	buf := mr.packet.buffer
 	if mr.length != 0 {
 		buf.Used(mr.length)
@@ -246,7 +271,7 @@ func (mr *MessageReader) Next() ([]byte, error) {
 	var err error
 	var debugMessage []byte
 
-	bb, err := buf.Next(8)
+	bb, err := buf.Next(ctx, 8)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +302,7 @@ func (mr *MessageReader) Next() ([]byte, error) {
 	if mr.length > maxPacketSize {
 		panic("packet length too large")
 	}
-	bb, err = buf.Next(mr.length)
+	bb, err = buf.Next(ctx, mr.length)
 	if debugProto {
 		fmt.Println("Server -> Client")
 		debugMessage = append(debugMessage, bb...)
@@ -303,15 +328,15 @@ func (mr *MessageReader) Close() error {
 	return nil
 }
 
-func (r *MessageReader) FetchAll() (ret []byte, err error) {
-	_, err = r.Fetch(0)
+func (r *MessageReader) FetchAll(ctx context.Context) (ret []byte, err error) {
+	_, err = r.Fetch(ctx, 0)
 	if err != nil {
 		return ret, err
 	}
-	return r.Fetch(r.length)
+	return r.Fetch(ctx, r.length)
 }
 
-func (r *MessageReader) PeekByte() (out byte, err error) {
+func (r *MessageReader) PeekByte(ctx context.Context) (out byte, err error) {
 	if r == nil {
 		return 0, io.EOF
 	}
@@ -324,7 +349,7 @@ func (r *MessageReader) PeekByte() (out byte, err error) {
 		return 0, io.EOF
 	}
 	for len(r.current) < n {
-		err = r.fill()
+		err = r.fill(ctx)
 		if err != nil {
 			return 0, err
 		}
@@ -332,11 +357,11 @@ func (r *MessageReader) PeekByte() (out byte, err error) {
 	return r.current[0], nil
 }
 
-func (r *MessageReader) fill() error {
+func (r *MessageReader) fill(ctx context.Context) error {
 	if r.packetEOM {
 		return io.ErrUnexpectedEOF
 	}
-	next, err := r.Next()
+	next, err := r.Next(ctx)
 	if err != nil {
 		if err != io.EOF {
 			return err
@@ -354,7 +379,7 @@ func (r *MessageReader) fill() error {
 	}
 	return nil
 }
-func (r *MessageReader) Fetch(n int) (ret []byte, err error) {
+func (r *MessageReader) Fetch(ctx context.Context, n int) (ret []byte, err error) {
 	if r == nil {
 		return nil, io.EOF
 	}
@@ -370,7 +395,7 @@ func (r *MessageReader) Fetch(n int) (ret []byte, err error) {
 		return nil, io.EOF
 	}
 	for len(r.current) < n {
-		err = r.fill()
+		err = r.fill(ctx)
 		if err != nil {
 			return nil, err
 		}

@@ -19,6 +19,7 @@ func TestTransaction(t *testing.T) {
 	}
 	defer recoverTest(t)
 
+	ctx := context.Background()
 	cmd := &rdb.Command{
 		SQL: `
 			select
@@ -30,11 +31,11 @@ func TestTransaction(t *testing.T) {
 	params := []rdb.Param{
 		{Name: "v1", Type: rdb.Text, Value: "Hello"},
 	}
-	tran := db.Begin()
+	tran := db.Begin(ctx)
 
 	var v1 string
 
-	res := tran.Query(context.Background(), cmd, params...)
+	res := tran.Query(ctx, cmd, params...)
 	res.Scan(&v1)
 	res.Close()
 
@@ -42,21 +43,21 @@ func TestTransaction(t *testing.T) {
 
 	tran.SavePoint(savePointName)
 
-	res = tran.Query(context.Background(), cmd, params...)
+	res = tran.Query(ctx, cmd, params...)
 	res.Scan(&v1)
 	res.Close()
 
 	tran.RollbackTo(savePointName)
 
-	res = tran.Query(context.Background(), cmd, params...)
+	res = tran.Query(ctx, cmd, params...)
 	res.Scan(&v1)
 	res.Close()
 
 	tran.Commit()
 
-	tran = db.Begin()
+	tran = db.Begin(ctx)
 
-	res = tran.Query(context.Background(), cmd, params...)
+	res = tran.Query(ctx, cmd, params...)
 	res.Scan(&v1)
 	res.Close()
 
@@ -106,7 +107,7 @@ where 1=1
 
 	for _, item := range list {
 		t.Run(item.String(), func(t *testing.T) {
-			tran := db.BeginLevel(item)
+			tran := db.BeginLevel(ctx, item)
 			defer tran.Rollback()
 
 			var levelName string

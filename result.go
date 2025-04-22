@@ -5,6 +5,7 @@
 package rdb
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -13,6 +14,7 @@ import (
 // The result must automaticly Close() if the command Arity is Zero after
 // execution or after the first Scan() if Arity is One.
 type Result struct {
+	ctx  context.Context
 	conn DriverConn
 	val  valuer
 	cp   *ConnPool
@@ -65,7 +67,7 @@ func (r *Result) close(explicit bool) error {
 		return nil
 	}
 
-	err = r.conn.NextQuery()
+	err = r.conn.NextQuery(r.ctx)
 	if err != nil {
 		r.cp.releaseConn(r.conn, true)
 		return err
@@ -183,7 +185,7 @@ func (r *Result) NextResult() (more bool, err error) {
 		return false, nil
 	}
 	r.updateHit()
-	return r.conn.NextResult()
+	return r.conn.NextResult(r.ctx)
 }
 
 // Scans the row into a buffer that can be fetched with Get and scans
@@ -191,6 +193,9 @@ func (r *Result) NextResult() (more bool, err error) {
 // Return value "more" is false if no more rows.
 // Results should automatically close when all rows have been read.
 func (r *Result) Scan(values ...interface{}) error {
+	if r.closed {
+		return ErrClosed
+	}
 	r.updateHit()
 	for i := range values {
 		if i >= len(r.val.columns) {
@@ -200,7 +205,7 @@ func (r *Result) Scan(values ...interface{}) error {
 	}
 
 	r.val.clearBuffer()
-	err := r.conn.Scan()
+	err := r.conn.Scan(r.ctx)
 	r.val.clearPrep()
 
 	// Only show SQL errors if no connection errors,
@@ -212,7 +217,7 @@ func (r *Result) Scan(values ...interface{}) error {
 	if r.val.cmd.Arity&One != 0 {
 		r.val.eof = true
 		if r.val.rowCount == 1 {
-			serr := r.conn.NextQuery()
+			serr := r.conn.NextQuery(r.ctx)
 			if err == nil {
 				err = serr
 			}

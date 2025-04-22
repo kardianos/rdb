@@ -15,12 +15,12 @@ type Connection struct {
 	done bool
 }
 
-var connectionClosed = errors.New("Connection already closed.")
+var errConnectionClosed = errors.New("connection already closed")
 
 // Query executes a Command on the connection.
 func (c *Connection) Query(ctx context.Context, cmd *Command, params ...Param) (*Result, error) {
 	if c.done {
-		return nil, connectionClosed
+		return nil, errConnectionClosed
 	}
 	return c.cp.query(ctx, true, c.conn, cmd, nil, params...)
 }
@@ -28,7 +28,7 @@ func (c *Connection) Query(ctx context.Context, cmd *Command, params ...Param) (
 // Close returns the underlying connection to the Connection Pool.
 func (c *Connection) Close() error {
 	if c.done {
-		return transactionClosed
+		return errTransactionClosed
 	}
 	c.done = true
 	c.cp.releaseConn(c.conn, c.conn.Status() != StatusReady)

@@ -8,8 +8,8 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +31,10 @@ type Config struct {
 	// Timeout time for connection dial.
 	// Zero for no timeout.
 	DialTimeout time.Duration
+
+	// On rollback or query cancel, a special constructed context is used with this timeout.
+	// If zero, a default of 30s is used.
+	RollbackTimeout time.Duration
 
 	// Max time for a connection to live.
 	ConnectionMaxLifetime time.Duration
@@ -83,20 +87,21 @@ const optPrefix = "opt_"
 // This will attempt to find the driver to load additional parameters.
 //
 //	Additional field options:
-//	   db=<string>:                  Database
-//	   dial_timeout=<time.Duration>: Dial Timeout
-//	   max_lifetime=<time.Duration>: Max Connection Lifetime
-//	   init_cap=<int>:               Pool Init Capacity
-//	   max_cap=<int>:                Pool Max Capacity
-//	   idle_timeout=<time.Duration>: Pool Idle Timeout
-//	   reset_timeout=<time.Duration>:Reset Connection Timeout
-//	   require_encryption=<bool>:    Require Connection Encryption
-//	   disable_encryption=<bool>:    Disable Connection Encryption
-//	   cert=<string>:                Load the cert file as root CA, repeatable.
-//	                                 SQL Server doens't send intermediate certificates.
-//	                                 May be required even if root CA is known and trusted.
-//	   insecure_skip_verify=<bool>:  INSECURE. Skip  encryption certificate verification.
-//	   opt_<any>=<any>:              include values, unchecked here, into KV. "opt_" prefix is stripped.
+//	   db=<string>:                      Database
+//	   dial_timeout=<time.Duration>:     Dial Timeout
+//	   max_lifetime=<time.Duration>:     Max Connection Lifetime
+//	   init_cap=<int>:                   Pool Init Capacity
+//	   max_cap=<int>:                    Pool Max Capacity
+//	   idle_timeout=<time.Duration>:     Pool Idle Timeout
+//	   reset_timeout=<time.Duration>:    Reset Connection Timeout
+//	   rollback_timeout=<time.Duration>: Rollback or cancel connection Timeout.
+//	   require_encryption=<bool>:        Require Connection Encryption
+//	   disable_encryption=<bool>:        Disable Connection Encryption
+//	   cert=<string>:                    Load the cert file as root CA, repeatable.
+//	                                     SQL Server doens't send intermediate certificates.
+//	                                     May be required even if root CA is known and trusted.
+//	   insecure_skip_verify=<bool>:      INSECURE. Skip  encryption certificate verification.
+//	   opt_<any>=<any>:                  include values, unchecked here, into KV. "opt_" prefix is stripped.
 func ParseConfigURL(connectionString string) (*Config, error) {
 	if len(connectionString) == 0 {
 		return nil, errors.New("empty DSN")
@@ -170,6 +175,11 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 			if err != nil {
 				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}
+		case "rollback_timeout":
+			conf.RollbackTimeout, err = time.ParseDuration(v0)
+			if err != nil {
+				return nil, fmt.Errorf("DSN property %q: %w", key, err)
+			}
 		case "query_timeout":
 			// Ignore this.
 			// All query timeouts controlled from context.
@@ -203,7 +213,7 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 			allowMultiple = true
 			certs := x509.NewCertPool()
 			for index, v := range vv {
-				b, err := ioutil.ReadFile(v)
+				b, err := os.ReadFile(v)
 				if err != nil {
 					return nil, fmt.Errorf("DSN property %q[%d], cert %q: %w", key, index, v, err)
 				}

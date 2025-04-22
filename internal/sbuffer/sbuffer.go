@@ -5,9 +5,12 @@
 package sbuffer
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"time"
 )
 
 var (
@@ -16,8 +19,9 @@ var (
 )
 
 type buffer struct {
-	io.Reader
-	backer []byte
+	ctxCheck time.Duration
+	reader   ConnReadDeadline
+	backer   []byte
 
 	tail, head int
 }
@@ -27,23 +31,30 @@ type Buffer interface {
 	// The returned slice should not be used after Next or Used is called.
 	// The returned slice may be shorter then needed if the inner read returns a short
 	// read (for example, returns an io.EOF).
-	Next(needed int) ([]byte, error)
+	Next(ctx context.Context, needed int) ([]byte, error)
 
 	// Called after using the slice returned from Next. This frees
 	// the underlying buffer for more data.
 	Used(used int)
 }
 
+type ConnReadDeadline interface {
+	io.Reader
+	SetReadDeadline(t time.Time) error
+}
+
+const readContextCheckPeriod = time.Millisecond * 120
+
 // Read from read for more data.
 // The bufferSize should be several times the max read size to prevent excessive copying.
-func NewBuffer(read io.Reader, bufferSize int) Buffer {
+func NewBuffer(read ConnReadDeadline, bufferSize int) Buffer {
 	return &buffer{
-		Reader: read,
+		reader: read,
 		backer: make([]byte, bufferSize),
 	}
 }
 
-func (b *buffer) Next(needed int) ([]byte, error) {
+func (b *buffer) Next(ctx context.Context, needed int) ([]byte, error) {
 	if needed > len(b.backer) {
 		panic(ErrNeedCap)
 	}
@@ -56,9 +67,16 @@ func (b *buffer) Next(needed int) ([]byte, error) {
 	var n int
 	for b.tail+needed > b.head {
 		// Read more data.
-		n, err = b.Read(b.backer[b.head:])
+		b.reader.SetReadDeadline(time.Now().Add(readContextCheckPeriod))
+		n, err = b.reader.Read(b.backer[b.head:])
 		b.head += n
 		if err != nil {
+			if cerr := ctx.Err(); cerr != nil {
+				err = fmt.Errorf("Next read: %w & %w", err, cerr)
+			} else if errors.Is(err, os.ErrDeadlineExceeded) {
+				err = nil
+				continue
+			}
 			break
 		}
 	}

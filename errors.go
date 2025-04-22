@@ -33,6 +33,8 @@ func (err ErrorColumnNotFound) Error() string {
 // List of SQL errors returned by the server.
 type Errors []*Message
 
+var ErrClosed = errors.New("closed result")
+
 func (errs Errors) Error() string {
 	bb := &bytes.Buffer{}
 	if errs == nil {

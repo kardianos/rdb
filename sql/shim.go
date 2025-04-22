@@ -54,7 +54,7 @@ func Open(config *rdb.Config) (*DB, error) {
 
 // Begin starts a transaction. The isolation level is dependent on the driver.
 func (db *DB) Begin() (*Tx, error) {
-	tran, err := db.pool.Begin()
+	tran, err := db.pool.Begin(context.Background())
 	if err != nil {
 		return nil, err
 	}

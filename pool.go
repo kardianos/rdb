@@ -31,16 +31,16 @@ func Open(config *Config) (*ConnPool, error) {
 	if err != nil {
 		return nil, err
 	}
-	if config.Secure && dr.DriverInfo().SecureConnection == false {
-		return nil, fmt.Errorf("Driver %s does not support secure connections.", config.DriverName)
+	if config.Secure && !dr.DriverInfo().SecureConnection {
+		return nil, fmt.Errorf("driver %s does not support secure connections", config.DriverName)
 	}
 	factory := func(ctx context.Context) (pools.Resource, error) {
 		if debugConnectionReuse {
 			fmt.Println("Conn.Open() NEW")
 		}
-		conn, err := dr.Open(config)
+		conn, err := dr.Open(ctx, config)
 		if conn == nil && err == nil {
-			return nil, fmt.Errorf("New connection is nil")
+			return nil, fmt.Errorf("new connection is nil")
 		}
 		if err != nil {
 			return conn, err
@@ -132,19 +132,9 @@ func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 	}
 	return nil
 }
-func (cp *ConnPool) getConn(again bool) (DriverConn, error) {
+func (cp *ConnPool) getConn(ctx context.Context, again bool) (DriverConn, error) {
 	var conn DriverConn
-	ctx := context.Background()
 	var cancel context.CancelFunc
-	var timeout time.Duration
-
-	// Time to wait for an available connection.
-	if again {
-		timeout = time.Millisecond * 150
-	} else {
-		timeout = time.Second * 30
-	}
-	ctx, cancel = context.WithTimeout(ctx, timeout)
 
 	connObj, err := cp.pool.Get(ctx)
 	if cancel != nil {
@@ -160,7 +150,7 @@ func (cp *ConnPool) getConn(again bool) (DriverConn, error) {
 		curCap := cp.pool.Capacity()
 
 		if curCap >= maxCap {
-			return cp.getConn(false)
+			return cp.getConn(ctx, false)
 		}
 		curCap += (maxCap / 10)
 		if curCap > maxCap {
@@ -168,7 +158,7 @@ func (cp *ConnPool) getConn(again bool) (DriverConn, error) {
 		}
 		cp.pool.SetCapacity(int(curCap))
 
-		return cp.getConn(false)
+		return cp.getConn(ctx, false)
 	}
 	if err == pools.ErrTimeout {
 		err = ErrTimeout
@@ -196,7 +186,7 @@ func (cp *ConnPool) query(ctx context.Context, keepOnClose bool, conn DriverConn
 	}
 
 	if conn == nil {
-		conn, err = cp.getConn(true)
+		conn, err = cp.getConn(ctx, true)
 		if err != nil {
 			return nil, fmt.Errorf("getConn: %w", err)
 		}
@@ -206,6 +196,7 @@ func (cp *ConnPool) query(ctx context.Context, keepOnClose bool, conn DriverConn
 	}
 
 	res = &Result{
+		ctx:  ctx,
 		conn: conn,
 		cp:   cp,
 		val: valuer{
@@ -237,7 +228,7 @@ func (cp *ConnPool) query(ctx context.Context, keepOnClose bool, conn DriverConn
 	if res.val.cmd.Arity&Zero != 0 {
 		defer res.close(false)
 
-		serr := res.conn.NextQuery()
+		serr := res.conn.NextQuery(ctx)
 		if err == nil {
 			err = serr
 		}
@@ -254,23 +245,24 @@ func (cp *ConnPool) query(ctx context.Context, keepOnClose bool, conn DriverConn
 }
 
 // Begin starts a Transaction with the default isolation level.
-func (cp *ConnPool) Begin() (*Transaction, error) {
-	return cp.BeginLevel(LevelDefault)
+func (cp *ConnPool) Begin(ctx context.Context) (*Transaction, error) {
+	return cp.BeginLevel(ctx, LevelDefault)
 }
 
 // BeginLevel starts a Transaction with the specified isolation level.
-func (cp *ConnPool) BeginLevel(level IsolationLevel) (*Transaction, error) {
-	conn, err := cp.getConn(true)
+func (cp *ConnPool) BeginLevel(ctx context.Context, level IsolationLevel) (*Transaction, error) {
+	conn, err := cp.getConn(ctx, true)
 	if err != nil {
 		return nil, err
 	}
 
 	tran := &Transaction{
+		ctx:   ctx,
 		cp:    cp,
 		conn:  conn,
 		level: level,
 	}
-	err = conn.Begin(level)
+	err = conn.Begin(ctx, level)
 	if err != nil {
 		cp.releaseConn(conn, true)
 		return nil, err
@@ -279,8 +271,8 @@ func (cp *ConnPool) BeginLevel(level IsolationLevel) (*Transaction, error) {
 }
 
 // Connection returns a dedicated database connection from the connection pool.
-func (cp *ConnPool) Connection() (*Connection, error) {
-	conn, err := cp.getConn(true)
+func (cp *ConnPool) Connection(ctx context.Context) (*Connection, error) {
+	conn, err := cp.getConn(ctx, true)
 	if err != nil {
 		return nil, err
 	}

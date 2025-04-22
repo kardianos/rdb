@@ -61,12 +61,16 @@ type Connection struct {
 
 	opened              time.Time
 	defaultResetTimeout time.Duration
+	rollbackTimeout     time.Duration
 
 	// The next byte of ucs2 if split between packets.
 	ucs2Next []byte
 }
 
-func NewConnection(c net.Conn, defaultResetTimeout time.Duration) *Connection {
+func NewConnection(c net.Conn, defaultResetTimeout, RollbackTimeout time.Duration) *Connection {
+	if RollbackTimeout <= 0 {
+		RollbackTimeout = time.Second * 30
+	}
 	return &Connection{
 		pw:      NewPacketWriter(c),
 		pr:      NewPacketReader(c),
@@ -76,6 +80,7 @@ func NewConnection(c net.Conn, defaultResetTimeout time.Duration) *Connection {
 		onClose: make(chan struct{}),
 
 		defaultResetTimeout: defaultResetTimeout,
+		rollbackTimeout:     RollbackTimeout,
 	}
 }
 
@@ -91,7 +96,7 @@ func (tds *Connection) getAllHeaders() []byte {
 	return tds.allHeaders
 }
 
-func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
+func (tds *Connection) Open(ctx context.Context, config *rdb.Config) (*ServerInfo, error) {
 	if debugToken {
 		fmt.Printf("\tOPEN\n")
 	}
@@ -110,12 +115,12 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 		encrypt = encryptRequired
 	}
 
-	err = tds.pw.PreLogin(config.Instance, encrypt)
+	err = tds.pw.PreLogin(ctx, config.Instance, encrypt)
 	if err != nil {
 		return nil, err
 	}
 
-	sc, err := tds.pr.Prelogin()
+	sc, err := tds.pr.Prelogin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -135,6 +140,7 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 		}
 
 		handshakeConn := &tlsHandshakeConn{
+			ctx:  ctx,
 			conn: tds,
 		}
 		connSwitch := &passthroughConn{c: handshakeConn}
@@ -151,12 +157,12 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 	}
 
 	// Write LOGIN7 message.
-	err = tds.pw.Login(config)
+	err = tds.pw.Login(ctx, config)
 	if err != nil {
 		return nil, err
 	}
 
-	si, err := tds.pr.LoginAck()
+	si, err := tds.pr.LoginAck(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -178,12 +184,13 @@ func (tds *Connection) Open(config *rdb.Config) (*ServerInfo, error) {
 	tds.status = rdb.StatusReady
 	tds.syncClose.Unlock()
 
-	return si, tds.NextQuery()
+	return si, tds.NextQuery(ctx)
 }
 
 // this connection is used during TLS Handshake
 // TDS protocol requires TLS handshake messages to be sent inside TDS packets
 type tlsHandshakeConn struct {
+	ctx           context.Context
 	conn          *Connection
 	mr            *MessageReader
 	readBuffer    []byte
@@ -194,7 +201,7 @@ type tlsHandshakeConn struct {
 func (c *tlsHandshakeConn) Read(b []byte) (n int, err error) {
 	if c.packetPending {
 		c.packetPending = false
-		_, err = c.conn.pw.writeClose([]byte{}, true)
+		_, err = c.conn.pw.writeClose(c.ctx, []byte{}, true)
 		if err != nil {
 			return 0, fmt.Errorf("cannot send handshake packet: %s", err.Error())
 		}
@@ -202,9 +209,9 @@ func (c *tlsHandshakeConn) Read(b []byte) (n int, err error) {
 	}
 	if !c.continueRead || len(c.readBuffer) == 0 {
 		if c.mr == nil {
-			c.mr = c.conn.pr.BeginMessage(packetPreLogin)
+			c.mr = c.conn.pr.BeginMessage(c.ctx, packetPreLogin)
 		}
-		c.readBuffer, err = c.mr.Next()
+		c.readBuffer, err = c.mr.Next(c.ctx)
 		if err == io.EOF && n > 0 {
 			err = nil
 		}
@@ -220,7 +227,7 @@ func (c *tlsHandshakeConn) Write(b []byte) (n int, err error) {
 		c.conn.pw.BeginMessage(context.Background(), packetPreLogin, false)
 		c.packetPending = true
 	}
-	_, err = c.conn.pw.Write(b)
+	_, err = c.conn.pw.Write(c.ctx, b)
 	return len(b), err
 }
 
@@ -365,9 +372,7 @@ const (
 	levelSnapshot        = 0x05
 )
 
-func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationLevel) error {
-	ctx := context.Background()
-
+func (tds *Connection) transaction(ctx context.Context, tran uint16, label string, iso rdb.IsolationLevel) error {
 	tds.syncClose.Lock()
 	if tds.status == rdb.StatusDisconnected {
 		tds.syncClose.Unlock()
@@ -384,7 +389,7 @@ func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationL
 		panic("Connection not ready to be re-used yet for transaction.")
 	}
 
-	tds.mr = tds.pr.BeginMessage(packetTabularResult)
+	tds.mr = tds.pr.BeginMessage(ctx, packetTabularResult)
 	err := tds.pw.BeginMessage(ctx, packetTransaction, false)
 	if err != nil {
 		return err
@@ -417,46 +422,52 @@ func (tds *Connection) transaction(tran uint16, label string, iso rdb.IsolationL
 		tds.pw.WriteByte(level)
 		tds.pw.WriteByte(labelLen)
 		if labelLen != 0 {
-			tds.pw.Write([]byte(label))
+			_, err = tds.pw.Write(ctx, []byte(label))
 		}
 	case tranCommit:
 		tds.pw.WriteByte(labelLen)
 		if labelLen != 0 {
-			tds.pw.Write([]byte(label))
+			_, err = tds.pw.Write(ctx, []byte(label))
 		}
 		tds.pw.WriteByte(0) // Don't start another transaction.
 	case tranRollback:
 		tds.pw.WriteByte(labelLen)
 		if labelLen != 0 {
-			tds.pw.Write([]byte(label))
+			_, err = tds.pw.Write(ctx, []byte(label))
 		}
 		tds.pw.WriteByte(0) // Don't start another transaction.
 	case tranSavepoint:
 		tds.pw.WriteByte(labelLen)
 		if labelLen != 0 {
-			tds.pw.Write([]byte(label))
+			_, err = tds.pw.Write(ctx, []byte(label))
 		}
 	default:
 		panic("Unknown transaction request.")
 	}
-
-	err = tds.pw.EndMessage()
 	if err != nil {
 		return err
 	}
-	return tds.NextQuery()
+
+	err = tds.pw.EndMessage(ctx)
+	if err != nil {
+		return err
+	}
+	return tds.NextQuery(ctx)
 }
-func (tds *Connection) Begin(iso rdb.IsolationLevel) error {
-	return tds.transaction(tranBegin, "", iso)
+func (tds *Connection) Begin(ctx context.Context, iso rdb.IsolationLevel) error {
+	return tds.transaction(ctx, tranBegin, "", iso)
 }
 func (tds *Connection) Rollback(savepoint string) error {
-	return tds.transaction(tranRollback, savepoint, rdb.LevelDefault)
+	ctx, cancel := context.WithTimeout(context.Background(), tds.rollbackTimeout)
+	defer cancel()
+
+	return tds.transaction(ctx, tranRollback, savepoint, rdb.LevelDefault)
 }
-func (tds *Connection) Commit() error {
-	return tds.transaction(tranCommit, "", rdb.LevelDefault)
+func (tds *Connection) Commit(ctx context.Context) error {
+	return tds.transaction(ctx, tranCommit, "", rdb.LevelDefault)
 }
-func (tds *Connection) SavePoint(name string) error {
-	return tds.transaction(tranSavepoint, name, rdb.LevelDefault)
+func (tds *Connection) SavePoint(ctx context.Context, name string) error {
+	return tds.transaction(ctx, tranSavepoint, name, rdb.LevelDefault)
 }
 
 type noopValuer struct {
@@ -491,7 +502,7 @@ func (tds *Connection) Query(ctx context.Context, cmd *rdb.Command, params []rdb
 		return fmt.Errorf("connection not ready to be re-used yet for query")
 	}
 
-	go tds.asyncWaitCancel(ctx, cmd.Name)
+	go tds.asyncWaitCancel(ctx, tds.rollbackTimeout, cmd.Name)
 top:
 	select {
 	default:
@@ -509,7 +520,7 @@ top:
 	tds.syncClose.Unlock()
 
 	if doNext {
-		_, err = tds.nextResult()
+		_, err = tds.nextResult(ctx)
 	}
 
 	if moreExec {
@@ -519,11 +530,14 @@ top:
 	return err
 }
 
-func (tds *Connection) asyncWaitCancel(ctx context.Context, sqlName string) {
+func (tds *Connection) asyncWaitCancel(ctx context.Context, cancelTimeout time.Duration, sqlName string) {
 	select {
 	case <-ctx.Done():
 		// Wait until message is done.
-		err := tds.pw.BeginMessage(context.TODO(), packetAttention, false)
+		cancelContext, stopCancelContext := context.WithTimeout(context.Background(), cancelTimeout)
+		defer stopCancelContext()
+
+		err := tds.pw.BeginMessage(cancelContext, packetAttention, false)
 		if err != nil {
 			// TODO: Determine a better error path.
 			log.Printf("Cancel begin message: %v\n", err)
@@ -533,7 +547,7 @@ func (tds *Connection) asyncWaitCancel(ctx context.Context, sqlName string) {
 			}
 			return
 		}
-		err = tds.pw.EndMessage()
+		err = tds.pw.EndMessage(cancelContext)
 		if err != nil {
 			// TODO: Determine a better error path.
 			log.Printf("Cancel end message: %v\n", err)
@@ -549,14 +563,14 @@ func (tds *Connection) asyncWaitCancel(ctx context.Context, sqlName string) {
 	}
 }
 
-func (tds *Connection) NextResult() (more bool, err error) {
+func (tds *Connection) NextResult(ctx context.Context) (more bool, err error) {
 	if debugAPI {
 		fmt.Printf("API NextResult\n")
 	}
-	return tds.nextResult()
+	return tds.nextResult(ctx)
 }
 
-func (tds *Connection) nextResult() (more bool, err error) {
+func (tds *Connection) nextResult(ctx context.Context) (more bool, err error) {
 	tds.syncClose.Lock()
 
 	more = (tds.status == rdb.StatusResultDone)
@@ -567,7 +581,7 @@ func (tds *Connection) nextResult() (more bool, err error) {
 		tds.status = rdb.StatusQuery
 		tds.syncClose.Unlock()
 
-		err = tds.scan()
+		err = tds.scan(ctx)
 
 		tds.syncClose.Lock()
 		more = tds.status == rdb.StatusResultDone || tds.status == rdb.StatusQuery
@@ -579,7 +593,7 @@ func (tds *Connection) nextResult() (more bool, err error) {
 	return more, err
 }
 
-func (tds *Connection) NextQuery() (err error) {
+func (tds *Connection) NextQuery(ctx context.Context) (err error) {
 	if debugAPI {
 		fmt.Printf("API NextQuery\n")
 		defer fmt.Printf("<API NextQuery\n")
@@ -593,7 +607,7 @@ func (tds *Connection) NextQuery() (err error) {
 			if !run {
 				return
 			}
-			res, err = tds.getSingleResponse(tds.mr, false)
+			res, err = tds.getSingleResponse(ctx, tds.mr, false)
 		})
 		if !run {
 			break
@@ -642,14 +656,14 @@ func (tds *Connection) done() error {
 	return err
 }
 
-func (tds *Connection) Scan() error {
+func (tds *Connection) Scan(ctx context.Context) error {
 	if debugAPI {
 		fmt.Printf("API Scan\n")
 	}
-	return tds.scan()
+	return tds.scan(ctx)
 }
 
-func (tds *Connection) scan() error {
+func (tds *Connection) scan(ctx context.Context) error {
 	if debugAPI {
 		fmt.Printf("api scan\n")
 		defer fmt.Printf("<api scan\n")
@@ -671,7 +685,7 @@ func (tds *Connection) scan() error {
 		var res interface{}
 		var err error
 		withLock(&tds.syncClose, func() {
-			res, err = tds.getSingleResponse(tds.mr, true)
+			res, err = tds.getSingleResponse(ctx, tds.mr, true)
 		})
 		if err != nil {
 			tds.done()
@@ -742,7 +756,7 @@ func (tds *Connection) scan() error {
 		}
 		var pb byte
 		withLock(&tds.syncClose, func() {
-			pb, err = tds.mr.PeekByte()
+			pb, err = tds.mr.PeekByte(ctx)
 		})
 		if err == io.EOF {
 			continue
@@ -789,7 +803,7 @@ func (tds *Connection) execute(ctx context.Context, cmd *rdb.Command, params []r
 		}
 	}
 
-	tds.mr = tds.pr.BeginMessage(packetTabularResult)
+	tds.mr = tds.pr.BeginMessage(ctx, packetTabularResult)
 
 	switch {
 	default:
@@ -816,7 +830,7 @@ func (tds *Connection) execute(ctx context.Context, cmd *rdb.Command, params []r
 			}
 			var resp interface{}
 			withLock(&tds.syncClose, func() {
-				resp, err = tds.getSingleResponse(tds.mr, false)
+				resp, err = tds.getSingleResponse(ctx, tds.mr, false)
 				if _, ok := resp.(MsgFinalDone); ok && !more {
 					tds.mr.packetEOM = false
 				}
@@ -837,7 +851,7 @@ func (tds *Connection) execute(ctx context.Context, cmd *rdb.Command, params []r
 		return more, err
 	}
 
-	return more, tds.scan()
+	return more, tds.scan(ctx)
 }
 
 const (
@@ -859,7 +873,7 @@ func (tds *Connection) sendSimpleQuery(ctx context.Context, sql string, reset bo
 	w.WriteBuffer(tds.getAllHeaders())
 
 	w.WriteBuffer(uconv.Encode.FromString(sql))
-	return w.EndMessage()
+	return w.EndMessage(ctx)
 }
 
 func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool, params []rdb.Param, reset bool) error {
@@ -909,11 +923,11 @@ func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool,
 			}
 			fmt.Fprintf(paramNames, "@%s %s", param.Name, st.TypeString(param))
 		}
-		err = encodeParam(w, truncValue, tds.ProtocolVersion, rpcHeaderParam, []byte(sql))
+		err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, rpcHeaderParam, []byte(sql))
 		if err != nil {
 			return err
 		}
-		err = encodeParam(w, truncValue, tds.ProtocolVersion, rpcHeaderParam, paramNames.Bytes())
+		err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, rpcHeaderParam, paramNames.Bytes())
 		if err != nil {
 			return err
 		}
@@ -926,14 +940,14 @@ func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool,
 	// Other parameters.
 	for i := range params {
 		param := &params[i]
-		err = encodeParam(w, truncValue, tds.ProtocolVersion, param, param.Value)
+		err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, param, param.Value)
 		if err != nil {
 			return err
 		}
 	}
 	w.WriteByte(byte(tokenDoneInProc))
 
-	return w.EndMessage()
+	return w.EndMessage(ctx)
 }
 
 func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue bool, params []rdb.Param, reset bool) (more bool, err error) {
@@ -947,7 +961,10 @@ func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue b
 		if complete {
 			return
 		}
-		w.EndMessage()
+		emErr := w.EndMessage(ctx)
+		if err == nil && emErr != nil {
+			err = emErr
+		}
 	}()
 
 	w.WriteByte(byte(tokenColumnMetaData))
@@ -964,7 +981,10 @@ func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue b
 		var userType uint32
 		w.WriteUint32(userType)
 		flags := colFlags{}
-		w.Write(colFlagsToSlice(flags))
+		_, err := w.Write(ctx, colFlagsToSlice(flags))
+		if err != nil {
+			return false, err
+		}
 
 		ti, err := getParamTypeInfo(tdsVer, p.Type)
 		if err != nil {
@@ -1010,7 +1030,7 @@ loop:
 		w.WriteByte(byte(tokenRow))
 		for i, p := range params {
 			ti := meta[i]
-			err = encodeValue(w, ti, &p, truncValue, p.Value)
+			err = encodeValue(ctx, w, ti, &p, truncValue, p.Value)
 			if err != nil {
 				return false, err
 			}
@@ -1022,10 +1042,10 @@ loop:
 	w.WriteUint16(0)          // Current Command.
 	w.WriteUint64(uint64(ct)) // Row Count.
 
-	return more, w.EndMessage()
+	return more, w.EndMessage(ctx)
 }
 
-func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (response interface{}, err error) {
+func (tds *Connection) getSingleResponse(ctx context.Context, m *MessageReader, reportRow bool) (response interface{}, err error) {
 	if debugToken {
 		fmt.Printf("getSingleResponse\n")
 		defer func() {
@@ -1046,7 +1066,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 	var bb []byte
 	read := func(n int) []byte {
 		var readErr error
-		bb, readErr = m.Fetch(n)
+		bb, readErr = m.Fetch(ctx, n)
 		if len(bb) > 0 {
 			return bb
 		}
@@ -1055,7 +1075,7 @@ func (tds *Connection) getSingleResponse(m *MessageReader, reportRow bool) (resp
 		}
 		return bb
 	}
-	tokenBuf, err := m.Fetch(1)
+	tokenBuf, err := m.Fetch(ctx, 1)
 	if err != nil {
 		if len(tokenBuf) != 1 && err == io.EOF {
 			return MsgEom{}, nil
