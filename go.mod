@@ -1,3 +1,3 @@
 module github.com/kardianos/rdb
 
-go 1.14
+go 1.24
