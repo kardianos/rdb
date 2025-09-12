@@ -11,8 +11,19 @@ import (
 // Field matching is case-sensitive. Extra columns are ignored. NULL values in non-pointer fields are set to zero values.
 // If a field has a db tag with a "json" attribute (e.g., `db:"name,json"`), it is unmarshaled as a JSON array of objects.
 func UnmarshalStruct[T any](buf *Buffer) ([]T, error) {
+	return UnmarshalStructTag[T](buf, "")
+}
+
+// UnmarshalStructTag unmarshals a table.Buffer into a slice of type T, matching fields by name or db tag.
+// Field matching is case-sensitive. Extra columns are ignored. NULL values in non-pointer fields are set to zero values.
+// TagName defaults to "db", but may be set.
+// If a field has a db tag with a "json" attribute (e.g., `db:"name,json"`), it is unmarshaled as a JSON array of objects.
+func UnmarshalStructTag[T any](buf *Buffer, tagName string) ([]T, error) {
 	if buf == nil {
 		return nil, fmt.Errorf("buffer is nil")
+	}
+	if len(tagName) == 0 {
+		tagName = "db"
 	}
 
 	var result []T
@@ -32,21 +43,17 @@ func UnmarshalStruct[T any](buf *Buffer) ([]T, error) {
 
 	for i := 0; i < tType.NumField(); i++ {
 		f := tType.Field(i)
-		colIdx := buf.ColumnIndex(f.Name)
-		if colIdx >= 0 {
-			fieldMap[colIdx] = fieldInfo{fieldIdx: i}
-			continue
-		}
 
 		// Check db tag.
-		dbTag := f.Tag.Get("db")
+		dbTag := f.Tag.Get(tagName)
+		columnName := f.Name
+		var isJSON bool
 		if dbTag != "" {
 			parts := strings.Split(dbTag, ",")
 			tagName := parts[0]
-			if len(tagName) == 0 {
-				tagName = f.Name
+			if len(tagName) > 0 {
+				columnName = tagName
 			}
-			isJSON := false
 			if len(parts) > 1 {
 				for _, p := range parts[1:] {
 					if p == "json" {
@@ -55,20 +62,24 @@ func UnmarshalStruct[T any](buf *Buffer) ([]T, error) {
 					}
 				}
 			}
-			colIdx = buf.ColumnIndex(tagName)
-			if colIdx >= 0 {
-				info := fieldInfo{fieldIdx: i, isJSON: isJSON}
-				if isJSON {
-					// Ensure field is a slice or array for JSON unmarshaling.
-					if f.Type.Kind() == reflect.Slice || f.Type.Kind() == reflect.Array {
-						info.jsonStruct = f.Type.Elem()
-					} else {
-						return nil, fmt.Errorf("field %s with db:%s,json tag must be a slice or array", f.Name, tagName)
-					}
-				}
-				fieldMap[colIdx] = info
+		}
+		if columnName == "-" {
+			continue
+		}
+		colIdx := buf.ColumnIndex(columnName)
+		if colIdx < 0 {
+			return nil, fmt.Errorf("field %s is not found in table buffer", columnName)
+		}
+		info := fieldInfo{fieldIdx: i, isJSON: isJSON}
+		if isJSON {
+			// Ensure field is a slice or array for JSON unmarshaling.
+			if f.Type.Kind() == reflect.Slice || f.Type.Kind() == reflect.Array {
+				info.jsonStruct = f.Type.Elem()
+			} else {
+				return nil, fmt.Errorf("field %s with db:%s,json tag must be a slice or array", f.Name, columnName)
 			}
 		}
+		fieldMap[colIdx] = info
 	}
 
 	// Process each row.

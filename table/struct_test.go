@@ -1,7 +1,9 @@
 package table
 
 import (
+	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"reflect"
 	"testing"
 
@@ -15,16 +17,17 @@ func TestUnmarshalStruct(t *testing.T) {
 		Value int    `json:"value"`
 	}
 	type TestStruct struct {
+		XMLName xml.Name `xml:"TS" db:"-"`
 		ID      int64    `db:"user_id"`
 		Name    string   `db:"full_name"`
-		Details []Detail `db:"user_details,json"`
+		Details []Detail `db:",json"`
 	}
 
 	// Create schema
 	schema := []*rdb.Column{
 		{Name: "user_id", Type: rdb.TypeInt64},
 		{Name: "full_name", Type: rdb.Text},
-		{Name: "user_details", Type: rdb.Text}, // JSON stored as string.
+		{Name: "Details", Type: rdb.Text},      // JSON stored as string.
 		{Name: "extra_column", Type: rdb.Text}, // Extra column to be ignored.
 	}
 
@@ -42,8 +45,18 @@ func TestUnmarshalStruct(t *testing.T) {
 	details2 := []Detail{
 		{Key: "level", Value: 5},
 	}
-	jsonData1, _ := json.Marshal(details1)
-	jsonData2, _ := json.Marshal(details2)
+	marshal := func(v any) []byte {
+		buf := &bytes.Buffer{}
+		c := json.NewEncoder(buf)
+		c.SetEscapeHTML(false)
+		err := c.Encode(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return buf.Bytes()
+	}
+	jsonData1 := marshal(details1)
+	jsonData2 := marshal(details2)
 
 	// Add rows to buffer. JSON can be either a string or []byte.
 	buf.AddRow(int64(1), "Alice Smith", string(jsonData1), "extra1")
