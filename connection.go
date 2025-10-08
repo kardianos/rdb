@@ -13,6 +13,9 @@ type Connection struct {
 	cp   *ConnPool
 	conn DriverConn
 	done bool
+
+	// Used, if an option, to renew a connection if required on close.
+	ctx context.Context
 }
 
 var errConnectionClosed = errors.New("connection already closed")
@@ -31,7 +34,7 @@ func (c *Connection) Close() error {
 		return errTransactionClosed
 	}
 	c.done = true
-	c.cp.releaseConn(c.conn, c.conn.Status() != StatusReady)
+	c.cp.releaseConn(c.ctx, c.conn, c.conn.Status() != StatusReady)
 	return nil
 }
 

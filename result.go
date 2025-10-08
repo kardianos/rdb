@@ -69,12 +69,12 @@ func (r *Result) close(explicit bool) error {
 
 	err = r.conn.NextQuery(r.ctx)
 	if err != nil {
-		r.cp.releaseConn(r.conn, true)
+		r.cp.releaseConn(r.ctx, r.conn, true)
 		return err
 	}
 
 	if r.keepOnClose == false {
-		err = r.cp.releaseConn(r.conn, false)
+		err = r.cp.releaseConn(r.ctx, r.conn, false)
 		r.cp = nil
 		r.conn = nil
 	}

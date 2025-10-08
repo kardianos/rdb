@@ -18,10 +18,10 @@ limitations under the License.
 package timer
 
 import (
+	"context"
 	"sync"
+	"sync/atomic"
 	"time"
-
-	"github.com/kardianos/rdb/internal/pools/sync2"
 )
 
 // Out-of-band messages
@@ -56,7 +56,7 @@ A zero value interval will cause the timer to wait indefinitely, and it
 will react only to an explicit Trigger or Stop.
 */
 type Timer struct {
-	interval sync2.AtomicDuration
+	interval atomic.Int64 // Duration
 
 	// state management
 	mu      sync.Mutex
@@ -71,26 +71,26 @@ func NewTimer(interval time.Duration) *Timer {
 	tm := &Timer{
 		msg: make(chan typeAction),
 	}
-	tm.interval.Set(interval)
+	tm.interval.Store(int64(interval))
 	return tm
 }
 
 // Start starts the timer.
-func (tm *Timer) Start(keephouse func()) {
+func (tm *Timer) Start(keephouse func(ctx context.Context), runTimeout time.Duration) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	if tm.running {
 		return
 	}
 	tm.running = true
-	go tm.run(keephouse)
+	go tm.run(keephouse, runTimeout)
 }
 
-func (tm *Timer) run(keephouse func()) {
+func (tm *Timer) run(keephouse func(ctx context.Context), runTimeout time.Duration) {
 	var timer *time.Timer
 	for {
 		var ch <-chan time.Time
-		interval := tm.interval.Get()
+		interval := time.Duration(tm.interval.Load())
 		if interval > 0 {
 			timer = time.NewTimer(interval)
 			ch = timer.C
@@ -109,14 +109,18 @@ func (tm *Timer) run(keephouse func()) {
 			}
 		case <-ch:
 		}
-		keephouse()
+		func() {
+			ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
+			defer cancel()
+			keephouse(ctx)
+		}()
 	}
 }
 
 // SetInterval changes the wait interval.
 // It will cause the timer to restart the wait.
 func (tm *Timer) SetInterval(ns time.Duration) {
-	tm.interval.Set(ns)
+	tm.interval.Store(int64(ns))
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	if tm.running {
@@ -155,7 +159,7 @@ func (tm *Timer) Stop() {
 
 // Interval returns the current interval.
 func (tm *Timer) Interval() time.Duration {
-	return tm.interval.Get()
+	return time.Duration(tm.interval.Load())
 }
 
 func (tm *Timer) Running() bool {

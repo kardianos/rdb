@@ -47,6 +47,9 @@ type Config struct {
 	// Zero if there should be no timeout.
 	ResetConnectionTimeout time.Duration
 
+	// Time to wait for a connection before expanding the connection pool.
+	SoftWait time.Duration
+
 	// How many connection should be created at startup.
 	// Valid range is (0 < init, init <= max).
 	PoolInitCapacity int
@@ -94,6 +97,7 @@ const optPrefix = "opt_"
 //	   max_cap=<int>:                    Pool Max Capacity
 //	   idle_timeout=<time.Duration>:     Pool Idle Timeout
 //	   reset_timeout=<time.Duration>:    Reset Connection Timeout
+//	   soft_wait=<time.Duration>:        Time to wait for connection in pool before expanding pool. Default 20ms.
 //	   rollback_timeout=<time.Duration>: Rollback or cancel connection Timeout.
 //	   require_encryption=<bool>:        Require Connection Encryption
 //	   disable_encryption=<bool>:        Disable Connection Encryption
@@ -177,6 +181,11 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 			}
 		case "rollback_timeout":
 			conf.RollbackTimeout, err = time.ParseDuration(v0)
+			if err != nil {
+				return nil, fmt.Errorf("DSN property %q: %w", key, err)
+			}
+		case "soft_wait":
+			conf.SoftWait, err = time.ParseDuration(v0)
 			if err != nil {
 				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}

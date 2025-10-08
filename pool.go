@@ -23,10 +23,18 @@ type Queryer interface {
 type ConnPool struct {
 	dr   Driver
 	conf *Config
-	pool *pools.ResourcePool
+	pool *pools.ResourcePool[DriverConn]
+
+	softWait time.Duration
 }
 
+// OpenContext opens a connection pool and populates initial connections.
 func Open(config *Config) (*ConnPool, error) {
+	return OpenContext(context.Background(), config)
+}
+
+// OpenContext opens a connection pool and populates initial connections.
+func OpenContext(ctx context.Context, config *Config) (*ConnPool, error) {
 	dr, err := getDriver(config.DriverName)
 	if err != nil {
 		return nil, err
@@ -34,7 +42,7 @@ func Open(config *Config) (*ConnPool, error) {
 	if config.Secure && !dr.DriverInfo().SecureConnection {
 		return nil, fmt.Errorf("driver %s does not support secure connections", config.DriverName)
 	}
-	factory := func(ctx context.Context) (pools.Resource, error) {
+	factory := func(ctx context.Context) (DriverConn, error) {
 		if debugConnectionReuse {
 			fmt.Println("Conn.Open() NEW")
 		}
@@ -50,6 +58,7 @@ func Open(config *Config) (*ConnPool, error) {
 
 	initSize := config.PoolInitCapacity
 	maxSize := config.PoolMaxCapacity
+	softWait := config.SoftWait
 
 	if initSize <= 0 {
 		initSize = 2
@@ -57,14 +66,20 @@ func Open(config *Config) (*ConnPool, error) {
 	if maxSize <= 0 {
 		maxSize = 100
 	}
+	if config.SoftWait == 0 {
+		softWait = time.Millisecond * 20
+	}
 
 	return &ConnPool{
 		dr:   dr,
 		conf: config,
-		pool: pools.NewResourcePool(factory, initSize, maxSize, config.PoolIdleTimeout, 0, nil),
+		pool: pools.NewResourcePool(ctx, factory, initSize, maxSize, config.PoolIdleTimeout, 0, nil),
+
+		softWait: softWait,
 	}, nil
 }
 
+// Close the connection pool.
 func (cp *ConnPool) Close() {
 	cp.pool.Close()
 }
@@ -91,7 +106,7 @@ func (cp *ConnPool) ConnectionInfo(ctx context.Context) (*ConnectionInfo, error)
 	return ci, res.Close()
 }
 
-func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
+func (cp *ConnPool) releaseConn(ctx context.Context, conn DriverConn, kill bool) error {
 	if conn.Status() != StatusReady {
 		kill = true
 	}
@@ -110,7 +125,7 @@ func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 		conn.Close()
 		if conn.Available() {
 			conn.SetAvailable(false)
-			cp.pool.Put(nil)
+			cp.pool.Free(ctx)
 		}
 		return nil
 	}
@@ -121,7 +136,7 @@ func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 		err := conn.Reset(cp.conf)
 		if err != nil {
 			conn.SetAvailable(false)
-			cp.pool.Put(nil)
+			cp.pool.Free(ctx)
 			return err
 		}
 		conn.SetAvailable(false)
@@ -134,14 +149,16 @@ func (cp *ConnPool) releaseConn(conn DriverConn, kill bool) error {
 }
 func (cp *ConnPool) getConn(ctx context.Context, again bool) (DriverConn, error) {
 	var conn DriverConn
-	var cancel context.CancelFunc
 
-	connObj, err := cp.pool.Get(ctx)
-	if cancel != nil {
-		cancel()
+	getCtx := ctx
+	if sw := cp.softWait; sw > 0 && again {
+		var cancel func()
+		getCtx, cancel = context.WithTimeout(ctx, cp.softWait)
+		defer cancel()
 	}
-	if connObj != nil {
-		conn = connObj.(DriverConn)
+
+	conn, err := cp.pool.Get(ctx, getCtx)
+	if conn != nil {
 		conn.SetAvailable(true)
 	}
 	// Logic to expand the pool capacity up to the max capacity.
@@ -150,15 +167,17 @@ func (cp *ConnPool) getConn(ctx context.Context, again bool) (DriverConn, error)
 		curCap := cp.pool.Capacity()
 
 		if curCap >= maxCap {
-			return cp.getConn(ctx, false)
+			conn, err = cp.getConn(ctx, false)
+			return conn, err
 		}
-		curCap += (maxCap / 10)
+		curCap += max(10, (maxCap / 10))
 		if curCap > maxCap {
 			curCap = maxCap
 		}
 		cp.pool.SetCapacity(int(curCap))
 
-		return cp.getConn(ctx, false)
+		conn, err = cp.getConn(ctx, false)
+		return conn, err
 	}
 	if err == pools.ErrTimeout {
 		err = ErrTimeout
@@ -237,7 +256,7 @@ func (cp *ConnPool) query(ctx context.Context, keepOnClose bool, conn DriverConn
 		}
 	}
 	if err != nil {
-		cp.releaseConn(conn, true)
+		cp.releaseConn(ctx, conn, true)
 		res.closed = true
 	}
 
@@ -264,7 +283,7 @@ func (cp *ConnPool) BeginLevel(ctx context.Context, level IsolationLevel) (*Tran
 	}
 	err = conn.Begin(ctx, level)
 	if err != nil {
-		cp.releaseConn(conn, true)
+		cp.releaseConn(ctx, conn, true)
 		return nil, err
 	}
 	return tran, nil
@@ -280,6 +299,7 @@ func (cp *ConnPool) Connection(ctx context.Context) (*Connection, error) {
 	c := &Connection{
 		cp:   cp,
 		conn: conn,
+		ctx:  ctx,
 	}
 	return c, nil
 }

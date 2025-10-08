@@ -42,8 +42,8 @@ func NewSemaphore(count int) *Semaphore {
 	return sem
 }
 
-// Acquire returns true on successful acquisition, and
-// false on a timeout.
+// Acquire returns nil on successful acquisition, and
+// error on a timeout.
 func (sem *Semaphore) Acquire(ctx context.Context) error {
 	select {
 	case <-sem.slots:

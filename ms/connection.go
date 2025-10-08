@@ -540,7 +540,7 @@ func (tds *Connection) asyncWaitCancel(ctx context.Context, cancelTimeout time.D
 		err := tds.pw.BeginMessage(cancelContext, packetAttention, false)
 		if err != nil {
 			// TODO: Determine a better error path.
-			log.Printf("Cancel begin message: %v\n", err)
+			log.Printf("Cancel begin message: %v", err)
 			select {
 			case <-tds.onDone:
 			case <-tds.onClose:

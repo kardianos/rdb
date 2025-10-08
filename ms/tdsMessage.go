@@ -202,7 +202,10 @@ func (tds *PacketWriter) writeClose(ctx context.Context, bb []byte, closeMessage
 			fmt.Println(hex.Dump(buf))
 		}
 
-		for {
+		for range 3 {
+			if err := ctx.Err(); err != nil {
+				return bufN, err
+			}
 			err = tds.w.SetWriteDeadline(time.Now().Add(writeContextCheckPeriod))
 			if err != nil {
 				tds.single.Release()

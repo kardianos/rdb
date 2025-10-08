@@ -37,7 +37,7 @@ func (tran *Transaction) Commit() error {
 	}
 	tran.done = true
 	err := tran.conn.Commit(tran.ctx)
-	tran.cp.releaseConn(tran.conn, tran.conn.Status() != StatusReady)
+	tran.cp.releaseConn(tran.ctx, tran.conn, tran.conn.Status() != StatusReady)
 	return err
 }
 
@@ -57,7 +57,7 @@ func (tran *Transaction) RollbackTo(savepoint string) error {
 	err := tran.conn.Rollback(savepoint)
 	if len(savepoint) == 0 {
 		tran.done = true
-		tran.cp.releaseConn(tran.conn, tran.conn.Status() != StatusReady)
+		tran.cp.releaseConn(tran.ctx, tran.conn, tran.conn.Status() != StatusReady)
 	}
 	return err
 }
