@@ -15,8 +15,6 @@ const (
 	surr1 = 0xd800
 	surr2 = 0xdc00
 	surr3 = 0xe000
-
-	surrSelf = 0x10000
 )
 
 // Utf8 to Utf16 LE:
@@ -166,8 +164,4 @@ func combineBytesLE(b1, b2 byte) uint16 {
 }
 func combineBytesBE(b1, b2 byte) uint16 {
 	return uint16(b2) | (uint16(b1) << 8)
-}
-
-func splitUint16Le(v uint16) (byte, byte) {
-	return byte(v), byte(v >> 8)
 }

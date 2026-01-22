@@ -58,6 +58,10 @@ type Config struct {
 	// Valid range is (0 < max).
 	PoolMaxCapacity int
 
+	// Number of connections to add when expanding the pool.
+	// If zero, defaults to 6.
+	ExpandPoolBy int
+
 	// Require the driver to establish a secure connection.
 	Secure bool
 
@@ -95,6 +99,7 @@ const optPrefix = "opt_"
 //	   max_lifetime=<time.Duration>:     Max Connection Lifetime
 //	   init_cap=<int>:                   Pool Init Capacity
 //	   max_cap=<int>:                    Pool Max Capacity
+//	   expand_by=<int>:                  Number of connections to add when expanding pool (default 6)
 //	   idle_timeout=<time.Duration>:     Pool Idle Timeout
 //	   reset_timeout=<time.Duration>:    Reset Connection Timeout
 //	   soft_wait=<time.Duration>:        Time to wait for connection in pool before expanding pool. Default 20ms.
@@ -200,6 +205,11 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 			}
 		case "max_cap":
 			conf.PoolMaxCapacity, err = strconv.Atoi(v0)
+			if err != nil {
+				return nil, fmt.Errorf("DSN property %q: %w", key, err)
+			}
+		case "expand_by":
+			conf.ExpandPoolBy, err = strconv.Atoi(v0)
 			if err != nil {
 				return nil, fmt.Errorf("DSN property %q: %w", key, err)
 			}

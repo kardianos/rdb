@@ -26,6 +26,7 @@ type ConnPool struct {
 	pool *pools.ResourcePool[DriverConn]
 
 	softWait time.Duration
+	expandBy int
 }
 
 // OpenContext opens a connection pool and populates initial connections.
@@ -59,6 +60,7 @@ func OpenContext(ctx context.Context, config *Config) (*ConnPool, error) {
 	initSize := config.PoolInitCapacity
 	maxSize := config.PoolMaxCapacity
 	softWait := config.SoftWait
+	expandBy := config.ExpandPoolBy
 
 	if initSize <= 0 {
 		initSize = 2
@@ -69,6 +71,9 @@ func OpenContext(ctx context.Context, config *Config) (*ConnPool, error) {
 	if config.SoftWait == 0 {
 		softWait = time.Millisecond * 20
 	}
+	if expandBy <= 0 {
+		expandBy = 6
+	}
 
 	return &ConnPool{
 		dr:   dr,
@@ -76,6 +81,7 @@ func OpenContext(ctx context.Context, config *Config) (*ConnPool, error) {
 		pool: pools.NewResourcePool(ctx, factory, initSize, maxSize, config.PoolIdleTimeout, 0, nil),
 
 		softWait: softWait,
+		expandBy: expandBy,
 	}, nil
 }
 
@@ -170,7 +176,7 @@ func (cp *ConnPool) getConn(ctx context.Context, again bool) (DriverConn, error)
 			conn, err = cp.getConn(ctx, false)
 			return conn, err
 		}
-		curCap += max(10, (maxCap / 10))
+		curCap += int64(cp.expandBy)
 		if curCap > maxCap {
 			curCap = maxCap
 		}

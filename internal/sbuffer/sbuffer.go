@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	ErrNeedCap     = errors.New("Requested more then buffer size.")
-	ErrUsedTooMuch = errors.New("Used more then requested.")
+	ErrNeedCap     = errors.New("Requested more than buffer size.")
+	ErrUsedTooMuch = errors.New("Used more than requested.")
 )
 
 type buffer struct {
