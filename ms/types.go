@@ -94,7 +94,7 @@ const (
 	typeDateTime2N      driverType = 0x2A
 	typeDateTimeOffsetN driverType = 0x2B
 	typeCharOld         driverType = 0x2F
-	typeNCharOld        driverType = 0xEF
+	// typeNCharOld was 0xEF, now consolidated into typeNChar
 	typeVarCharOld      driverType = 0x27
 	typeBinaryOld       driverType = 0x2D
 	typeVarBinaryOld    driverType = 0x25
@@ -103,8 +103,8 @@ const (
 	typeVarChar   driverType = 0xA7 // Big
 	typeBinary    driverType = 0xAD // Big
 	typeChar      driverType = 0xAF // Big
-	typeNVarChar  driverType = 0xE7
-	typeNChar     driverType = 0xDF
+	typeNVarChar driverType = 0xE7
+	typeNChar    driverType = 0xEF // NCHARTYPE per TDS spec (was incorrectly 0xDF)
 	typeXml       driverType = 0xF1
 	typeUDT       driverType = 0xF0
 	typeText      driverType = 0x23
@@ -198,9 +198,8 @@ var typeInfoLookup = map[driverType]typeInfo{
 	typeVarChar:   {Name: "VarChar(Big)", Bytes: true, IsText: true, Max: true, Len: 2, Specific: rdb.TypeAnsiVarChar, Generic: rdb.Text},
 	typeBinary:    {Name: "Binary(Big)", Bytes: true, Max: true, Len: 2, Specific: rdb.TypeBinary, Generic: rdb.Binary},
 	typeChar:      {Name: "Char(Big)", Bytes: true, IsText: true, Len: 2, Specific: rdb.TypeAnsiChar, Generic: rdb.Text},
-	typeNVarChar:  {Name: "NVarChar", Bytes: true, NChar: true, IsText: true, Max: true, Len: 2, Specific: rdb.TypeVarChar, Generic: rdb.Text},
-	typeNCharOld:  {Name: "NVarCharOld", Bytes: true, NChar: true, IsText: true, Max: true, Len: 2, Specific: rdb.TypeVarChar, Generic: rdb.Text},
-	typeNChar:     {Name: "NChar", Bytes: true, NChar: true, IsText: true, Len: 2, Specific: rdb.TypeChar, Generic: rdb.Text},
+	typeNVarChar: {Name: "NVarChar", Bytes: true, NChar: true, IsText: true, Max: true, Len: 2, Specific: rdb.TypeVarChar, Generic: rdb.Text},
+	typeNChar:    {Name: "NChar", Bytes: true, NChar: true, IsText: true, Len: 2, Specific: rdb.TypeChar, Generic: rdb.Text}, // 0xEF per TDS spec
 	typeText:      {Name: "Text", Bytes: true, IsText: true, Table: true, Len: 4, Specific: rdb.TypeAnsiText, Generic: rdb.Text},
 	typeImage:     {Name: "Image", Bytes: true, Table: true, Len: 4, Specific: rdb.TypeBinary, Generic: rdb.Binary},
 	typeNText:     {Name: "NText", Bytes: true, NChar: true, IsText: true, Table: true, Len: 4, Specific: rdb.TypeText, Generic: rdb.Text},

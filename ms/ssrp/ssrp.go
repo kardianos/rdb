@@ -32,7 +32,13 @@ func FetchInstanceInfoList(server string) ([]InstanceInfo, error) {
 }
 
 func fetch(server, instance string, all bool) ([]InstanceInfo, error) {
-	serverAddress, err := net.ResolveUDPAddr("udp", server+":1434")
+	return fetchAddr(server+":1434", instance, all)
+}
+
+// fetchAddr is like fetch but takes a full address (host:port).
+// Used internally and for testing.
+func fetchAddr(addr, instance string, all bool) ([]InstanceInfo, error) {
+	serverAddress, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -48,12 +54,18 @@ func fetch(server, instance string, all bool) ([]InstanceInfo, error) {
 
 	var msg []byte
 	if all {
-		msg = []byte{3}
+		msg = []byte{0x03}
 	} else {
-		msg = make([]byte, 34)
-		msg[0] = 4
-		nameLen := copy(msg[1:], instance)
-		msg[nameLen+2] = 0
+		// CLNT_UCAST_INST format: 0x04 + instance name + null terminator
+		// Instance name max 32 bytes per spec, truncate if longer
+		instBytes := []byte(instance)
+		if len(instBytes) > 32 {
+			instBytes = instBytes[:32]
+		}
+		msg = make([]byte, 1+len(instBytes)+1)
+		msg[0] = 0x04
+		copy(msg[1:], instBytes)
+		// null terminator at end (already zero from make)
 	}
 
 	recvPacket := make([]byte, maxPacketSize) // Max size.
@@ -121,7 +133,7 @@ func readResult(conn *net.UDPConn, bb []byte) ([]InstanceInfo, error) {
 	infoList[infoListIndex].IP = addr.IP
 
 loop:
-	for i := 0; i < len(msgList); i += 2 {
+	for i := 0; i+1 < len(msgList); i += 2 {
 		key := string(msgList[i])
 		value := string(msgList[i+1])
 		switch key {
@@ -137,7 +149,7 @@ loop:
 		case "InstanceName":
 			infoList[infoListIndex].Instance = value
 		case "tcp":
-			infoList[infoListIndex].Tcp, err = strconv.Atoi(value)
+			infoList[infoListIndex].Tcp, _ = strconv.Atoi(value)
 		case "np":
 			infoList[infoListIndex].NamedPipe = value
 		}

@@ -58,5 +58,20 @@ Transactions are not yet supported.
 Out parameters are not yet supported.
 
 Parameter names are not optional. They must be supplied.
+
+# TEXTSIZE Limit
+
+SQL Server has a server-side TEXTSIZE setting that controls the maximum number of
+bytes returned for varchar(max), nvarchar(max), varbinary(max), text, ntext, and
+image columns. The default TEXTSIZE is 4096 bytes, which may truncate large data.
+
+To prevent truncation, set TEXTSIZE in your connection's ResetQuery configuration:
+
+	config := &rdb.Config{
+		// ... other settings ...
+		ResetQuery: "SET TEXTSIZE 2147483647",
+	}
+
+Reference: https://learn.microsoft.com/en-us/sql/t-sql/statements/set-textsize-transact-sql
 */
 package ms

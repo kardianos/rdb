@@ -36,7 +36,8 @@ func encodeType(w *PacketWriter, ti paramTypeInfo, param *rdb.Param) error {
 	switch {
 	case ti.Bytes:
 		var typeLength uint32
-		if ti.IsMaxParam(param) {
+		isMax := ti.IsMaxParam(param)
+		if isMax {
 			typeLength = 0xFFFF
 		} else {
 			typeLength = uint32(param.Length)
