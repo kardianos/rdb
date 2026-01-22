@@ -47,6 +47,9 @@ var dockerEnv *dockerTestEnv
 // checkDockerAvailable verifies Docker is installed and running.
 func checkDockerAvailable(t *testing.T) bool {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("short: docker test")
+	}
 
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		t.Skip("Docker tests only run on linux/amd64")
@@ -65,6 +68,9 @@ func checkDockerAvailable(t *testing.T) bool {
 // setupDockerEnv creates the Docker test environment.
 func setupDockerEnv(t *testing.T) *dockerTestEnv {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("short: docker test")
+	}
 
 	if dockerEnv != nil {
 		return dockerEnv

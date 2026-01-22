@@ -205,7 +205,7 @@ var typeInfoLookup = map[driverType]typeInfo{
 	typeNText:     {Name: "NText", Bytes: true, NChar: true, IsText: true, Table: true, Len: 4, Specific: rdb.TypeText, Generic: rdb.Text},
 
 	// The following will be unsupported for a time.
-	typeXml:     {Name: "Xml", Max: true, Len: 4, Specific: rdb.TypeXML, Generic: rdb.Other},
+	typeXml:     {Name: "Xml", Max: true, Len: 0, Specific: rdb.TypeXML, Generic: rdb.Other},
 	typeUDT:     {Name: "UDT", Max: true, Len: 0, Generic: rdb.Other},
 	typeVariant: {Name: "Varient", Len: 4, Generic: rdb.Other},
 }
@@ -335,4 +335,10 @@ var sqlTypeLookup = map[rdb.Type]typeWidth{
 	rdb.TypeTimestamp:  {T: typeDateTime2N, W: 8, SqlName: "datetime2"},
 	rdb.TypeTimestampz: {T: typeDateTimeOffsetN, W: 10, SqlName: "datetimeoffset"},
 	rdb.Time:           {T: typeDateTimeOffsetN, W: 10, SqlName: "datetimeoffset"},
+
+	rdb.TypeMoney: {T: typeMoneyN, W: 8, SqlName: "money"},
+
+	rdb.TypeUUID: {T: typeGuid, SqlName: "uniqueidentifier"},
+
+	rdb.TypeXML: {T: typeXml, SqlName: "xml"},
 }

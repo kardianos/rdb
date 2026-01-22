@@ -7,12 +7,14 @@ package ms
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
 	"math/big"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kardianos/rdb"
@@ -75,6 +77,14 @@ func encodeType(w *PacketWriter, ti paramTypeInfo, param *rdb.Param) error {
 		w.WriteByte(byte(param.Scale))
 	case ti.T == typeFloatN:
 		w.WriteByte(ti.W) // TYPE_INFO width.
+	case ti.T == typeMoneyN:
+		w.WriteByte(ti.W) // TYPE_INFO width (4 for smallmoney, 8 for money).
+	case ti.T == typeGuid:
+		w.WriteByte(16) // TYPE_INFO width (fixed at 16 bytes for GUID).
+	case ti.T == typeXml:
+		// XML type uses PLP format with schema info.
+		// Schema byte = 0 (no schema).
+		w.WriteByte(0)
 	case ti.T == typeDateTimeN:
 		w.WriteByte(ti.W) // TYPE_INFO width.
 	case ti.Dt != 0:
@@ -870,6 +880,210 @@ func encodeValue(ctx context.Context, w *PacketWriter, ti paramTypeInfo, param *
 			w.WriteUint16(uint16(offset / 60))
 		}
 		return nil
+	case ti.T == typeMoneyN || ti.T == typeMoney || ti.T == typeMoneySmall:
+		if nullValue {
+			w.WriteByte(0)
+			return nil
+		}
+
+		// Convert value to *big.Rat.
+		var pv big.Rat
+		type rater interface {
+			Rat(r *big.Rat) *big.Rat
+		}
+		switch v := value.(type) {
+		case **big.Rat:
+			if v == nil || *v == nil {
+				w.WriteByte(0)
+				return nil
+			}
+			pv = **v
+		case *big.Rat:
+			if v == nil {
+				w.WriteByte(0)
+				return nil
+			}
+			pv = *v
+		default:
+			if r, ok := v.(rater); ok {
+				r.Rat(&pv)
+			} else {
+				return fmt.Errorf("need *big.Rat for money param @%s, got %T", param.Name, value)
+			}
+		}
+
+		// Money is stored as value × 10000.
+		// Num / Denom == Value
+		// Num / Denom * 10000 == StoredValue
+		mult := big.NewInt(10000)
+		num := new(big.Int).Set(pv.Num())
+		denom := pv.Denom()
+		num.Mul(num, mult)
+		num.Div(num, denom)
+
+		// Determine the width to use.
+		width := ti.W
+		if width == 0 {
+			// Fixed types (typeMoney, typeMoneySmall) use their typeInfo Len.
+			if ti.T == typeMoney {
+				width = 8
+			} else {
+				width = 4
+			}
+		}
+
+		if ti.T == typeMoneyN {
+			w.WriteByte(width) // Row field width.
+		}
+
+		if width == 4 {
+			// SmallMoney: 4 bytes, int32.
+			w.WriteUint32(uint32(num.Int64()))
+		} else {
+			// Money: 8 bytes, but stored in special format.
+			// SQL Server Money is stored as two 32-bit parts: high 4 bytes first, then low 4 bytes.
+			val := num.Int64()
+			high := uint32(val >> 32)
+			low := uint32(val)
+			w.WriteUint32(high)
+			w.WriteUint32(low)
+		}
+		return nil
+	case ti.T == typeGuid:
+		if nullValue {
+			w.WriteByte(0)
+			return nil
+		}
+
+		// Apply GUID byte order: reverse Data1 (0-3), Data2 (4-5), Data3 (6-7).
+		reverse := func(b []byte) {
+			for i, j := 0, len(b)-1; i < j; i, j = i+1, j-1 {
+				b[i], b[j] = b[j], b[i]
+			}
+		}
+
+		var guidBytes []byte
+
+		switch v := value.(type) {
+		case string:
+			// Parse the UUID string (format: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX).
+			uuidStr := strings.ReplaceAll(v, "-", "")
+			if len(uuidStr) != 32 {
+				return fmt.Errorf("invalid GUID format for param @%s: %q", param.Name, v)
+			}
+			guidBytes = make([]byte, 16)
+			_, err := hex.Decode(guidBytes, []byte(uuidStr))
+			if err != nil {
+				return fmt.Errorf("invalid GUID hex for param @%s: %w", param.Name, err)
+			}
+		case *string:
+			if v == nil {
+				w.WriteByte(0)
+				return nil
+			}
+			uuidStr := strings.ReplaceAll(*v, "-", "")
+			if len(uuidStr) != 32 {
+				return fmt.Errorf("invalid GUID format for param @%s: %q", param.Name, *v)
+			}
+			guidBytes = make([]byte, 16)
+			_, err := hex.Decode(guidBytes, []byte(uuidStr))
+			if err != nil {
+				return fmt.Errorf("invalid GUID hex for param @%s: %w", param.Name, err)
+			}
+		case []byte:
+			if len(v) != 16 {
+				return fmt.Errorf("GUID []byte must be 16 bytes for param @%s, got %d", param.Name, len(v))
+			}
+			guidBytes = make([]byte, 16)
+			copy(guidBytes, v)
+		case *[]byte:
+			if v == nil {
+				w.WriteByte(0)
+				return nil
+			}
+			if len(*v) != 16 {
+				return fmt.Errorf("GUID []byte must be 16 bytes for param @%s, got %d", param.Name, len(*v))
+			}
+			guidBytes = make([]byte, 16)
+			copy(guidBytes, *v)
+		case [16]byte:
+			guidBytes = make([]byte, 16)
+			copy(guidBytes, v[:])
+		case *[16]byte:
+			if v == nil {
+				w.WriteByte(0)
+				return nil
+			}
+			guidBytes = make([]byte, 16)
+			copy(guidBytes, v[:])
+		default:
+			// Try reflection for custom [16]byte types like `type GUID [16]byte`.
+			rv := reflect.ValueOf(value)
+			if rv.Kind() == reflect.Ptr {
+				if rv.IsNil() {
+					w.WriteByte(0)
+					return nil
+				}
+				rv = rv.Elem()
+			}
+			if rv.Kind() == reflect.Array && rv.Len() == 16 && rv.Type().Elem().Kind() == reflect.Uint8 {
+				guidBytes = make([]byte, 16)
+				for i := 0; i < 16; i++ {
+					guidBytes[i] = byte(rv.Index(i).Uint())
+				}
+			} else {
+				return fmt.Errorf("need string, []byte, or [16]byte for GUID param @%s, got %T", param.Name, value)
+			}
+		}
+
+		reverse(guidBytes[0:4])
+		reverse(guidBytes[4:6])
+		reverse(guidBytes[6:8])
+
+		w.WriteByte(16) // Row field width.
+		w.WriteBuffer(guidBytes)
+		return nil
+	case ti.T == typeXml:
+		if nullValue {
+			w.WriteUint64(textNULL)
+			return nil
+		}
+
+		// Get XML data as bytes.
+		var xmlData []byte
+		switch v := value.(type) {
+		case string:
+			xmlData = []byte(v)
+		case *string:
+			if v == nil {
+				w.WriteUint64(textNULL)
+				return nil
+			}
+			xmlData = []byte(*v)
+		case []byte:
+			xmlData = v
+		case *[]byte:
+			if v == nil {
+				w.WriteUint64(textNULL)
+				return nil
+			}
+			xmlData = *v
+		default:
+			return fmt.Errorf("need string or []byte for XML param @%s, got %T", param.Name, value)
+		}
+
+		if len(xmlData) == 0 {
+			w.WriteUint64(0)
+			w.WriteUint32(0)
+			return nil
+		}
+
+		// Write PLP format: unknown size, then chunks.
+		w.WriteUint64(textUnknown)
+		w.WriteUint32(uint32(len(xmlData)))
+		w.WriteBuffer(xmlData)
+		w.WriteUint32(0) // End of chunks.
+		return nil
 	}
 }
 
@@ -1032,6 +1246,29 @@ func decodeColumnInfo(read uconv.PanicReader) *SQLColumn {
 		column.Scale = int(read(1)[0])
 	}
 
+	// XML type has optional schema info.
+	if driverType == typeXml {
+		schemaPresent := read(1)[0]
+		if schemaPresent != 0 {
+			// Skip database name (BVarChar: 1-byte length + string).
+			dbNameLen := int(read(1)[0])
+			if dbNameLen > 0 {
+				read(dbNameLen * 2) // UTF-16LE
+			}
+			// Skip owning schema name (BVarChar: 1-byte length + string).
+			schemaNameLen := int(read(1)[0])
+			if schemaNameLen > 0 {
+				read(schemaNameLen * 2) // UTF-16LE
+			}
+			// Skip schema collection name (USVarChar: 2-byte length + string).
+			collectionNameLen := int(binary.LittleEndian.Uint16(read(2)))
+			if collectionNameLen > 0 {
+				read(collectionNameLen * 2) // UTF-16LE
+			}
+		}
+		column.Unlimit = true // XML uses PLP format.
+	}
+
 	return column
 }
 
@@ -1055,7 +1292,6 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 
 	if column.Unlimit {
 		totalSize := binary.LittleEndian.Uint64(read(8))
-		sizeUnknown := false
 
 		if totalSize == textNULL {
 			wf(&rdb.DriverValue{
@@ -1063,9 +1299,48 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			})
 			return
 		}
-		if totalSize == textUnknown {
-			sizeUnknown = true
+		sizeUnknown := totalSize == textUnknown
+
+		// For XML type, collect all chunks and decode BINXML to text XML.
+		if column.code == typeXml {
+			var allData []byte
+			for {
+				chunkSize := int(binary.LittleEndian.Uint32(read(4)))
+				if chunkSize == 0 {
+					break
+				}
+				chunk := make([]byte, chunkSize)
+				copy(chunk, read(chunkSize))
+				allData = append(allData, chunk...)
+			}
+
+			if len(allData) == 0 {
+				wf(&rdb.DriverValue{
+					Value: []byte{},
+				})
+				return
+			}
+
+			var xmlText []byte
+			// SQL Server sends XML as either UTF-16LE text or BINXML (binary XML).
+			// BINXML is sent when using the .NET SqlClient; other clients get UTF-16LE.
+			// Check for BINXML signature (0xDF 0xFF) to determine format.
+			if len(allData) >= 2 && allData[0] == 0xDF && allData[1] == 0xFF {
+				var err error
+				xmlText, err = decodeBinXML(allData)
+				if err != nil {
+					panic(recoverError{fmt.Errorf("failed to decode BINXML: %w", err)})
+				}
+			} else {
+				// UTF-16LE text XML - convert to UTF-8.
+				xmlText = uconv.Decode.ToBytes(allData)
+			}
+			wf(&rdb.DriverValue{
+				Value: xmlText,
+			})
+			return
 		}
+
 		useChunks := false
 		first := true
 		for {
@@ -1130,21 +1405,18 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 	isNull := false
 
 	if column.info.Table {
-		panic(recoverError{err: fmt.Errorf("types Text, NText, and Image are not currently supported, long values do not decode correctly")})
 		// Types text, ntext, and image.
-		/*
-			10 > 16 (meta-data length)
-			64 75 6d 6d 79 20 74 65 78 74 70 74 72 00 00 00  > dummy textptr (meta-data)
-			64 75 6d 6d 79 54 53 00 > dummyTS (label)
-			05 00 00 00 > 5 (data length)
-			48 65 6c 6c 6f > Hello (data)
-		*/
-		metaDataLen := read(1)[0]
-		if metaDataLen == 0 {
+		// TDS format:
+		// 1. TextPointer: 1-byte length + N bytes (0 = NULL)
+		// 2. Timestamp: 8 bytes (fixed)
+		// 3. Data length: 4-byte LONGLEN (0xFFFFFFFF = NULL)
+		// 4. Data: N bytes
+		textPtrLen := read(1)[0]
+		if textPtrLen == 0 {
 			isNull = true
 		} else {
-			read(int(metaDataLen)) // metaData
-			read(8)                // label; not sure if this should be hard-coded or scanned till null.
+			read(int(textPtrLen)) // Skip TextPointer
+			read(8)               // Skip Timestamp
 		}
 	}
 
@@ -1234,6 +1506,16 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			tm := time.Duration(binary.LittleEndian.Uint32(bb[4:]))
 			t := time.Date(1900, time.January, 1, 0, 0, 0, 0, time.UTC)
 			v = t.Add(time.Hour*24*dt + time.Millisecond*tm*1000/300)
+		case typeMoney:
+			// Money: 8 bytes stored as high 4 bytes + low 4 bytes, value × 10000.
+			high := int64(binary.LittleEndian.Uint32(bb[0:4]))
+			low := int64(binary.LittleEndian.Uint32(bb[4:8]))
+			rawVal := (high << 32) | low
+			v = big.NewRat(rawVal, 10000)
+		case typeMoneySmall:
+			// SmallMoney: 4 bytes int32, value × 10000.
+			rawVal := int64(int32(binary.LittleEndian.Uint32(bb)))
+			v = big.NewRat(rawVal, 10000)
 		default:
 			panic(recoverError{fmt.Errorf("unhandled fixed type: %v", column.code)})
 		}
@@ -1323,8 +1605,32 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 		default:
 			panic(fmt.Errorf("proto error FloatN, unknown data len %d", dataLen))
 		}
-
 	}
+
+	if column.code == typeMoneyN {
+		switch dataLen {
+		case 4:
+			// SmallMoney: 4 bytes int32, value × 10000.
+			rawVal := int64(int32(binary.LittleEndian.Uint32(read(4))))
+			wf(&rdb.DriverValue{
+				Value: big.NewRat(rawVal, 10000),
+			})
+			return
+		case 8:
+			// Money: 8 bytes stored as high 4 bytes + low 4 bytes, value × 10000.
+			bb := read(8)
+			high := int64(binary.LittleEndian.Uint32(bb[0:4]))
+			low := int64(binary.LittleEndian.Uint32(bb[4:8]))
+			rawVal := (high << 32) | low
+			wf(&rdb.DriverValue{
+				Value: big.NewRat(rawVal, 10000),
+			})
+			return
+		default:
+			panic(fmt.Errorf("proto error MoneyN, unknown data len %d", dataLen))
+		}
+	}
+
 	if column.code == typeDateTimeN {
 		switch dataLen {
 		case 8:

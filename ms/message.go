@@ -82,8 +82,8 @@ func (tds *PacketWriter) PreLogin(ctx context.Context, instance string, encrypt 
 	binary.BigEndian.PutUint32(version, protoVersionMax)
 
 	addToken(preloginVersion, version)
-	addToken(preloginMars, []byte{0x00})                // MARS OFF (0x01 is ON).
-	addToken(preloginEncryption, []byte{byte(encrypt)}) // Encription not available. Pg 65.
+	addToken(preloginMars, []byte{0x00}) // MARS OFF (0x01 is ON).
+	addToken(preloginEncryption, []byte{byte(encrypt)})
 	if len(instance) > 0 {
 		addToken(preloginInstance, uconv.Encode.FromString(instance))
 	}
