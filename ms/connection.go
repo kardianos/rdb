@@ -187,6 +187,87 @@ func (tds *Connection) Open(ctx context.Context, config *rdb.Config) (*ServerInf
 	return si, tds.NextQuery(ctx)
 }
 
+// OpenTDS8 opens a connection using TDS 8.0 protocol.
+// TDS 8.0 establishes TLS before any TDS messages, using ALPN for protocol negotiation.
+func (tds *Connection) OpenTDS8(ctx context.Context, config *rdb.Config) (*ServerInfo, error) {
+	if debugToken {
+		fmt.Printf("\tOPEN TDS8\n")
+	}
+	if tds.Status() != rdb.StatusDisconnected {
+		return nil, connectionOpenError
+	}
+
+	tds.allHeaders, tds.allHeaderNumberOffset = getHeaderTemplate()
+
+	// TDS 8.0: Establish TLS immediately with ALPN "tds/8.0".
+	tlsConfig := &tls.Config{
+		NextProtos:         []string{"tds/8.0"},
+		InsecureSkipVerify: config.InsecureSkipVerify,
+		ServerName:         config.Hostname,
+		MinVersion:         tls.VersionTLS12,
+		RootCAs:            config.RootCAs,
+	}
+
+	tlsConn := tls.Client(tds.wc, tlsConfig)
+	err := tlsConn.HandshakeContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("TDS8 TLS handshake error: %w", err)
+	}
+
+	// Verify ALPN was negotiated (optional, server may not send it back).
+	state := tlsConn.ConnectionState()
+	if state.NegotiatedProtocol != "" && state.NegotiatedProtocol != "tds/8.0" {
+		return nil, fmt.Errorf("TDS8 ALPN mismatch: got %q, want %q", state.NegotiatedProtocol, "tds/8.0")
+	}
+
+	// Switch to TLS connection for all further communication.
+	tds.pw = NewPacketWriter(tlsConn)
+	tds.pr = NewPacketReader(tlsConn)
+	tds.Encrypted = true
+
+	// TDS 8.0: PRELOGIN is sent over TLS (encryption already established).
+	// The encryption field in PRELOGIN is informational only.
+	err = tds.pw.PreLogin(ctx, config.Instance, encryptOn)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = tds.pr.Prelogin(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Write LOGIN7 message.
+	err = tds.pw.Login(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+
+	si, err := tds.pr.LoginAck(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tds.ProductVersion = &semver.Version{
+		Major:   uint16(si.MajorVersion),
+		Minor:   uint16(si.MinorVersion),
+		Patch:   si.BuildNumber,
+		Product: si.ProgramName,
+	}
+	tds.ProtocolVersion = &semver.Version{
+		Major:   uint16(si.TdsVersion[3]),
+		Minor:   uint16(si.TdsVersion[0]),
+		Patch:   uint16(si.TdsVersion[1]),
+		Product: "TDS",
+		InHex:   true,
+	}
+
+	tds.syncClose.Lock()
+	tds.status = rdb.StatusReady
+	tds.syncClose.Unlock()
+
+	return si, tds.NextQuery(ctx)
+}
+
 // this connection is used during TLS Handshake
 // TDS protocol requires TLS handshake messages to be sent inside TDS packets
 type tlsHandshakeConn struct {

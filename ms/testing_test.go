@@ -26,12 +26,27 @@ var config *rdb.Config
 var db must.ConnPool
 var dbInvalidHost must.ConnPool
 
+// dockerCleanupFunc is set by docker tests to cleanup when TestMain exits.
+var dockerCleanupFunc func()
+
 func TestMain(m *testing.M) {
 	if db.Valid() {
 		return
 	}
+
+	code := testMain(m)
+
+	os.Exit(code)
+}
+
+func testMain(m *testing.M) int {
+	defer func() {
+		if dockerCleanupFunc != nil {
+			dockerCleanupFunc()
+		}
+	}()
 	if len(testConnectionString) == 0 {
-		os.Exit(m.Run())
+		return m.Run()
 	}
 	config = must.Config(rdb.ParseConfigURL(testConnectionString))
 	if false {
@@ -85,7 +100,7 @@ func TestMain(m *testing.M) {
 
 	dbInvalidHost = must.Open(&rdb.Config{DriverName: "ms", Hostname: host, Port: port})
 
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 func checkSkip(t *testing.T) {

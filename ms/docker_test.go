@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ import (
 )
 
 const (
-	dockerImage   = "mcr.microsoft.com/mssql/server:2022-latest"
+	dockerImage   = "mcr.microsoft.com/mssql/server:2025-latest"
 	containerName = "rdb-mssql-test"
 	saPassword    = "TestP@ssw0rd!"
 	mssqlPort     = 11433 // Non-standard port to avoid conflicts
@@ -42,7 +43,13 @@ type dockerTestEnv struct {
 	skipCleanup bool
 }
 
-var dockerEnv *dockerTestEnv
+var (
+	dockerEnv       *dockerTestEnv
+	dockerEnvOnce   sync.Once
+	dockerMu        sync.Mutex
+	dockerChecked   bool
+	dockerAvailable bool
+)
 
 // checkDockerAvailable verifies Docker is installed and running.
 func checkDockerAvailable(t *testing.T) bool {
@@ -50,6 +57,15 @@ func checkDockerAvailable(t *testing.T) bool {
 	if testing.Short() {
 		t.Skip("short: docker test")
 	}
+	dockerMu.Lock()
+	defer dockerMu.Unlock()
+
+	if dockerChecked {
+		return dockerAvailable
+	}
+	defer func() {
+		dockerChecked = true
+	}()
 
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		t.Skip("Docker tests only run on linux/amd64")
@@ -62,24 +78,43 @@ func checkDockerAvailable(t *testing.T) bool {
 		return false
 	}
 
+	dockerAvailable = true
 	return true
 }
 
 // setupDockerEnv creates the Docker test environment.
+// The container is started once and reused across all docker tests.
+// Cleanup is handled by TestMain via dockerCleanupFunc.
 func setupDockerEnv(t *testing.T) *dockerTestEnv {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("short: docker test")
 	}
 
-	if dockerEnv != nil {
-		return dockerEnv
-	}
-
 	if !checkDockerAvailable(t) {
 		return nil
 	}
 
+	var dockerEnvErr error
+	dockerEnvOnce.Do(func() {
+		dockerEnvErr = initDockerEnv(t)
+		if dockerEnvErr == nil {
+			// Register cleanup to run when TestMain exits.
+			dockerCleanupFunc = func() {
+				cleanupDockerEnv()
+			}
+		}
+	})
+
+	if dockerEnvErr != nil {
+		t.Fatalf("docker env init: %v", dockerEnvErr)
+	}
+
+	return dockerEnv
+}
+
+// initDockerEnv initializes the Docker test environment (called once via sync.Once).
+func initDockerEnv(t *testing.T) error {
 	env := &dockerTestEnv{
 		host: "127.0.0.1",
 		port: mssqlPort,
@@ -90,17 +125,17 @@ func setupDockerEnv(t *testing.T) *dockerTestEnv {
 	exec.Command("docker", "rm", containerName).Run()
 
 	// Pull the image
-	t.Log("Pulling MSSQL Docker image...")
+	fmt.Println("Docker: Pulling MSSQL image...")
 	pullCmd := exec.Command("docker", "pull", dockerImage)
 	pullCmd.Stdout = os.Stdout
 	pullCmd.Stderr = os.Stderr
 	if err := pullCmd.Run(); err != nil {
-		t.Fatalf("docker pull: %v", err)
+		return fmt.Errorf("docker pull: %w", err)
 	}
 
 	// Start the container without custom TLS config
 	// SQL Server will generate its own self-signed certificate
-	t.Log("Starting MSSQL container...")
+	fmt.Println("Docker: Starting MSSQL container...")
 	runArgs := []string{
 		"run", "-d",
 		"--name", containerName,
@@ -116,16 +151,16 @@ func setupDockerEnv(t *testing.T) *dockerTestEnv {
 	runCmd.Stdout = &stdout
 	runCmd.Stderr = &stderr
 	if err := runCmd.Run(); err != nil {
-		t.Fatalf("docker run: %v\nstderr: %s", err, stderr.String())
+		return fmt.Errorf("docker run: %v\nstderr: %s", err, stderr.String())
 	}
 	env.containerID = strings.TrimSpace(stdout.String())
-	t.Logf("Container started: %s", env.containerID[:12])
+	fmt.Printf("Docker: Container started: %s\n", env.containerID[:12])
 
 	// Wait for SQL Server to be ready by monitoring logs
-	t.Log("Waiting for SQL Server to start...")
+	fmt.Println("Docker: Waiting for SQL Server to start...")
 	if err := waitForMSSQLReady(env.containerID, 90*time.Second); err != nil {
-		env.cleanup(t)
-		t.Fatalf("wait for MSSQL: %v", err)
+		cleanupDockerEnv()
+		return fmt.Errorf("wait for MSSQL: %w", err)
 	}
 
 	// Create connection pool
@@ -150,8 +185,8 @@ func setupDockerEnv(t *testing.T) *dockerTestEnv {
 	// Test the connection
 	ctx := context.Background()
 	if err := env.db.Normal().Ping(ctx); err != nil {
-		env.cleanup(t)
-		t.Fatalf("ping: %v", err)
+		cleanupDockerEnv()
+		return fmt.Errorf("ping: %w", err)
 	}
 
 	// Create TLS connection pool using SQL Server's self-signed certificate
@@ -173,14 +208,36 @@ func setupDockerEnv(t *testing.T) *dockerTestEnv {
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				t.Logf("TLS connection failed (may not be configured): %v", r)
+				fmt.Printf("Docker: TLS connection failed (may not be configured): %v\n", r)
 			}
 		}()
 		env.dbTLS = must.Open(tlsConfig)
 	}()
 
 	dockerEnv = env
-	return env
+	return nil
+}
+
+// cleanupDockerEnv stops and removes the Docker container.
+func cleanupDockerEnv() {
+	if dockerEnv == nil {
+		return
+	}
+
+	if dockerEnv.db.Valid() {
+		dockerEnv.db.Close()
+	}
+	if dockerEnv.dbTLS.Valid() {
+		dockerEnv.dbTLS.Close()
+	}
+
+	if dockerEnv.containerID != "" && !dockerEnv.skipCleanup {
+		fmt.Println("Docker: Stopping container...")
+		exec.Command("docker", "stop", containerName).Run()
+		exec.Command("docker", "rm", containerName).Run()
+	}
+
+	dockerEnv = nil
 }
 
 // waitForMSSQLReady polls docker logs for the SQL Server ready message.
@@ -198,11 +255,12 @@ func waitForMSSQLReady(containerID string, timeout time.Duration) error {
 			time.Sleep(time.Second)
 			continue
 		}
+		os.Stdout.Write(output)
 
 		// Check if ready message is in the output
 		if bytes.Contains(output, []byte(readyMsg)) {
 			// Give SQL Server a moment after the message
-			time.Sleep(time.Second)
+			time.Sleep(time.Millisecond * 200)
 			return nil
 		}
 
@@ -212,39 +270,12 @@ func waitForMSSQLReady(containerID string, timeout time.Duration) error {
 	return fmt.Errorf("timeout waiting for SQL Server ready message")
 }
 
-// cleanup removes the Docker container and temporary files.
-func (env *dockerTestEnv) cleanup(t *testing.T) {
-	t.Helper()
-
-	if env.skipCleanup {
-		t.Log("Skipping cleanup (skipCleanup=true)")
-		return
-	}
-
-	if env.db.Valid() {
-		env.db.Close()
-	}
-	if env.dbTLS.Valid() {
-		env.dbTLS.Close()
-	}
-
-	if env.containerID != "" {
-		t.Log("Stopping container...")
-		exec.Command("docker", "stop", containerName).Run()
-		exec.Command("docker", "rm", containerName).Run()
-	}
-
-	// Reset global so next test creates fresh environment
-	dockerEnv = nil
-}
-
 // TestDockerDecimalPrecision tests various decimal precisions.
 func TestDockerDecimalPrecision(t *testing.T) {
 	env := setupDockerEnv(t)
 	if env == nil {
 		return
 	}
-	t.Cleanup(func() { env.cleanup(t) })
 
 	// Table-driven tests for decimal precision
 	// Per TDS spec, valid lengths are 0x05, 0x09, 0x0D, 0x11 (5,9,13,17 bytes)
@@ -343,7 +374,6 @@ func TestDockerTLSConnection(t *testing.T) {
 	if env == nil {
 		return
 	}
-	t.Cleanup(func() { env.cleanup(t) })
 
 	if !env.dbTLS.Valid() {
 		t.Skip("TLS connection not available")
@@ -372,13 +402,124 @@ func TestDockerTLSConnection(t *testing.T) {
 	}
 }
 
+// TestDockerTDS8 tests TDS 8.0 protocol connections.
+func TestDockerTDS8(t *testing.T) {
+	env := setupDockerEnv(t)
+	if env == nil {
+		return
+	}
+
+	t.Run("tds8_only", func(t *testing.T) {
+		// Try TDS 8.0 only (no fallback).
+		// This may fail if the server doesn't have proper TLS cert for TDS 8.0.
+		config := &rdb.Config{
+			DriverName:         "ms",
+			Hostname:           env.host,
+			Port:               env.port,
+			Username:           "sa",
+			Password:           saPassword,
+			Database:           "master",
+			PoolInitCapacity:   1,
+			PoolMaxCapacity:    1,
+			DialTimeout:        5 * time.Second,
+			InsecureSkipVerify: true,
+			KV:                 map[string]interface{}{"tds8": "only"},
+		}
+
+		pool, err := rdb.Open(config)
+		if err != nil {
+			t.Fatalf("TDS 8.0 only mode not available (expected on unconfigured servers): %v", err)
+		}
+		defer pool.Close()
+
+		ctx := context.Background()
+		if err := pool.Ping(ctx); err != nil {
+			t.Fatalf("TDS 8.0 ping failed: %v", err)
+		}
+
+		t.Log("TDS 8.0 only mode succeeded")
+	})
+
+	t.Run("tds8_auto_fallback", func(t *testing.T) {
+		// Test auto-detection with fallback to TDS 7.x.
+		config := &rdb.Config{
+			DriverName:         "ms",
+			Hostname:           env.host,
+			Port:               env.port,
+			Username:           "sa",
+			Password:           saPassword,
+			Database:           "master",
+			PoolInitCapacity:   1,
+			PoolMaxCapacity:    1,
+			DialTimeout:        5 * time.Second,
+			Secure:             true,
+			InsecureSkipVerify: true,
+		}
+
+		pool, err := rdb.Open(config)
+		if err != nil {
+			t.Fatalf("Failed to open connection with auto TDS 8.0 fallback: %v", err)
+		}
+		defer pool.Close()
+
+		ctx := context.Background()
+		if err := pool.Ping(ctx); err != nil {
+			t.Fatalf("Failed to ping: %v", err)
+		}
+
+		// Verify encryption is active.
+		cmd := &rdb.Command{
+			SQL:   `SELECT encrypt_option FROM sys.dm_exec_connections WHERE session_id = @@SPID`,
+			Arity: rdb.OneMust,
+		}
+		res, err := pool.Query(ctx, cmd)
+		if err != nil {
+			t.Fatalf("Query failed: %v", err)
+		}
+		defer res.Close()
+		res.Scan()
+		encrypted := res.Getx(0)
+		t.Logf("Connection encryption (with fallback): %v", encrypted)
+	})
+
+	t.Run("tds8_disable", func(t *testing.T) {
+		// Test explicit TDS 8.0 disable (force TDS 7.x).
+		config := &rdb.Config{
+			DriverName:         "ms",
+			Hostname:           env.host,
+			Port:               env.port,
+			Username:           "sa",
+			Password:           saPassword,
+			Database:           "master",
+			PoolInitCapacity:   1,
+			PoolMaxCapacity:    1,
+			DialTimeout:        5 * time.Second,
+			Secure:             true,
+			InsecureSkipVerify: true,
+			KV:                 map[string]interface{}{"tds8": "disable"},
+		}
+
+		pool, err := rdb.Open(config)
+		if err != nil {
+			t.Fatalf("Failed to open connection with TDS 8.0 disabled: %v", err)
+		}
+		defer pool.Close()
+
+		ctx := context.Background()
+		if err := pool.Ping(ctx); err != nil {
+			t.Fatalf("Failed to ping: %v", err)
+		}
+
+		t.Log("TDS 7.x connection (TDS 8.0 disabled) succeeded")
+	})
+}
+
 // TestDockerIntegerTypes tests all integer type variants.
 func TestDockerIntegerTypes(t *testing.T) {
 	env := setupDockerEnv(t)
 	if env == nil {
 		return
 	}
-	t.Cleanup(func() { env.cleanup(t) })
 
 	tests := []struct {
 		name     string
@@ -439,7 +580,6 @@ func TestDockerFloatTypes(t *testing.T) {
 	if env == nil {
 		return
 	}
-	t.Cleanup(func() { env.cleanup(t) })
 
 	tests := []struct {
 		name    string
@@ -509,7 +649,6 @@ func TestDockerDateTimeTypes(t *testing.T) {
 	if env == nil {
 		return
 	}
-	t.Cleanup(func() { env.cleanup(t) })
 
 	loc := time.UTC
 
@@ -556,13 +695,14 @@ func TestDockerDateTimeTypes(t *testing.T) {
 			switch v := got.(type) {
 			case time.Time:
 				// For date-only comparisons, truncate to date
-				if tc.rdbType == rdb.TypeDate {
+				switch tc.rdbType {
+				case rdb.TypeDate:
 					gotDate := v.Truncate(24 * time.Hour)
 					wantDate := tc.value.Truncate(24 * time.Hour)
 					if !gotDate.Equal(wantDate) {
 						t.Errorf("date mismatch: got %v, want %v", gotDate, wantDate)
 					}
-				} else if tc.rdbType == rdb.TypeTime {
+				case rdb.TypeTime:
 					// For time-only, compare just the time portion
 					gotTime := v.Sub(time.Date(v.Year(), v.Month(), v.Day(), 0, 0, 0, 0, v.Location()))
 					wantTime := tc.value.Sub(time.Date(tc.value.Year(), tc.value.Month(), tc.value.Day(), 0, 0, 0, 0, tc.value.Location()))
@@ -574,7 +714,7 @@ func TestDockerDateTimeTypes(t *testing.T) {
 					if diff > time.Microsecond {
 						t.Errorf("time mismatch: got %v, want %v (diff: %v)", gotTime, wantTime, diff)
 					}
-				} else {
+				default:
 					// For datetime types, allow small tolerance
 					diff := v.Sub(tc.value)
 					if diff < 0 {
@@ -607,7 +747,6 @@ func TestDockerNullValues(t *testing.T) {
 	if env == nil {
 		return
 	}
-	t.Cleanup(func() { env.cleanup(t) })
 
 	types := []struct {
 		name    string
@@ -670,7 +809,6 @@ func TestDockerUnicode(t *testing.T) {
 	if env == nil {
 		return
 	}
-	t.Cleanup(func() { env.cleanup(t) })
 
 	tests := []struct {
 		name  string
@@ -726,7 +864,6 @@ func TestDockerLargeData(t *testing.T) {
 	if env == nil {
 		return
 	}
-	t.Cleanup(func() { env.cleanup(t) })
 
 	// Generate test data of various sizes
 	sizes := []int{
@@ -792,10 +929,17 @@ func TestDockerTLSCertChain(t *testing.T) {
 		return
 	}
 
+	const (
+		proto74 = 0x74000004
+		proto80 = 0x8000000
+	)
+
 	// Use a different container name and port to avoid conflicts
+	// Use SQL Server 2025 for TDS 8.0 (strict encryption) support
 	const (
 		tlsContainerName = "rdb-mssql-tls-test"
 		tlsPort          = 11434
+		tlsDockerImage   = dockerImage
 	)
 
 	// Clean up any existing container
@@ -824,22 +968,30 @@ func TestDockerTLSCertChain(t *testing.T) {
 	// Make temp dir accessible by mssql user (uid 10001) in container
 	os.Chmod(tmpDir, 0755)
 
-	// Write certificate and key files
-	certPath := filepath.Join(tmpDir, "server.pem")
-	keyPath := filepath.Join(tmpDir, "server.key")
+	// Create certs subdirectory for copying to container
+	certsDir := filepath.Join(tmpDir, "certs")
+	if err := os.Mkdir(certsDir, 0755); err != nil {
+		t.Fatalf("mkdir certs: %v", err)
+	}
+
+	// Write certificate and key files with world-readable permissions
+	// (mssql user uid 10001 needs to read them)
+	certPath := filepath.Join(certsDir, "server.pem")
+	keyPath := filepath.Join(certsDir, "server.key")
 
 	if err := os.WriteFile(certPath, serverCert.CertPEM, 0644); err != nil {
 		t.Fatalf("write cert: %v", err)
 	}
-	// SQL Server runs as mssql user (uid 10001) in Docker, so files need to be world-readable
 	if err := os.WriteFile(keyPath, serverCert.KeyPEM, 0644); err != nil {
 		t.Fatalf("write key: %v", err)
 	}
 
-	// Create mssql.conf for TLS configuration (will be copied via docker cp)
+	// Create mssql.conf for TLS configuration
+	// SQL Server 2025 with forceencryption supports TDS 8.0
 	mssqlConf := `[network]
 tlscert = /certs/server.pem
 tlskey = /certs/server.key
+tlsprotocols = 1.2
 forceencryption = 1
 `
 	confPath := filepath.Join(tmpDir, "mssql.conf")
@@ -848,16 +1000,16 @@ forceencryption = 1
 	}
 
 	// Pull the image first
-	t.Log("Pulling MSSQL Docker image...")
-	pullCmd := exec.Command("docker", "pull", dockerImage)
+	t.Logf("Pulling MSSQL Docker image %s...", tlsDockerImage)
+	pullCmd := exec.Command("docker", "pull", tlsDockerImage)
 	pullCmd.Stdout = os.Stdout
 	pullCmd.Stderr = os.Stderr
 	if err := pullCmd.Run(); err != nil {
 		t.Fatalf("docker pull: %v", err)
 	}
 
-	// Start container with certificate mounted (don't mount mssql.conf - will copy it)
-	t.Log("Starting MSSQL container with custom TLS certificate...")
+	// Start container with mssql.conf and certs mounted
+	t.Log("Starting MSSQL container...")
 	runArgs := []string{
 		"run", "-d",
 		"--name", tlsContainerName,
@@ -865,8 +1017,9 @@ forceencryption = 1
 		"-e", "MSSQL_SA_PASSWORD=" + saPassword,
 		"-e", "MSSQL_PID=Developer",
 		"-p", fmt.Sprintf("%d:1433", tlsPort),
-		"-v", fmt.Sprintf("%s:/certs", tmpDir),
-		dockerImage,
+		"-v", confPath + ":/var/opt/mssql/mssql.conf",
+		"-v", certsDir + ":/certs",
+		tlsDockerImage,
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -886,34 +1039,60 @@ forceencryption = 1
 		exec.Command("docker", "rm", tlsContainerName).Run()
 	}()
 
-	// Wait for initial SQL Server startup before configuring TLS
-	t.Log("Waiting for initial SQL Server startup...")
+	// Wait for SQL Server to be ready (no restart needed)
+	t.Log("Waiting for SQL Server to start with TLS...")
 	if err := waitForMSSQLReady(containerID, 90*time.Second); err != nil {
-		t.Fatalf("wait for initial MSSQL: %v", err)
+		t.Fatalf("wait for MSSQL: %v", err)
 	}
 
-	// Copy mssql.conf into the container and restart to apply TLS config
-	t.Log("Configuring TLS via docker cp...")
-	cpCmd := exec.Command("docker", "cp", confPath, tlsContainerName+":/var/opt/mssql/mssql.conf")
-	if out, err := cpCmd.CombinedOutput(); err != nil {
-		t.Fatalf("docker cp mssql.conf: %v\n%s", err, out)
-	}
-	restartCmd := exec.Command("docker", "restart", tlsContainerName)
-	if out, err := restartCmd.CombinedOutput(); err != nil {
-		t.Fatalf("docker restart: %v\n%s", err, out)
-	}
+	runCheck := func(t *testing.T, expectConnect bool, wantProto int64, config *rdb.Config) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*6)
+		defer cancel()
 
-	// Wait for SQL Server to be ready after restart
-	t.Log("Waiting for SQL Server to restart with TLS...")
-	if err := waitForMSSQLReady(containerID, 90*time.Second); err != nil {
-		t.Fatalf("wait for MSSQL after restart: %v", err)
+		cp, err := rdb.Open(config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = cp.Ping(ctx)
+		switch expectConnect {
+		case false:
+			if err != nil {
+				t.Logf("expected failure: %v", err)
+				return
+			}
+			t.Fatalf("ping incorrectly worked: %v", err)
+		case true:
+			if err != nil {
+				t.Fatalf("ping failed: %v", err)
+			}
+			res, err := cp.Query(ctx, &rdb.Command{
+				SQL: `
+SELECT session_id, protocol_type, protocol_version, encrypt_option
+FROM sys.dm_exec_connections
+WHERE session_id = @@SPID;
+`,
+			})
+			if err != nil {
+				t.Fatalf("failed to query exec_connections: %v", err)
+			}
+			var sessionID, protocolVersion int64
+			var protocolType, encryptOption string
+			err = res.Prep("session_id", &sessionID).Prep("protocol_type", &protocolType).Prep("protocol_version", &protocolVersion).Prep("encrypt_option", &encryptOption).Scan()
+			if err != nil {
+				t.Fatalf("failed to scan query: %v", err)
+			}
+			t.Logf("SID=%d ProtoType=%s ProtoVer=0x%x Encrypt=%s", sessionID, protocolType, protocolVersion, encryptOption)
+			if wantProto > 0 {
+				if wantProto != protocolVersion {
+					t.Fatalf("wanted protocol 0x%x, got 0x%x", wantProto, protocolVersion)
+				}
+			}
+		}
 	}
-	// Extra wait to ensure all listeners are ready
-	time.Sleep(3 * time.Second)
 
 	// Test 1: Connect with InsecureSkipVerify (should work)
 	t.Run("insecure_skip_verify", func(t *testing.T) {
-		config := &rdb.Config{
+		runCheck(t, true, proto74, &rdb.Config{
 			DriverName:         "ms",
 			Hostname:           "127.0.0.1",
 			Port:               tlsPort,
@@ -924,21 +1103,12 @@ forceencryption = 1
 			PoolMaxCapacity:    1,
 			DialTimeout:        10 * time.Second,
 			InsecureSkipVerify: true,
-		}
-
-		db := must.Open(config)
-		defer db.Close()
-
-		ctx := context.Background()
-		if err := db.Normal().Ping(ctx); err != nil {
-			t.Fatalf("ping with InsecureSkipVerify: %v", err)
-		}
-		t.Log("Successfully connected with InsecureSkipVerify=true")
+		})
 	})
 
 	// Test 2: Connect with correct CA in RootCAs (should work)
 	t.Run("valid_ca_chain", func(t *testing.T) {
-		config := &rdb.Config{
+		runCheck(t, true, proto80, &rdb.Config{
 			DriverName:         "ms",
 			Hostname:           "localhost", // Must match cert's CN/SAN
 			Port:               tlsPort,
@@ -950,17 +1120,8 @@ forceencryption = 1
 			DialTimeout:        10 * time.Second,
 			Secure:             true,
 			InsecureSkipVerify: false,
-			RootCAs:            ca.CertPool(), // Our CA - no file read!
-		}
-
-		db := must.Open(config)
-		defer db.Close()
-
-		ctx := context.Background()
-		if err := db.Normal().Ping(ctx); err != nil {
-			t.Fatalf("ping with valid CA: %v", err)
-		}
-		t.Log("Successfully connected with valid CA certificate chain")
+			RootCAs:            ca.CertPool(),
+		})
 	})
 
 	// Test 3: Connect with wrong CA (should fail)
@@ -971,7 +1132,7 @@ forceencryption = 1
 			t.Fatalf("generate wrong CA: %v", err)
 		}
 
-		config := &rdb.Config{
+		runCheck(t, false, 0, &rdb.Config{
 			DriverName:         "ms",
 			Hostname:           "localhost",
 			Port:               tlsPort,
@@ -984,29 +1145,12 @@ forceencryption = 1
 			Secure:             true,
 			InsecureSkipVerify: false,
 			RootCAs:            wrongCA.CertPool(), // Wrong CA
-		}
-
-		// Open the pool - this should fail during init or Ping because TLS verification fails
-		db, err := rdb.Open(config)
-		if err != nil {
-			t.Logf("Connection correctly failed at Open with wrong CA: %v", err)
-			return
-		}
-		defer db.Close()
-
-		// If Open succeeded, Ping should fail with TLS verification error
-		ctx := context.Background()
-		err = db.Ping(ctx)
-		if err != nil {
-			t.Logf("Connection correctly failed at Ping with wrong CA: %v", err)
-			return
-		}
-		t.Fatal("expected connection to fail with wrong CA, but it succeeded")
+		})
 	})
 
 	// Test 4: Connect without any CA (should fail when Secure=true)
 	t.Run("no_ca_secure", func(t *testing.T) {
-		config := &rdb.Config{
+		runCheck(t, false, 0, &rdb.Config{
 			DriverName:         "ms",
 			Hostname:           "localhost",
 			Port:               tlsPort,
@@ -1019,23 +1163,24 @@ forceencryption = 1
 			Secure:             true,
 			InsecureSkipVerify: false,
 			// No RootCAs - will use system pool which won't have our CA
-		}
+		})
+	})
 
-		// Open the pool - this should fail during init or Ping because TLS verification fails
-		db, err := rdb.Open(config)
-		if err != nil {
-			t.Logf("Connection correctly failed at Open without CA: %v", err)
-			return
-		}
-		defer db.Close()
-
-		// If Open succeeded, Ping should fail with TLS verification error
-		ctx := context.Background()
-		err = db.Ping(ctx)
-		if err != nil {
-			t.Logf("Connection correctly failed at Ping without CA: %v", err)
-			return
-		}
-		t.Fatal("expected connection to fail without CA, but it succeeded")
+	// Test 5: Connect with TDS 8.0 (TLS-first with ALPN)
+	t.Run("tds8_with_cert", func(t *testing.T) {
+		runCheck(t, true, proto80, &rdb.Config{
+			DriverName:       "ms",
+			Hostname:         "localhost",
+			Port:             tlsPort,
+			Username:         "sa",
+			Password:         saPassword,
+			Database:         "master",
+			PoolInitCapacity: 1,
+			PoolMaxCapacity:  1,
+			DialTimeout:      10 * time.Second,
+			Secure:           true,
+			RootCAs:          ca.CertPool(),
+			KV:               map[string]interface{}{"tds8": "only"},
+		})
 	})
 }
