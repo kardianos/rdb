@@ -140,24 +140,41 @@ type structPlan struct {
 	nullScratch []rdb.Nullable
 }
 
-// rdbOptMarker is implemented by rdb.Opt[T] via RDBOpt (value receiver).
-// Used so planners need not match package path or generic type names.
-var rdbOptMarker = reflect.TypeOf((*interface{ RDBOpt() })(nil)).Elem()
-
+// isOptType reports whether ft is an optional value type shaped like rdb.Opt[T]:
+// a struct with fields V (any type) and Valid bool. Matching is structural so
+// detection does not depend on package path or generic type names.
+//
+// Called only when building a plan (once per Query/Stream), not per row.
 func isOptType(ft reflect.Type) bool {
 	if ft == nil {
 		return false
 	}
-	// Field type Opt[T] (value): method set includes value-receiver RDBOpt.
-	if ft.Implements(rdbOptMarker) {
-		return true
+	if ft.Kind() == reflect.Ptr {
+		ft = ft.Elem()
 	}
-	// *Opt[T] field (unusual): pointer method set includes value methods too,
-	// but check elem for clarity if someone stores a pointer.
-	if ft.Kind() == reflect.Ptr && ft.Elem().Implements(rdbOptMarker) {
-		return true
+	if ft.Kind() != reflect.Struct || ft.NumField() != 2 {
+		return false
 	}
-	return false
+	// Accept either declaration order: (V, Valid) or (Valid, V).
+	var hasV, hasValid bool
+	for i := 0; i < 2; i++ {
+		f := ft.Field(i)
+		if !f.IsExported() {
+			return false
+		}
+		switch f.Name {
+		case "V":
+			hasV = true
+		case "Valid":
+			if f.Type.Kind() != reflect.Bool {
+				return false
+			}
+			hasValid = true
+		default:
+			return false
+		}
+	}
+	return hasV && hasValid
 }
 
 func newStructPlan[T any](schema []*rdb.Column, tagName string) (*structPlan, error) {
