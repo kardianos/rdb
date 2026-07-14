@@ -233,3 +233,142 @@ func BenchmarkFillThenUnmarshal(b *testing.B) {
 		}
 	}
 }
+
+// benchRowOpt uses Opt[string] for nullable text (self-contained, no Nullable box).
+type benchRowOpt struct {
+	ID     int32           `db:"id"`
+	Code   int32           `db:"code"`
+	Flags  int32           `db:"flags"`
+	Score  int32           `db:"score"`
+	Name   rdb.Opt[string] `db:"name"`
+	Region rdb.Opt[string] `db:"region"`
+}
+
+// benchRowFlag uses plain strings + null:"…" bools.
+type benchRowFlag struct {
+	ID         int32  `db:"id"`
+	Code       int32  `db:"code"`
+	Flags      int32  `db:"flags"`
+	Score      int32  `db:"score"`
+	Name       string `db:"name"`
+	NameNull   bool   `null:"name"`
+	Region     string `db:"region"`
+	RegionNull bool   `null:"region"`
+}
+
+// BenchmarkPlanScanOpt maps with Opt[string] via DirectAssign (no interface box).
+func BenchmarkPlanScanOpt(b *testing.B) {
+	schema := benchSchema()
+	data := makeRowData(benchRows)
+	plan, err := newStructPlan[benchRowOpt](schema, "db")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		out := make([]benchRowOpt, 0, benchRows)
+		for r := 0; r < benchRows; r++ {
+			out = append(out, benchRowOpt{})
+			base := unsafe.Pointer(&out[len(out)-1])
+			d := &data[r]
+			nullName := r%10 == 0 // every 10th row: SQL NULL on name
+			for fi := range plan.fields {
+				f := &plan.fields[fi]
+				prep := f.prep(base)
+				switch f.colIdx {
+				case 0:
+					*prep.(*int32) = d.id
+				case 1:
+					*prep.(*int32) = d.code
+				case 2:
+					*prep.(*int32) = d.flags
+				case 3:
+					*prep.(*int32) = d.score
+				case 4:
+					if nullName {
+						if _, err := rdb.DirectAssignString(prep, "", true, nil); err != nil {
+							b.Fatal(err)
+						}
+					} else if _, err := rdb.DirectAssignString(prep, d.name, false, nil); err != nil {
+						b.Fatal(err)
+					}
+				case 5:
+					if _, err := rdb.DirectAssignString(prep, d.region, false, nil); err != nil {
+						b.Fatal(err)
+					}
+				}
+			}
+		}
+		last := out[benchRows-1]
+		if last.ID != int32(benchRows-1) || !last.Region.Valid {
+			b.Fatal(last)
+		}
+		if out[0].Name.Valid {
+			b.Fatal("row 0 name should be null")
+		}
+	}
+}
+
+// BenchmarkPlanScanNullFlag maps with string + null:"…" bools via NullFlagPrep.
+func BenchmarkPlanScanNullFlag(b *testing.B) {
+	schema := benchSchema()
+	data := makeRowData(benchRows)
+	plan, err := newStructPlan[benchRowFlag](schema, "db")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		out := make([]benchRowFlag, 0, benchRows)
+		for r := 0; r < benchRows; r++ {
+			out = append(out, benchRowFlag{})
+			base := unsafe.Pointer(&out[len(out)-1])
+			d := &data[r]
+			nullName := r%10 == 0
+			for fi := range plan.fields {
+				f := &plan.fields[fi]
+				switch f.mode {
+				case modeDirect:
+					prep := f.prep(base)
+					switch f.colIdx {
+					case 0:
+						*prep.(*int32) = d.id
+					case 1:
+						*prep.(*int32) = d.code
+					case 2:
+						*prep.(*int32) = d.flags
+					case 3:
+						*prep.(*int32) = d.score
+					}
+				case modeFlag:
+					sink := f.flagPrep(base)
+					switch f.colIdx {
+					case 4:
+						if nullName {
+							if _, err := rdb.DirectAssignString(sink, "", true, nil); err != nil {
+								b.Fatal(err)
+							}
+						} else if _, err := rdb.DirectAssignString(sink, d.name, false, nil); err != nil {
+							b.Fatal(err)
+						}
+					case 5:
+						if _, err := rdb.DirectAssignString(sink, d.region, false, nil); err != nil {
+							b.Fatal(err)
+						}
+					}
+				default:
+					b.Fatalf("col %d mode=%v", f.colIdx, f.mode)
+				}
+			}
+		}
+		last := out[benchRows-1]
+		if last.ID != int32(benchRows-1) || last.RegionNull {
+			b.Fatal(last)
+		}
+		if !out[0].NameNull {
+			b.Fatal("row 0 NameNull should be true")
+		}
+	}
+}

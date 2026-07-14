@@ -180,6 +180,83 @@ func TestRejectPointerOpt(t *testing.T) {
 	}
 }
 
+func TestOptAndNullFlagFunctional(t *testing.T) {
+	// Plan modes + DirectAssign as Scan would do for non-null and null cells.
+	schema := []*rdb.Column{
+		{Name: "id", Index: 0, Nullable: false},
+		{Name: "name", Index: 1, Nullable: true},
+		{Name: "region", Index: 2, Nullable: true},
+	}
+
+	type optRow struct {
+		ID     int32           `db:"id"`
+		Name   rdb.Opt[string] `db:"name"`
+		Region rdb.Opt[string] `db:"region"`
+	}
+	type flagRow struct {
+		ID         int32  `db:"id"`
+		Name       string `db:"name"`
+		NameNull   bool   `null:"name"`
+		Region     string `db:"region"`
+		RegionNull bool   `null:"region"`
+	}
+
+	optPlan, err := newStructPlan[optRow](schema, "db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flagPlan, err := newStructPlan[flagRow](schema, "db")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var o optRow
+	obase := unsafe.Pointer(&o)
+	for _, f := range optPlan.fields {
+		if f.mode != modeDirect {
+			t.Fatalf("opt col %d mode=%v", f.colIdx, f.mode)
+		}
+		p := f.prep(obase)
+		switch f.colIdx {
+		case 0:
+			*p.(*int32) = 1
+		case 1:
+			if _, err := rdb.DirectAssignBytes(p, []byte("alice"), false, true, nil); err != nil {
+				t.Fatal(err)
+			}
+		case 2:
+			if _, err := rdb.DirectAssignBytes(p, nil, true, true, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if o.ID != 1 || !o.Name.Valid || o.Name.V != "alice" || o.Region.Valid {
+		t.Fatalf("opt row=%+v", o)
+	}
+
+	var fr flagRow
+	fbase := unsafe.Pointer(&fr)
+	for _, f := range flagPlan.fields {
+		switch f.colIdx {
+		case 0:
+			*f.prep(fbase).(*int32) = 2
+		case 1:
+			sink := f.flagPrep(fbase)
+			if _, err := rdb.DirectAssignBytes(sink, []byte("bob"), false, true, nil); err != nil {
+				t.Fatal(err)
+			}
+		case 2:
+			sink := f.flagPrep(fbase)
+			if _, err := rdb.DirectAssignBytes(sink, nil, true, true, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if fr.ID != 2 || fr.Name != "bob" || fr.NameNull || !fr.RegionNull || fr.Region != "" {
+		t.Fatalf("flag row=%+v", fr)
+	}
+}
+
 func TestDirectPrepWritesField(t *testing.T) {
 	type Row struct {
 		ID   int32  `db:"id"`
