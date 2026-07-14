@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"unsafe"
 
 	"github.com/kardianos/rdb"
 )
@@ -34,19 +35,113 @@ func TestNewStructPlan(t *testing.T) {
 	if len(plan.fields) != 3 {
 		t.Fatalf("fields=%d want 3", len(plan.fields))
 	}
-	// id direct, name viaNull (nullable), age viaNull (pointer)
 	byCol := map[int]fieldBind{}
 	for _, f := range plan.fields {
 		byCol[f.colIdx] = f
 	}
-	if byCol[0].viaNull {
-		t.Error("id should Prep directly")
+	if byCol[0].mode != modeDirect || byCol[0].prep == nil {
+		t.Error("id should be modeDirect with prep func")
 	}
-	if !byCol[1].viaNull {
-		t.Error("name should use Nullable path")
+	if byCol[1].mode != modeNull || byCol[1].applyNull == nil {
+		t.Error("name should be modeNull with applyNull")
 	}
-	if !byCol[2].viaNull {
-		t.Error("age pointer should use Nullable path")
+	if byCol[2].mode != modeNull || byCol[2].applyNull == nil {
+		t.Error("age pointer should be modeNull with applyNull")
+	}
+}
+
+func TestDirectPrepWritesField(t *testing.T) {
+	type Row struct {
+		ID   int32  `db:"id"`
+		Name string `db:"name"`
+	}
+	schema := []*rdb.Column{
+		{Name: "id", Index: 0, Nullable: false},
+		{Name: "name", Index: 1, Nullable: false},
+	}
+	plan, err := newStructPlan[Row](schema, "db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row Row
+	base := unsafe.Pointer(&row)
+	for _, f := range plan.fields {
+		if f.mode != modeDirect {
+			t.Fatalf("col %d mode=%v", f.colIdx, f.mode)
+		}
+		ptr := f.prep(base)
+		switch f.colIdx {
+		case 0:
+			*ptr.(*int32) = 42
+		case 1:
+			*ptr.(*string) = "alice"
+		}
+	}
+	if row.ID != 42 || row.Name != "alice" {
+		t.Fatalf("row=%+v", row)
+	}
+}
+
+func TestNullApply(t *testing.T) {
+	type Row struct {
+		Name string `db:"name"`
+		Age  *int32 `db:"age"`
+	}
+	schema := []*rdb.Column{
+		{Name: "name", Index: 0, Nullable: true},
+		{Name: "age", Index: 1, Nullable: true},
+	}
+	plan, err := newStructPlan[Row](schema, "db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row Row
+	base := unsafe.Pointer(&row)
+	for _, f := range plan.fields {
+		if f.mode != modeNull {
+			t.Fatalf("col %d want modeNull", f.colIdx)
+		}
+	}
+	// name non-null
+	if err := plan.fields[0].applyNull(base, rdb.Nullable{Value: "bob"}); err != nil {
+		t.Fatal(err)
+	}
+	if row.Name != "bob" {
+		t.Fatalf("name=%q", row.Name)
+	}
+	// name null → zero
+	if err := plan.fields[0].applyNull(base, rdb.Nullable{Null: true}); err != nil {
+		t.Fatal(err)
+	}
+	if row.Name != "" {
+		t.Fatalf("name after null=%q", row.Name)
+	}
+	// age pointer
+	if err := plan.fields[1].applyNull(base, rdb.Nullable{Value: int32(9)}); err != nil {
+		t.Fatal(err)
+	}
+	if row.Age == nil || *row.Age != 9 {
+		t.Fatalf("age=%v", row.Age)
+	}
+	if err := plan.fields[1].applyNull(base, rdb.Nullable{Null: true}); err != nil {
+		t.Fatal(err)
+	}
+	if row.Age != nil {
+		t.Fatalf("age after null=%v", row.Age)
+	}
+}
+
+func TestNewStructPlanSkipsUnexported(t *testing.T) {
+	type Row struct {
+		ID     int32 `db:"id"`
+		hidden string
+	}
+	plan, err := newStructPlan[Row]([]*rdb.Column{{Name: "id", Index: 0}}, "db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.fields) != 1 {
+		t.Fatalf("fields=%d want 1", len(plan.fields))
 	}
 }
 
@@ -67,7 +162,6 @@ func TestNewStructPlanNotStruct(t *testing.T) {
 	}
 }
 
-// fakeQueryer implements rdb.Queryer for API wiring tests (Query error path).
 type fakeQueryer struct {
 	err error
 }
