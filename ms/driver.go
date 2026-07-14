@@ -77,6 +77,17 @@ func (dr *Driver) Open(ctx context.Context, c *rdb.Config) (rdb.DriverConn, erro
 		}
 	}
 
+	// Check for UTF-8 varchar preference.
+	preferUTF8 := false
+	if v, ok := c.KV["utf8"]; ok {
+		switch v := v.(type) {
+		case bool:
+			preferUTF8 = v
+		case string:
+			preferUTF8 = v == "true" || v == "yes" || v == "1"
+		}
+	}
+
 	// Check if we already know this server doesn't support TDS 8.0.
 	// This cache is only used for auto-detection, not for explicit tds8=only mode.
 	tds8UnsupportedMu.RLock()
@@ -98,6 +109,7 @@ func (dr *Driver) Open(ctx context.Context, c *rdb.Config) (rdb.DriverConn, erro
 		}
 
 		tds := NewConnection(conn, c.ResetConnectionTimeout, c.RollbackTimeout)
+		tds.preferUTF8Varchar = preferUTF8
 		_, err = tds.OpenTDS8(ctx, c)
 		if err == nil {
 			return tds, nil
@@ -129,6 +141,7 @@ func (dr *Driver) Open(ctx context.Context, c *rdb.Config) (rdb.DriverConn, erro
 	}
 
 	tds := NewConnection(conn, c.ResetConnectionTimeout, c.RollbackTimeout)
+	tds.preferUTF8Varchar = preferUTF8
 
 	_, err = tds.Open(ctx, c)
 	if err != nil {

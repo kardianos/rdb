@@ -9,6 +9,7 @@ func _() {
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
 	_ = x[tokenLoginAck-173]
+	_ = x[tokenFeatureExtAck-174]
 	_ = x[tokenError-170]
 	_ = x[tokenInfo-171]
 	_ = x[tokenDone-253]
@@ -26,14 +27,14 @@ func _() {
 const (
 	_tdsToken_name_0 = "ReturnStatus"
 	_tdsToken_name_1 = "ColumnMetaData"
-	_tdsToken_name_2 = "OrderErrorInfoReturnValueLoginAck"
+	_tdsToken_name_2 = "OrderErrorInfoReturnValueLoginAckFeatureExtAck"
 	_tdsToken_name_3 = "RowNBCRow"
 	_tdsToken_name_4 = "EnvChange"
 	_tdsToken_name_5 = "DoneDoneProcDoneInProc"
 )
 
 var (
-	_tdsToken_index_2 = [...]uint8{0, 5, 10, 14, 25, 33}
+	_tdsToken_index_2 = [...]uint8{0, 5, 10, 14, 25, 33, 46}
 	_tdsToken_index_3 = [...]uint8{0, 3, 9}
 	_tdsToken_index_5 = [...]uint8{0, 4, 12, 22}
 )
@@ -44,7 +45,7 @@ func (i tdsToken) String() string {
 		return _tdsToken_name_0
 	case i == 129:
 		return _tdsToken_name_1
-	case 169 <= i && i <= 173:
+	case 169 <= i && i <= 174:
 		i -= 169
 		return _tdsToken_name_2[_tdsToken_index_2[i]:_tdsToken_index_2[i+1]]
 	case 209 <= i && i <= 210:

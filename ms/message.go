@@ -32,10 +32,11 @@ type tdsToken byte
 //go:generate stringer -type tdsToken -trimprefix token
 
 const (
-	tokenLoginAck tdsToken = 0xAD
-	tokenError    tdsToken = 0xAA
-	tokenInfo     tdsToken = 0xAB
-	tokenDone     tdsToken = 0xFD
+	tokenLoginAck      tdsToken = 0xAD
+	tokenFeatureExtAck tdsToken = 0xAE
+	tokenError         tdsToken = 0xAA
+	tokenInfo          tdsToken = 0xAB
+	tokenDone          tdsToken = 0xFD
 
 	tokenReturnStatus   tdsToken = 0x79
 	tokenReturnValue    tdsToken = 0xAC
@@ -47,6 +48,11 @@ const (
 	tokenEnvChange      tdsToken = 0xE3
 
 	tokenOrder tdsToken = 0xA9
+)
+
+const (
+	featureIDUTF8Support byte = 0x0A
+	featureIDTerminator  byte = 0xFF
 )
 
 // Document the highest version this driver can handle.
@@ -139,6 +145,8 @@ type ServerInfo struct {
 	MajorVersion byte
 	MinorVersion byte
 	BuildNumber  uint16
+
+	UTF8Supported bool // Server acknowledged UTF8_SUPPORT feature extension.
 }
 
 func (si *ServerInfo) String() string {
@@ -292,7 +300,12 @@ func (tds *PacketWriter) Login(ctx context.Context, config *rdb.Config) error {
 
 	writeToken(3, uconv.Encode.FromString(""), true) // AppName - Name of the client application.
 	writeToken(4, uconv.Encode.FromString(config.Instance), true)
-	// 5 - Unused.
+
+	// Token 5 - Extension (ibExtension): 4-byte ibFeatureExtLong DWORD.
+	// The DWORD value is filled in below once we know the final data offset.
+	extensionBlock := make([]byte, 4)
+	writeToken(5, extensionBlock, false)
+
 	// 6 - Library Name.
 	// 7 - Language.
 	writeToken(8, uconv.Encode.FromString(config.Database), true)
@@ -314,6 +327,18 @@ func (tds *PacketWriter) Login(ctx context.Context, config *rdb.Config) error {
 	binary.LittleEndian.PutUint32(tt[13].data, uint32(len(SSPI)))
 	at += len(SSPI)
 
+	// FeatureExt data is appended after all other LOGIN7 data.
+	// ibFeatureExtLong points to it from the extension block above.
+	featureExtOffset := at
+	binary.LittleEndian.PutUint32(extensionBlock, uint32(featureExtOffset))
+	featureExtData := []byte{
+		featureIDUTF8Support,       // FeatureId = 0x0A (UTF8_SUPPORT)
+		0x01, 0x00, 0x00, 0x00,    // FeatureDataLen = 1
+		0x01,                       // FeatureData: request UTF-8
+		featureIDTerminator,        // 0xFF terminator
+	}
+	at += len(featureExtData)
+
 	buf := make([]byte, at)
 
 	binary.LittleEndian.PutUint32(buf[0:], uint32(at))           // Total length.
@@ -323,10 +348,10 @@ func (tds *PacketWriter) Login(ctx context.Context, config *rdb.Config) error {
 	binary.LittleEndian.PutUint32(buf[16:], uint32(os.Getpid())) // ClientPID.
 	binary.LittleEndian.PutUint32(buf[20:], 0)                   // ConnectionID.
 
-	buf[24] = 0 // OptionFlags1.
-	buf[25] = 0 // OptionFlags2.
-	buf[26] = 1 // TypeFlags. Flip first bit to use TSQL.
-	buf[27] = 0 // OptionFlags3.
+	buf[24] = 0    // OptionFlags1.
+	buf[25] = 0    // OptionFlags2.
+	buf[26] = 1    // TypeFlags. Flip first bit to use TSQL.
+	buf[27] = 0x10 // OptionFlags3: fExtension bit (bit 4) — FeatureExt is present.
 
 	_, zone := time.Now().Zone()
 	binary.LittleEndian.PutUint32(buf[28:], uint32(zone/3600)) // ClientTimZone.
@@ -354,6 +379,9 @@ func (tds *PacketWriter) Login(ctx context.Context, config *rdb.Config) error {
 
 		prevOffset = t.offset
 	}
+
+	// Append FeatureExt data after all token data.
+	copy(buf[featureExtOffset:], featureExtData)
 
 	tds.BeginMessage(ctx, packetTDS7Login, false)
 
@@ -451,6 +479,59 @@ func (tds *PacketReader) LoginAck(ctx context.Context) (*ServerInfo, error) {
 	at += 1
 
 	si.BuildNumber = binary.BigEndian.Uint16(bb[at:])
+	at += 2
+
+	// Continue scanning the response for FEATUREEXTACK and other tokens.
+	// The login response contains: tokenLoginAck, tokenEnvChange*, tokenInfo*,
+	// tokenFeatureExtAck?, tokenDone.
+	for at < len(bb) {
+		tok := tdsToken(bb[at])
+		at++
+		switch tok {
+		case tokenFeatureExtAck:
+			// Parse feature entries until 0xFF terminator.
+			for at < len(bb) && bb[at] != featureIDTerminator {
+				featureID := bb[at]
+				at++
+				if at+4 > len(bb) {
+					break
+				}
+				dataLen := int(binary.LittleEndian.Uint32(bb[at:]))
+				at += 4
+				if at+dataLen > len(bb) {
+					break
+				}
+				data := bb[at : at+dataLen]
+				at += dataLen
+				if featureID == featureIDUTF8Support && dataLen >= 1 && data[0] == 0x01 {
+					si.UTF8Supported = true
+				}
+			}
+			if at < len(bb) && bb[at] == featureIDTerminator {
+				at++ // Skip terminator.
+			}
+		case tokenEnvChange:
+			// 2-byte length prefix, skip payload.
+			if at+2 > len(bb) {
+				break
+			}
+			length := int(binary.LittleEndian.Uint16(bb[at:]))
+			at += 2 + length
+		case tokenInfo, tokenError:
+			// 2-byte length prefix, skip payload.
+			if at+2 > len(bb) {
+				break
+			}
+			length := int(binary.LittleEndian.Uint16(bb[at:]))
+			at += 2 + length
+		case tokenDone, tokenDoneProc, tokenDoneInProc:
+			// Fixed 12-byte payload (status + curcmd + rowcount). Done parsing.
+			at += 12
+		default:
+			// Unknown token — stop scanning to avoid misinterpreting data.
+			at = len(bb)
+		}
+	}
 
 	return si, nil
 }

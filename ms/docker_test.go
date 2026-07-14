@@ -41,6 +41,8 @@ type dockerTestEnv struct {
 	db          must.ConnPool
 	dbTLS       must.ConnPool
 	skipCleanup bool
+	confDir     string       // temp dir for mssql.conf and certs; cleaned up on container removal
+	ca          *testcert.CA // CA used to sign the server certificate
 }
 
 var (
@@ -133,8 +135,46 @@ func initDockerEnv(t *testing.T) error {
 		return fmt.Errorf("docker pull: %w", err)
 	}
 
-	// Start the container without custom TLS config
-	// SQL Server will generate its own self-signed certificate
+	// Generate a self-signed certificate and configure forceencryption=1
+	// so SQL Server accepts TDS 8.0 (TLS-first) connections.
+	confDir, err := os.MkdirTemp("", "rdb-mssql-conf-*")
+	if err != nil {
+		return fmt.Errorf("create temp dir: %w", err)
+	}
+	env.confDir = confDir
+
+	certsDir := filepath.Join(confDir, "certs")
+	if err := os.Mkdir(certsDir, 0755); err != nil {
+		return fmt.Errorf("mkdir certs: %w", err)
+	}
+
+	ca, err := testcert.GenerateCA("Test CA", 24*time.Hour)
+	if err != nil {
+		return fmt.Errorf("generate CA: %w", err)
+	}
+	env.ca = ca
+	serverCert, err := ca.GenerateServerCert(
+		"localhost",
+		[]string{"localhost"},
+		[]net.IP{net.ParseIP("127.0.0.1")},
+		24*time.Hour,
+	)
+	if err != nil {
+		return fmt.Errorf("generate server cert: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(certsDir, "server.pem"), serverCert.CertPEM, 0644); err != nil {
+		return fmt.Errorf("write cert: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(certsDir, "server.key"), serverCert.KeyPEM, 0644); err != nil {
+		return fmt.Errorf("write key: %w", err)
+	}
+
+	mssqlConf := "[network]\ntlscert = /certs/server.pem\ntlskey = /certs/server.key\ntlsprotocols = 1.2\nforceencryption = 1\n"
+	confPath := filepath.Join(confDir, "mssql.conf")
+	if err := os.WriteFile(confPath, []byte(mssqlConf), 0644); err != nil {
+		return fmt.Errorf("write mssql.conf: %w", err)
+	}
+
 	fmt.Println("Docker: Starting MSSQL container...")
 	runArgs := []string{
 		"run", "-d",
@@ -143,6 +183,8 @@ func initDockerEnv(t *testing.T) error {
 		"-e", "MSSQL_SA_PASSWORD=" + saPassword,
 		"-e", "MSSQL_PID=Developer",
 		"-p", fmt.Sprintf("%d:1433", mssqlPort),
+		"-v", confPath + ":/var/opt/mssql/mssql.conf",
+		"-v", certsDir + ":/certs",
 		dockerImage,
 	}
 
@@ -236,6 +278,9 @@ func cleanupDockerEnv() {
 		exec.Command("docker", "stop", containerName).Run()
 		exec.Command("docker", "rm", containerName).Run()
 	}
+	if dockerEnv.confDir != "" {
+		os.RemoveAll(dockerEnv.confDir)
+	}
 
 	dockerEnv = nil
 }
@@ -259,8 +304,8 @@ func waitForMSSQLReady(containerID string, timeout time.Duration) error {
 
 		// Check if ready message is in the output
 		if bytes.Contains(output, []byte(readyMsg)) {
-			// Give SQL Server a moment after the message
-			time.Sleep(time.Millisecond * 200)
+			// Give SQL Server time to finish SA account setup after the ready message.
+			time.Sleep(2 * time.Second)
 			return nil
 		}
 
@@ -917,15 +962,65 @@ func TestDockerLargeData(t *testing.T) {
 	}
 }
 
+// runConnCheck connects to the server with the given config and optionally
+// verifies the protocol version.
+func runConnCheck(t *testing.T, expectConnect bool, wantProto int64, config *rdb.Config) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*6)
+	defer cancel()
+
+	cp, err := rdb.Open(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = cp.Ping(ctx)
+	switch expectConnect {
+	case false:
+		if err != nil {
+			t.Logf("expected failure: %v", err)
+			return
+		}
+		t.Fatalf("ping incorrectly worked: %v", err)
+	case true:
+		if err != nil {
+			t.Fatalf("ping failed: %v", err)
+		}
+		res, err := cp.Query(ctx, &rdb.Command{
+			SQL: `
+SELECT session_id, protocol_type, protocol_version, encrypt_option
+FROM sys.dm_exec_connections
+WHERE session_id = @@SPID;
+`,
+		})
+		if err != nil {
+			t.Fatalf("failed to query exec_connections: %v", err)
+		}
+		var sessionID, protocolVersion int64
+		var protocolType, encryptOption string
+		err = res.Prep("session_id", &sessionID).Prep("protocol_type", &protocolType).Prep("protocol_version", &protocolVersion).Prep("encrypt_option", &encryptOption).Scan()
+		if err != nil {
+			t.Fatalf("failed to scan query: %v", err)
+		}
+		t.Logf("SID=%d ProtoType=%s ProtoVer=0x%x Encrypt=%s", sessionID, protocolType, protocolVersion, encryptOption)
+		if wantProto > 0 {
+			if wantProto != protocolVersion {
+				t.Fatalf("wanted protocol 0x%x, got 0x%x", wantProto, protocolVersion)
+			}
+		}
+	}
+}
+
 // TestDockerTLSCertChain tests TLS certificate chain verification.
-// This test:
-// 1. Generates a CA and server certificate in memory
-// 2. Starts a Docker container with the custom certificate
-// 3. Connects with InsecureSkipVerify to verify basic connectivity
-// 4. Connects with the CA in RootCAs to verify cert chain validation
-// 5. Verifies that connection fails with wrong CA
+// It uses the shared Docker container (which has forceencryption=1 and
+// a known CA-signed certificate) to test:
+// 1. InsecureSkipVerify connectivity
+// 2. Correct CA chain validation
+// 3. Wrong CA rejection
+// 4. Missing CA rejection
+// 5. TDS 8.0 with verified certificate
 func TestDockerTLSCertChain(t *testing.T) {
-	if !checkDockerAvailable(t) {
+	env := setupDockerEnv(t)
+	if env == nil {
 		return
 	}
 
@@ -934,168 +1029,12 @@ func TestDockerTLSCertChain(t *testing.T) {
 		proto80 = 0x8000000
 	)
 
-	// Use a different container name and port to avoid conflicts
-	// Use SQL Server 2025 for TDS 8.0 (strict encryption) support
-	const (
-		tlsContainerName = "rdb-mssql-tls-test"
-		tlsPort          = 11434
-		tlsDockerImage   = dockerImage
-	)
-
-	// Clean up any existing container
-	exec.Command("docker", "stop", tlsContainerName).Run()
-	exec.Command("docker", "rm", tlsContainerName).Run()
-
-	// Generate CA and server certificate
-	t.Log("Generating CA and server certificate...")
-	ca, err := testcert.GenerateCA("Test CA", 24*time.Hour)
-	if err != nil {
-		t.Fatalf("generate CA: %v", err)
-	}
-
-	serverCert, err := ca.GenerateServerCert(
-		"localhost",
-		[]string{"localhost"},
-		[]net.IP{net.ParseIP("127.0.0.1")},
-		24*time.Hour,
-	)
-	if err != nil {
-		t.Fatalf("generate server cert: %v", err)
-	}
-
-	// Create temp directory for certificates and config
-	tmpDir := t.TempDir()
-	// Make temp dir accessible by mssql user (uid 10001) in container
-	os.Chmod(tmpDir, 0755)
-
-	// Create certs subdirectory for copying to container
-	certsDir := filepath.Join(tmpDir, "certs")
-	if err := os.Mkdir(certsDir, 0755); err != nil {
-		t.Fatalf("mkdir certs: %v", err)
-	}
-
-	// Write certificate and key files with world-readable permissions
-	// (mssql user uid 10001 needs to read them)
-	certPath := filepath.Join(certsDir, "server.pem")
-	keyPath := filepath.Join(certsDir, "server.key")
-
-	if err := os.WriteFile(certPath, serverCert.CertPEM, 0644); err != nil {
-		t.Fatalf("write cert: %v", err)
-	}
-	if err := os.WriteFile(keyPath, serverCert.KeyPEM, 0644); err != nil {
-		t.Fatalf("write key: %v", err)
-	}
-
-	// Create mssql.conf for TLS configuration
-	// SQL Server 2025 with forceencryption supports TDS 8.0
-	mssqlConf := `[network]
-tlscert = /certs/server.pem
-tlskey = /certs/server.key
-tlsprotocols = 1.2
-forceencryption = 1
-`
-	confPath := filepath.Join(tmpDir, "mssql.conf")
-	if err := os.WriteFile(confPath, []byte(mssqlConf), 0644); err != nil {
-		t.Fatalf("write mssql.conf: %v", err)
-	}
-
-	// Pull the image first
-	t.Logf("Pulling MSSQL Docker image %s...", tlsDockerImage)
-	pullCmd := exec.Command("docker", "pull", tlsDockerImage)
-	pullCmd.Stdout = os.Stdout
-	pullCmd.Stderr = os.Stderr
-	if err := pullCmd.Run(); err != nil {
-		t.Fatalf("docker pull: %v", err)
-	}
-
-	// Start container with mssql.conf and certs mounted
-	t.Log("Starting MSSQL container...")
-	runArgs := []string{
-		"run", "-d",
-		"--name", tlsContainerName,
-		"-e", "ACCEPT_EULA=Y",
-		"-e", "MSSQL_SA_PASSWORD=" + saPassword,
-		"-e", "MSSQL_PID=Developer",
-		"-p", fmt.Sprintf("%d:1433", tlsPort),
-		"-v", confPath + ":/var/opt/mssql/mssql.conf",
-		"-v", certsDir + ":/certs",
-		tlsDockerImage,
-	}
-
-	var stdout, stderr bytes.Buffer
-	runCmd := exec.Command("docker", runArgs...)
-	runCmd.Stdout = &stdout
-	runCmd.Stderr = &stderr
-	if err := runCmd.Run(); err != nil {
-		t.Fatalf("docker run: %v\nstderr: %s", err, stderr.String())
-	}
-	containerID := strings.TrimSpace(stdout.String())
-	t.Logf("Container started: %s", containerID[:12])
-
-	// Ensure cleanup
-	defer func() {
-		t.Log("Stopping TLS test container...")
-		exec.Command("docker", "stop", tlsContainerName).Run()
-		exec.Command("docker", "rm", tlsContainerName).Run()
-	}()
-
-	// Wait for SQL Server to be ready (no restart needed)
-	t.Log("Waiting for SQL Server to start with TLS...")
-	if err := waitForMSSQLReady(containerID, 90*time.Second); err != nil {
-		t.Fatalf("wait for MSSQL: %v", err)
-	}
-
-	runCheck := func(t *testing.T, expectConnect bool, wantProto int64, config *rdb.Config) {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*6)
-		defer cancel()
-
-		cp, err := rdb.Open(config)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = cp.Ping(ctx)
-		switch expectConnect {
-		case false:
-			if err != nil {
-				t.Logf("expected failure: %v", err)
-				return
-			}
-			t.Fatalf("ping incorrectly worked: %v", err)
-		case true:
-			if err != nil {
-				t.Fatalf("ping failed: %v", err)
-			}
-			res, err := cp.Query(ctx, &rdb.Command{
-				SQL: `
-SELECT session_id, protocol_type, protocol_version, encrypt_option
-FROM sys.dm_exec_connections
-WHERE session_id = @@SPID;
-`,
-			})
-			if err != nil {
-				t.Fatalf("failed to query exec_connections: %v", err)
-			}
-			var sessionID, protocolVersion int64
-			var protocolType, encryptOption string
-			err = res.Prep("session_id", &sessionID).Prep("protocol_type", &protocolType).Prep("protocol_version", &protocolVersion).Prep("encrypt_option", &encryptOption).Scan()
-			if err != nil {
-				t.Fatalf("failed to scan query: %v", err)
-			}
-			t.Logf("SID=%d ProtoType=%s ProtoVer=0x%x Encrypt=%s", sessionID, protocolType, protocolVersion, encryptOption)
-			if wantProto > 0 {
-				if wantProto != protocolVersion {
-					t.Fatalf("wanted protocol 0x%x, got 0x%x", wantProto, protocolVersion)
-				}
-			}
-		}
-	}
-
 	// Test 1: Connect with InsecureSkipVerify (should work)
 	t.Run("insecure_skip_verify", func(t *testing.T) {
-		runCheck(t, true, proto74, &rdb.Config{
+		runConnCheck(t, true, proto74, &rdb.Config{
 			DriverName:         "ms",
 			Hostname:           "127.0.0.1",
-			Port:               tlsPort,
+			Port:               env.port,
 			Username:           "sa",
 			Password:           saPassword,
 			Database:           "master",
@@ -1108,10 +1047,10 @@ WHERE session_id = @@SPID;
 
 	// Test 2: Connect with correct CA in RootCAs (should work)
 	t.Run("valid_ca_chain", func(t *testing.T) {
-		runCheck(t, true, proto80, &rdb.Config{
+		runConnCheck(t, true, proto80, &rdb.Config{
 			DriverName:         "ms",
 			Hostname:           "localhost", // Must match cert's CN/SAN
-			Port:               tlsPort,
+			Port:               env.port,
 			Username:           "sa",
 			Password:           saPassword,
 			Database:           "master",
@@ -1120,22 +1059,21 @@ WHERE session_id = @@SPID;
 			DialTimeout:        10 * time.Second,
 			Secure:             true,
 			InsecureSkipVerify: false,
-			RootCAs:            ca.CertPool(),
+			RootCAs:            env.ca.CertPool(),
 		})
 	})
 
 	// Test 3: Connect with wrong CA (should fail)
 	t.Run("invalid_ca_chain", func(t *testing.T) {
-		// Generate a different CA that didn't sign the server cert
 		wrongCA, err := testcert.GenerateCA("Wrong CA", 24*time.Hour)
 		if err != nil {
 			t.Fatalf("generate wrong CA: %v", err)
 		}
 
-		runCheck(t, false, 0, &rdb.Config{
+		runConnCheck(t, false, 0, &rdb.Config{
 			DriverName:         "ms",
 			Hostname:           "localhost",
-			Port:               tlsPort,
+			Port:               env.port,
 			Username:           "sa",
 			Password:           saPassword,
 			Database:           "master",
@@ -1144,16 +1082,16 @@ WHERE session_id = @@SPID;
 			DialTimeout:        10 * time.Second,
 			Secure:             true,
 			InsecureSkipVerify: false,
-			RootCAs:            wrongCA.CertPool(), // Wrong CA
+			RootCAs:            wrongCA.CertPool(),
 		})
 	})
 
 	// Test 4: Connect without any CA (should fail when Secure=true)
 	t.Run("no_ca_secure", func(t *testing.T) {
-		runCheck(t, false, 0, &rdb.Config{
+		runConnCheck(t, false, 0, &rdb.Config{
 			DriverName:         "ms",
 			Hostname:           "localhost",
-			Port:               tlsPort,
+			Port:               env.port,
 			Username:           "sa",
 			Password:           saPassword,
 			Database:           "master",
@@ -1162,16 +1100,15 @@ WHERE session_id = @@SPID;
 			DialTimeout:        10 * time.Second,
 			Secure:             true,
 			InsecureSkipVerify: false,
-			// No RootCAs - will use system pool which won't have our CA
 		})
 	})
 
 	// Test 5: Connect with TDS 8.0 (TLS-first with ALPN)
 	t.Run("tds8_with_cert", func(t *testing.T) {
-		runCheck(t, true, proto80, &rdb.Config{
+		runConnCheck(t, true, proto80, &rdb.Config{
 			DriverName:       "ms",
 			Hostname:         "localhost",
-			Port:             tlsPort,
+			Port:             env.port,
 			Username:         "sa",
 			Password:         saPassword,
 			Database:         "master",
@@ -1179,8 +1116,217 @@ WHERE session_id = @@SPID;
 			PoolMaxCapacity:  1,
 			DialTimeout:      10 * time.Second,
 			Secure:           true,
-			RootCAs:          ca.CertPool(),
+			RootCAs:          env.ca.CertPool(),
 			KV:               map[string]interface{}{"tds8": "only"},
 		})
+	})
+}
+
+// TestDockerUTF8 tests UTF-8 collation support using a single shared UTF-8
+// database. Subtests cover feature negotiation, varchar roundtrip, and
+// nvarchar-vs-varchar byte size comparison.
+func TestDockerUTF8(t *testing.T) {
+	env := setupDockerEnv(t)
+	if env == nil {
+		return
+	}
+
+	ctx := context.Background()
+
+	// Verify FeatureExt negotiation before creating the UTF-8 database.
+	// If the server rejects LOGIN7 with UTF8_SUPPORT, this will fail.
+	t.Run("feature_ext", func(t *testing.T) {
+		cmd := &rdb.Command{
+			SQL:   "SELECT v = 1;",
+			Arity: rdb.OneMust,
+		}
+		res := env.db.Query(ctx, cmd)
+		defer res.Close()
+		res.Scan()
+		if v := res.Getx(0); v != int32(1) {
+			t.Errorf("expected 1, got %v (%T)", v, v)
+		}
+		t.Log("LOGIN7 FeatureExt (UTF8_SUPPORT) negotiation succeeded")
+	})
+
+	// Create a shared UTF-8 database for all data subtests.
+	const dbName = "rdb_utf8_test"
+	ddl := &rdb.Command{
+		SQL:   fmt.Sprintf("IF DB_ID('%s') IS NOT NULL DROP DATABASE [%s];", dbName, dbName),
+		Arity: rdb.Zero,
+	}
+	res := env.db.Query(ctx, ddl)
+	res.Close()
+
+	ddl = &rdb.Command{
+		SQL:   fmt.Sprintf("CREATE DATABASE [%s] COLLATE Latin1_General_100_CI_AS_SC_UTF8;", dbName),
+		Arity: rdb.Zero,
+	}
+	res = env.db.Query(ctx, ddl)
+	res.Close()
+
+	defer func() {
+		ddl := &rdb.Command{
+			SQL:   fmt.Sprintf("DROP DATABASE IF EXISTS [%s];", dbName),
+			Arity: rdb.Zero,
+		}
+		r := env.db.Query(ctx, ddl)
+		r.Close()
+	}()
+
+	utf8Pool := must.Open(&rdb.Config{
+		DriverName:         "ms",
+		Hostname:           env.host,
+		Port:               env.port,
+		Username:           "sa",
+		Password:           saPassword,
+		Database:           dbName,
+		PoolInitCapacity:   1,
+		PoolMaxCapacity:    2,
+		DialTimeout:        5 * time.Second,
+		InsecureSkipVerify: true,
+		KV:                 map[string]interface{}{"utf8": true},
+	})
+	defer utf8Pool.Close()
+
+	// Create tables for both subtests.
+	for _, sql := range []string{
+		"CREATE TABLE dbo.utf8_roundtrip (id int identity primary key, val varchar(500));",
+		`CREATE TABLE dbo.utf8_datalength (
+			id int identity primary key,
+			nval nvarchar(500),
+			uval varchar(500)
+		);`,
+	} {
+		r := utf8Pool.Query(ctx, &rdb.Command{SQL: sql, Arity: rdb.Zero})
+		r.Close()
+	}
+
+	// Unified test data table. Each entry is used for both roundtrip and
+	// DATALENGTH subtests. Entries without wantNLen/wantULen are roundtrip-only.
+	type utf8TestCase struct {
+		name     string
+		value    string
+		wantNLen int // expected nvarchar DATALENGTH (0 = skip datalength check)
+		wantULen int // expected varchar UTF-8 DATALENGTH (0 = skip datalength check)
+	}
+	tests := []utf8TestCase{
+		// Roundtrip + DATALENGTH: these have known byte sizes.
+		{name: "ascii", value: "Hello", wantNLen: 10, wantULen: 5},
+		{name: "cjk", value: "你好", wantNLen: 4, wantULen: 6},         // nvarchar=2*2, utf8=2*3
+		{name: "emoji", value: "😀", wantNLen: 4, wantULen: 4},         // surrogate pair=4, utf8=4
+		{name: "latin_ext", value: "Héllo", wantNLen: 10, wantULen: 6}, // 'é' = 2 bytes UTF-8
+
+		// Roundtrip-only: multi-script strings exercising the full pipeline.
+		{name: "vietnamese", value: "Xin chào thế giới"},
+		{name: "japanese", value: "こんにちは世界"},
+		{name: "korean", value: "안녕하세요"},
+		{name: "supplementary", value: "Music: 𝄞 Chess: ♔♕♖"},
+		{name: "mixed", value: "ASCII Héllo Привет 你好 🌍"},
+	}
+
+	// --- Subtest: roundtrip ---
+	t.Run("roundtrip", func(t *testing.T) {
+		insertCmd := &rdb.Command{
+			SQL:   "INSERT INTO dbo.utf8_roundtrip (val) VALUES (@val); SELECT id = CAST(SCOPE_IDENTITY() AS bigint);",
+			Arity: rdb.OneMust,
+		}
+		selectCmd := &rdb.Command{
+			SQL:   "SELECT val FROM dbo.utf8_roundtrip WHERE id = @id;",
+			Arity: rdb.OneMust,
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				// Insert.
+				r := utf8Pool.Query(ctx, insertCmd,
+					rdb.Param{Name: "val", Type: rdb.TypeVarChar, Value: tc.value, Length: 500},
+				)
+				r.Scan()
+				id := r.Get("id").(int64)
+				r.Close()
+
+				// Read back.
+				r = utf8Pool.Query(ctx, selectCmd,
+					rdb.Param{Name: "id", Type: rdb.TypeInt64, Value: id},
+				)
+				defer r.Close()
+				r.Scan()
+
+				var gotStr string
+				switch v := r.Getx(0).(type) {
+				case string:
+					gotStr = v
+				case []byte:
+					gotStr = string(v)
+				default:
+					t.Fatalf("unexpected type: %T", v)
+				}
+				if gotStr != tc.value {
+					t.Errorf("value mismatch:\ngot:  %q\nwant: %q", gotStr, tc.value)
+				}
+			})
+		}
+	})
+
+	// --- Subtest: datalength ---
+	// Compare nvarchar (UTF-16) vs varchar (UTF-8) byte sizes.
+	t.Run("datalength", func(t *testing.T) {
+		// Filter to entries that have expected sizes.
+		var dlTests []utf8TestCase
+		for _, tc := range tests {
+			if tc.wantNLen > 0 {
+				dlTests = append(dlTests, tc)
+			}
+		}
+
+		insertCmd := &rdb.Command{
+			SQL:   "INSERT INTO dbo.utf8_datalength (nval, uval) VALUES (@nval, @uval);",
+			Arity: rdb.Zero,
+		}
+		for _, tc := range dlTests {
+			r := utf8Pool.Query(ctx, insertCmd,
+				rdb.Param{Name: "nval", Type: rdb.TypeVarChar, Value: tc.value, Length: 500},
+				rdb.Param{Name: "uval", Type: rdb.TypeAnsiVarChar, Value: tc.value, Length: 500},
+			)
+			r.Close()
+		}
+
+		selectCmd := &rdb.Command{
+			SQL: `SELECT nlen = DATALENGTH(nval), ulen = DATALENGTH(uval)
+				FROM dbo.utf8_datalength ORDER BY id;`,
+		}
+		qr := utf8Pool.Query(ctx, selectCmd)
+		defer qr.Close()
+
+		i := 0
+		for qr.Next() {
+			qr.Scan()
+			if i >= len(dlTests) {
+				t.Fatalf("more rows than expected")
+			}
+			tc := dlTests[i]
+
+			nlen, ok := qr.Get("nlen").(int32)
+			if !ok {
+				t.Fatalf("%s: nlen type = %T", tc.name, qr.Get("nlen"))
+			}
+			ulen, ok := qr.Get("ulen").(int32)
+			if !ok {
+				t.Fatalf("%s: ulen type = %T", tc.name, qr.Get("ulen"))
+			}
+
+			t.Logf("%s: nvarchar=%d bytes, varchar(utf8)=%d bytes", tc.name, nlen, ulen)
+			if int(nlen) != tc.wantNLen {
+				t.Errorf("%s: nvarchar DATALENGTH = %d, want %d", tc.name, nlen, tc.wantNLen)
+			}
+			if int(ulen) != tc.wantULen {
+				t.Errorf("%s: varchar UTF-8 DATALENGTH = %d, want %d", tc.name, ulen, tc.wantULen)
+			}
+			i++
+		}
+		if i != len(dlTests) {
+			t.Errorf("got %d rows, want %d", i, len(dlTests))
+		}
 	})
 }

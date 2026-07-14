@@ -191,22 +191,27 @@ func TestPoolExpandsToMax(t *testing.T) {
 		}(i)
 	}
 
-	// Wait for all queries to start (connections to be acquired)
-	// Poll until we have 5 connections created
-	deadline := time.Now().Add(time.Second * 2)
-	for time.Now().Before(deadline) {
-		if driver.connCount() >= 5 {
-			break
+	// Continuously signal all connections until queries complete.
+	// A single signal pass has a race: if a connection is acquired (counted)
+	// but Query() hasn't entered its blocking select yet, the signal is
+	// drained during Query's setup and lost, causing a context deadline.
+	stopSignal := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-stopSignal:
+				return
+			default:
+				for _, conn := range driver.getConns() {
+					conn.signal()
+				}
+				time.Sleep(time.Millisecond * 2)
+			}
 		}
-		time.Sleep(time.Millisecond * 10)
-	}
-
-	// Signal all connections to complete
-	for _, conn := range driver.getConns() {
-		conn.signal()
-	}
+	}()
 
 	wg.Wait()
+	close(stopSignal)
 
 	// Check no errors
 	for i, err := range errs {
@@ -471,21 +476,27 @@ func TestPoolPartialExpansion(t *testing.T) {
 		}(i)
 	}
 
-	// Wait for connections to be acquired
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		if driver.connCount() >= 4 {
-			break
+	// Continuously signal all connections until queries complete.
+	// A single signal pass has a race: if a connection is acquired (counted)
+	// but Query() hasn't entered its blocking select yet, the signal is
+	// drained during Query's setup and lost, causing a context deadline.
+	stopSignal := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-stopSignal:
+				return
+			default:
+				for _, conn := range driver.getConns() {
+					conn.signal()
+				}
+				time.Sleep(time.Millisecond * 2)
+			}
 		}
-		time.Sleep(time.Millisecond * 5)
-	}
-
-	// Signal all to complete
-	for _, conn := range driver.getConns() {
-		conn.signal()
-	}
+	}()
 
 	wg.Wait()
+	close(stopSignal)
 
 	for i, err := range errs {
 		if err != nil {
@@ -549,13 +560,24 @@ func TestPoolRepeatedMildPressure(t *testing.T) {
 			}(i)
 		}
 
-		// Wait a bit for queries to start, then signal completion
-		time.Sleep(time.Millisecond * 20)
-		for _, conn := range driver.getConns() {
-			conn.signal()
-		}
+		// Continuously signal connections until queries complete.
+		stopSignal := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case <-stopSignal:
+					return
+				default:
+					for _, conn := range driver.getConns() {
+						conn.signal()
+					}
+					time.Sleep(time.Millisecond * 2)
+				}
+			}
+		}()
 
 		wg.Wait()
+		close(stopSignal)
 
 		for i, err := range errs {
 			if err != nil {
@@ -768,15 +790,24 @@ func TestPoolExpandByConfig(t *testing.T) {
 		}(i)
 	}
 
-	// Wait for queries to start
-	time.Sleep(time.Millisecond * 50)
-
-	// Signal all to complete
-	for _, conn := range driver.getConns() {
-		conn.signal()
-	}
+	// Continuously signal all connections until queries complete.
+	stopSignal := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-stopSignal:
+				return
+			default:
+				for _, conn := range driver.getConns() {
+					conn.signal()
+				}
+				time.Sleep(time.Millisecond * 2)
+			}
+		}
+	}()
 
 	wg.Wait()
+	close(stopSignal)
 
 	for i, err := range errs {
 		if err != nil {
