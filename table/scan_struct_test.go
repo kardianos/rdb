@@ -5,8 +5,10 @@
 package table
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"unsafe"
 
@@ -47,6 +49,120 @@ func TestNewStructPlan(t *testing.T) {
 	}
 	if byCol[2].mode != modeNull || byCol[2].applyNull == nil {
 		t.Error("age pointer should be modeNull with applyNull")
+	}
+}
+
+func TestPlanOptAndNullFlag(t *testing.T) {
+	type Row struct {
+		ID       int32           `db:"id"`
+		Name     rdb.Opt[string] `db:"name"`
+		Region   string          `db:"region"`
+		RegNull  bool            `null:"region"`
+		Blob     io.Writer       `db:"blob"`
+	}
+	schema := []*rdb.Column{
+		{Name: "id", Index: 0, Nullable: false},
+		{Name: "name", Index: 1, Nullable: true},
+		{Name: "region", Index: 2, Nullable: true},
+		{Name: "blob", Index: 3, Nullable: false},
+	}
+	plan, err := newStructPlan[Row](schema, "db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.fields) != 4 {
+		t.Fatalf("fields=%d want 4 (flag field not a column bind)", len(plan.fields))
+	}
+	byCol := map[int]fieldMode{}
+	for _, f := range plan.fields {
+		byCol[f.colIdx] = f.mode
+	}
+	if byCol[0] != modeDirect {
+		t.Errorf("id mode=%v", byCol[0])
+	}
+	if byCol[1] != modeDirect {
+		t.Errorf("Opt name mode=%v want direct", byCol[1])
+	}
+	if byCol[2] != modeFlag {
+		t.Errorf("region mode=%v want flag", byCol[2])
+	}
+	if byCol[3] != modeDirect {
+		t.Errorf("blob mode=%v", byCol[3])
+	}
+
+	var row Row
+	var buf bytes.Buffer
+	row.Blob = &buf
+	base := unsafe.Pointer(&row)
+
+	// id
+	for _, f := range plan.fields {
+		switch f.colIdx {
+		case 0:
+			p := f.prep(base).(*int32)
+			*p = 1
+		case 1:
+			p := f.prep(base).(*rdb.Opt[string])
+			handled, err := rdb.DirectAssignBytes(p, []byte("alice"), false, true, nil)
+			if !handled || err != nil {
+				t.Fatalf("opt assign: %v %v", handled, err)
+			}
+		case 2:
+			sink := f.flagPrep(base).(*rdb.NullFlagPrep)
+			handled, err := rdb.DirectAssignBytes(sink, []byte("US"), false, true, nil)
+			if !handled || err != nil {
+				t.Fatalf("flag assign: %v %v", handled, err)
+			}
+			if row.Region != "US" || row.RegNull {
+				t.Fatalf("region=%q null=%v", row.Region, row.RegNull)
+			}
+			handled, err = rdb.DirectAssignBytes(sink, nil, true, true, nil)
+			if !handled || err != nil {
+				t.Fatalf("flag null: %v %v", handled, err)
+			}
+			if row.Region != "" || !row.RegNull {
+				t.Fatalf("after null region=%q null=%v", row.Region, row.RegNull)
+			}
+		case 3:
+			w := f.prep(base)
+			handled, err := rdb.DirectAssignBytes(w, []byte("xyz"), false, false, nil)
+			if !handled || err != nil {
+				t.Fatalf("writer: %v %v", handled, err)
+			}
+			if buf.String() != "xyz" {
+				t.Fatalf("buf=%q", buf.String())
+			}
+		}
+	}
+	if row.ID != 1 || !row.Name.Valid || row.Name.V != "alice" {
+		t.Fatalf("row=%+v", row)
+	}
+}
+
+func TestNullTagErrors(t *testing.T) {
+	type badSelf struct {
+		NameNull bool `null:"NameNull"`
+	}
+	_, err := newStructPlan[badSelf](nil, "db")
+	if err == nil {
+		t.Fatal("expected error for self-referential null tag")
+	}
+
+	type badMissing struct {
+		NameNull bool `null:"missing"`
+	}
+	_, err = newStructPlan[badMissing](nil, "db")
+	if err == nil {
+		t.Fatal("expected error for missing null target")
+	}
+
+	type badType struct {
+		Name     string `db:"name"`
+		NameNull int    `null:"name"`
+	}
+	_, err = newStructPlan[badType]([]*rdb.Column{{Name: "name", Index: 0}}, "db")
+	if err == nil {
+		t.Fatal("expected error for non-bool null flag")
 	}
 }
 
@@ -102,21 +218,18 @@ func TestNullApply(t *testing.T) {
 			t.Fatalf("col %d want modeNull", f.colIdx)
 		}
 	}
-	// name non-null
 	if err := plan.fields[0].applyNull(base, rdb.Nullable{Value: "bob"}); err != nil {
 		t.Fatal(err)
 	}
 	if row.Name != "bob" {
 		t.Fatalf("name=%q", row.Name)
 	}
-	// name null → zero
 	if err := plan.fields[0].applyNull(base, rdb.Nullable{Null: true}); err != nil {
 		t.Fatal(err)
 	}
 	if row.Name != "" {
 		t.Fatalf("name after null=%q", row.Name)
 	}
-	// age pointer
 	if err := plan.fields[1].applyNull(base, rdb.Nullable{Value: int32(9)}); err != nil {
 		t.Fatal(err)
 	}

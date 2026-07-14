@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"iter"
 	"math/big"
 	"reflect"
@@ -23,8 +24,15 @@ import (
 // (or the field name), same rules as UnmarshalStruct.
 //
 // Non-nullable scalar fields are populated via Result.Prep / Scan so the driver
-// can DirectAssign. SQL NULL into a non-pointer field leaves the zero value;
-// NULL into a pointer field leaves nil.
+// can DirectAssign without interface{} boxing.
+//
+// Nullable columns without boxing:
+//   - rdb.Opt[T] fields (Valid=false for NULL)
+//   - plain field + bool with null:"colname" (flag true for NULL)
+//   - pointer fields (*T): nil for NULL (still uses a Nullable scratch today)
+//   - plain field only on a nullable column: zero value for NULL (Nullable scratch)
+//
+// io.Writer fields receive bytes via Write without the API retaining a []byte.
 //
 // Field offsets and typed prep/apply funcs are built once per result set; the
 // row loop does not walk the struct with reflect.Value.
@@ -105,7 +113,8 @@ func StreamTag[T any](ctx context.Context, q rdb.Queryer, cmd *rdb.Command, tagN
 type fieldMode uint8
 
 const (
-	modeDirect fieldMode = iota // Prep into field; DirectAssign
+	modeDirect fieldMode = iota // Prep into field or Opt[T]; DirectAssign
+	modeFlag                    // Prep via NullFlagPrep (payload + null:"…" bool)
 	modeNull                    // Prep into Nullable scratch; apply after Scan
 	modeJSON                    // GetxN after Scan; json.Unmarshal
 )
@@ -117,9 +126,11 @@ type fieldBind struct {
 	nullIdx int // index into nullScratch when modeNull
 
 	// Built once in newStructPlan; used every row without reflect.Value field walks.
-	prep      func(base unsafe.Pointer) any                      // modeDirect
-	applyNull func(base unsafe.Pointer, n rdb.Nullable) error    // modeNull
-	applyJSON func(base unsafe.Pointer, n rdb.Nullable) error    // modeJSON
+	prep      func(base unsafe.Pointer) any                   // modeDirect
+	flagSink  *rdb.NullFlagPrep                               // modeFlag; rebinding each row
+	flagPrep  func(base unsafe.Pointer) any                   // modeFlag; returns flagSink after rebind
+	applyNull func(base unsafe.Pointer, n rdb.Nullable) error // modeNull
+	applyJSON func(base unsafe.Pointer, n rdb.Nullable) error // modeJSON
 }
 
 type structPlan struct {
@@ -127,6 +138,24 @@ type structPlan struct {
 	asPtr       bool         // T is *Struct
 	fields      []fieldBind
 	nullScratch []rdb.Nullable
+}
+
+func isOptType(ft reflect.Type) bool {
+	// Instantiated generics report Name as "Opt[string]", not "Opt".
+	if ft.Kind() != reflect.Struct || ft.NumField() != 2 {
+		return false
+	}
+	if ft.Field(0).Name != "V" || ft.Field(1).Name != "Valid" || ft.Field(1).Type.Kind() != reflect.Bool {
+		return false
+	}
+	name := ft.Name()
+	if name != "Opt" && !strings.HasPrefix(name, "Opt[") {
+		return false
+	}
+	if ft.PkgPath() == "github.com/kardianos/rdb" {
+		return true
+	}
+	return strings.Contains(ft.String(), "rdb.Opt[")
 }
 
 func newStructPlan[T any](schema []*rdb.Column, tagName string) (*structPlan, error) {
@@ -153,12 +182,89 @@ func newStructPlan[T any](schema []*rdb.Column, tagName string) (*structPlan, er
 		colNullable[i] = col.Nullable
 	}
 
-	p := &structPlan{tType: tType, asPtr: asPtr}
+	// field name / column name → field index for null:"…" pairing
+	fieldByName := make(map[string]int, tType.NumField())
+	fieldByColName := make(map[string]int, tType.NumField())
+	// nullTag target (column or field name) → bool field index
+	nullFlags := make(map[string]int) // key: target column name or field name
+
 	for i := 0; i < tType.NumField(); i++ {
 		f := tType.Field(i)
 		if !f.IsExported() {
 			continue
 		}
+		fieldByName[f.Name] = i
+		if nt := f.Tag.Get("null"); nt != "" {
+			if f.Type.Kind() != reflect.Bool {
+				return nil, fmt.Errorf("table: field %s has null:%q but is not bool", f.Name, nt)
+			}
+			if _, dup := nullFlags[nt]; dup {
+				return nil, fmt.Errorf("table: duplicate null:%q", nt)
+			}
+			nullFlags[nt] = i
+		}
+		// Record db column name for this field when present.
+		colName := f.Name
+		if dbTag := f.Tag.Get(tagName); dbTag != "" {
+			parts := strings.Split(dbTag, ",")
+			if parts[0] != "" && parts[0] != "-" {
+				colName = parts[0]
+			}
+			if parts[0] == "-" {
+				continue
+			}
+		}
+		fieldByColName[colName] = i
+	}
+
+	// Resolve null flag targets to payload field index + flag field index.
+	type flagPair struct {
+		payloadIdx int
+		flagIdx    int
+	}
+	// colIdx → flag pair (for payload fields that have a null bool)
+	flagByPayload := make(map[int]flagPair)
+
+	for target, flagIdx := range nullFlags {
+		payloadIdx, ok := fieldByColName[target]
+		if !ok {
+			payloadIdx, ok = fieldByName[target]
+		}
+		if !ok {
+			return nil, fmt.Errorf("table: null:%q does not match any field or column", target)
+		}
+		if payloadIdx == flagIdx {
+			return nil, fmt.Errorf("table: null:%q cannot refer to itself", target)
+		}
+		pf := tType.Field(payloadIdx)
+		if isOptType(pf.Type) {
+			return nil, fmt.Errorf("table: null:%q target field %s is Opt[T]; use one null mechanism", target, pf.Name)
+		}
+		if pf.Tag.Get("null") != "" {
+			return nil, fmt.Errorf("table: null:%q target %s is itself a null flag", target, pf.Name)
+		}
+		flagByPayload[payloadIdx] = flagPair{payloadIdx: payloadIdx, flagIdx: flagIdx}
+	}
+
+	p := &structPlan{tType: tType, asPtr: asPtr}
+	// Skip bool fields that are only null flags (not columns).
+	nullFlagFields := make(map[int]bool)
+	for _, fp := range flagByPayload {
+		nullFlagFields[fp.flagIdx] = true
+	}
+
+	for i := 0; i < tType.NumField(); i++ {
+		f := tType.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		if nullFlagFields[i] {
+			continue // consumed as side channel of payload field
+		}
+		// Pure null-tagged field without a resolved payload already errored above
+		// only if target missing; a null tag always pairs. Fields with only null
+		// tag and no db mapping are the flag fields we skip.
+
 		columnName := f.Name
 		var isJSON bool
 		if dbTag := f.Tag.Get(tagName); dbTag != "" {
@@ -176,6 +282,11 @@ func newStructPlan[T any](schema []*rdb.Column, tagName string) (*structPlan, er
 		if columnName == "-" {
 			continue
 		}
+		// Skip fields that are only null flags (have null tag, no independent column).
+		if f.Tag.Get("null") != "" {
+			continue
+		}
+
 		colIdx, ok := nameIndex[columnName]
 		if !ok {
 			return nil, fmt.Errorf("table: field %s (column %q) not found in result schema", f.Name, columnName)
@@ -193,22 +304,49 @@ func newStructPlan[T any](schema []*rdb.Column, tagName string) (*structPlan, er
 				return nil, err
 			}
 			b.applyJSON = fn
-		case f.Type.Kind() == reflect.Ptr || colNullable[colIdx]:
-			b.mode = modeNull
-			b.nullIdx = len(p.nullScratch)
-			p.nullScratch = append(p.nullScratch, rdb.Nullable{})
-			fn, err := makeNullApply(f.Type, f.Offset)
-			if err != nil {
-				return nil, fmt.Errorf("table: field %s: %w", f.Name, err)
-			}
-			b.applyNull = fn
-		default:
+		case isOptType(f.Type):
+			// Opt[T]: Prep *Opt[T] directly (DirectAssign sets Valid).
 			b.mode = modeDirect
 			fn, err := makeDirectPrep(f.Type, f.Offset)
 			if err != nil {
 				return nil, fmt.Errorf("table: field %s: %w", f.Name, err)
 			}
 			b.prep = fn
+		default:
+			if pair, hasFlag := flagByPayload[i]; hasFlag {
+				b.mode = modeFlag
+				flagOff := tType.Field(pair.flagIdx).Offset
+				sink := &rdb.NullFlagPrep{}
+				b.flagSink = sink
+				valPrep, err := makeDirectPrep(f.Type, f.Offset)
+				if err != nil {
+					return nil, fmt.Errorf("table: field %s: %w", f.Name, err)
+				}
+				b.flagPrep = func(base unsafe.Pointer) any {
+					sink.Value = valPrep(base)
+					sink.Null = (*bool)(unsafe.Add(base, flagOff))
+					return sink
+				}
+				break
+			}
+			if f.Type.Kind() == reflect.Ptr || colNullable[colIdx] {
+				// Legacy path: Nullable scratch (may box non-null values).
+				b.mode = modeNull
+				b.nullIdx = len(p.nullScratch)
+				p.nullScratch = append(p.nullScratch, rdb.Nullable{})
+				fn, err := makeNullApply(f.Type, f.Offset)
+				if err != nil {
+					return nil, fmt.Errorf("table: field %s: %w", f.Name, err)
+				}
+				b.applyNull = fn
+			} else {
+				b.mode = modeDirect
+				fn, err := makeDirectPrep(f.Type, f.Offset)
+				if err != nil {
+					return nil, fmt.Errorf("table: field %s: %w", f.Name, err)
+				}
+				b.prep = fn
+			}
 		}
 		p.fields = append(p.fields, b)
 	}
@@ -237,6 +375,8 @@ func (p *structPlan) scan(res *rdb.Result, dest unsafe.Pointer) error {
 		switch b.mode {
 		case modeDirect:
 			res.Prepx(b.colIdx, b.prep(base))
+		case modeFlag:
+			res.Prepx(b.colIdx, b.flagPrep(base))
 		case modeNull:
 			p.nullScratch[b.nullIdx] = rdb.Nullable{}
 			res.Prepx(b.colIdx, &p.nullScratch[b.nullIdx])
@@ -252,7 +392,7 @@ func (p *structPlan) scan(res *rdb.Result, dest unsafe.Pointer) error {
 	for i := range p.fields {
 		b := &p.fields[i]
 		switch b.mode {
-		case modeDirect:
+		case modeDirect, modeFlag:
 			// already written by DirectAssign
 		case modeNull:
 			if err := b.applyNull(base, p.nullScratch[b.nullIdx]); err != nil {
@@ -267,7 +407,28 @@ func (p *structPlan) scan(res *rdb.Result, dest unsafe.Pointer) error {
 	return nil
 }
 
+var ioWriterType = reflect.TypeOf((*io.Writer)(nil)).Elem()
+
 func makeDirectPrep(ft reflect.Type, off uintptr) (func(unsafe.Pointer) any, error) {
+	// Opt[T]: return *Opt[T] for DirectAssign.
+	if isOptType(ft) {
+		return func(base unsafe.Pointer) any {
+			return reflect.NewAt(ft, unsafe.Add(base, off)).Interface()
+		}, nil
+	}
+	// io.Writer interface field: Prep the concrete writer value (not *io.Writer).
+	if ft.Kind() == reflect.Interface && ft.Implements(ioWriterType) {
+		return func(base unsafe.Pointer) any {
+			return reflect.NewAt(ft, unsafe.Add(base, off)).Elem().Interface()
+		}, nil
+	}
+	// Named types that implement io.Writer (e.g. *bytes.Buffer stored as concrete field).
+	if ft.Implements(ioWriterType) {
+		return func(base unsafe.Pointer) any {
+			return reflect.NewAt(ft, unsafe.Add(base, off)).Interface()
+		}, nil
+	}
+
 	switch ft.Kind() {
 	case reflect.Bool:
 		return func(base unsafe.Pointer) any { return (*bool)(unsafe.Add(base, off)) }, nil
