@@ -140,22 +140,24 @@ type structPlan struct {
 	nullScratch []rdb.Nullable
 }
 
+// rdbOptMarker is implemented by rdb.Opt[T] via RDBOpt (value receiver).
+// Used so planners need not match package path or generic type names.
+var rdbOptMarker = reflect.TypeOf((*interface{ RDBOpt() })(nil)).Elem()
+
 func isOptType(ft reflect.Type) bool {
-	// Instantiated generics report Name as "Opt[string]", not "Opt".
-	if ft.Kind() != reflect.Struct || ft.NumField() != 2 {
+	if ft == nil {
 		return false
 	}
-	if ft.Field(0).Name != "V" || ft.Field(1).Name != "Valid" || ft.Field(1).Type.Kind() != reflect.Bool {
-		return false
-	}
-	name := ft.Name()
-	if name != "Opt" && !strings.HasPrefix(name, "Opt[") {
-		return false
-	}
-	if ft.PkgPath() == "github.com/kardianos/rdb" {
+	// Field type Opt[T] (value): method set includes value-receiver RDBOpt.
+	if ft.Implements(rdbOptMarker) {
 		return true
 	}
-	return strings.Contains(ft.String(), "rdb.Opt[")
+	// *Opt[T] field (unusual): pointer method set includes value methods too,
+	// but check elem for clarity if someone stores a pointer.
+	if ft.Kind() == reflect.Ptr && ft.Elem().Implements(rdbOptMarker) {
+		return true
+	}
+	return false
 }
 
 func newStructPlan[T any](schema []*rdb.Column, tagName string) (*structPlan, error) {

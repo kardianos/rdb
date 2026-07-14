@@ -12,10 +12,17 @@ package rdb
 //	type Row struct {
 //	    Name Opt[string] `db:"name"`
 //	}
+//
+// Scanners detect Opt via the RDBOpt method (not package path), so detection
+// works for any instantiation Opt[T] under reflection.
 type Opt[T any] struct {
 	V     T
 	Valid bool
 }
+
+// RDBOpt marks this type as an rdb optional field for reflection-based planners
+// (table.Query / Stream). Value receiver so Opt[T] field types implement it.
+func (Opt[T]) RDBOpt() {}
 
 // Set stores a non-null value.
 func (o *Opt[T]) Set(v T) {
