@@ -70,3 +70,37 @@ CPU: AMD Ryzen 7 5700G
 | MessageReaderFetch | 921.1 | 5264 | **5** | −1 |
 | MessageReaderMultiPacket | 2434 | 13200 | **6** | −3 |
 | TokenStreamDecodeRows | 13810 | 10076 | **117** | **−99** |
+
+| 8 | PacketWriter UCS2 scratch for encodeParam/SQL/values | **progress** | EncodeParamString **2→0** allocs |
+| 9 | Connection utf8Scratch + uconv.AppendBytes for NChar decode | **progress** | TokenStream **117→68** allocs (was 216 baseline) |
+
+### After #8–9 encode/decode scratch
+
+| Benchmark | ns/op | B/op | allocs/op | Δ allocs vs baseline |
+|---|---:|---:|---:|---:|
+| EncodeParamString | 256.1 | 0 | **0** | −5 |
+| TokenStreamDecodeRows | 12434 | 8900 | **68** | **−148** |
+
+### Final summary vs baseline
+
+| Benchmark | baseline allocs | final allocs | Δ |
+|---|---:|---:|---:|
+| UconvEncodeString | 4 | 1 | −3 |
+| UconvEncodeBytes | 4 | 1 | −3 |
+| UconvDecodeToBytes | 2 | 1 | −1 |
+| UconvDecodeToString | 3 | 2 | −1 |
+| PacketWriterSmallMessage | 1 | 0 | −1 |
+| PacketWriterMultiPacket | 4 | 0 | −4 |
+| MessageReaderFetch | 6 | 5 | −1 |
+| MessageReaderMultiPacket | 9 | 6 | −3 |
+| TokenStreamDecodeRows | 216 | **68** | **−148 (−69%)** |
+| EncodeParamString | 5 | **0** | −5 |
+
+### Skipped / future
+
+| Item | Status |
+|---|---|
+| sbuffer 4× capacity | Reverted — higher B/op, no alloc win |
+| Dual sbuffer / true zero-copy Fetch | Partial via msgBuf; full dual-buffer left for later |
+| Avoid interface{} boxing for ints | Needs typed writeField/Prep path |
+| True TDS prepare / fReuseMetaData | Prepare not implemented |

@@ -170,9 +170,32 @@ func (code Utf16LeTo8) ToBytes(s []byte) []byte {
 	if len(s) < 2 {
 		return nil
 	}
-	// Two-pass: exact UTF-8 size so ASCII-heavy text does not over-allocate.
 	need := utf16LEDecodedLen(s)
 	out := make([]byte, need)
+	n := decodeUTF16LEInto(out, s)
+	return out[:n]
+}
+
+// AppendBytes appends the UTF-8 decoding of UTF-16LE s onto dst.
+func (code Utf16LeTo8) AppendBytes(dst []byte, s []byte) []byte {
+	if len(s) < 2 {
+		return dst
+	}
+	need := utf16LEDecodedLen(s)
+	off := len(dst)
+	if cap(dst)-off < need {
+		nd := make([]byte, off+need)
+		copy(nd, dst)
+		dst = nd
+	} else {
+		dst = dst[:off+need]
+	}
+	n := decodeUTF16LEInto(dst[off:off+need], s)
+	return dst[:off+n]
+}
+
+// decodeUTF16LEInto writes UTF-8 of s into out (must be large enough). Returns bytes written.
+func decodeUTF16LEInto(out []byte, s []byte) int {
 	n := 0
 	for i := 0; i+1 < len(s); i += 2 {
 		r := combineBytesLE(s[i], s[i+1])
@@ -196,7 +219,7 @@ func (code Utf16LeTo8) ToBytes(s []byte) []byte {
 		}
 		n += utf8.EncodeRune(out[n:], rr)
 	}
-	return out[:n]
+	return n
 }
 
 // utf16LEDecodedLen returns the exact UTF-8 byte length of decoding s as UTF-16LE.

@@ -152,9 +152,9 @@ func encodeValue(ctx context.Context, w *PacketWriter, ti paramTypeInfo, param *
 						return err
 					}
 
-					writeBb := bb[n:]
+					writeBb := bb[:n]
 					if ti.NChar {
-						writeBb = uconv.Encode.FromBytes(bb)
+						writeBb = w.UCS2FromBytes(bb[:n])
 					}
 					w.WriteUint32(uint32(len(writeBb)))
 					// Use w.Write() to write to buffer and attempt to send.
@@ -172,13 +172,13 @@ func encodeValue(ctx context.Context, w *PacketWriter, ti paramTypeInfo, param *
 			switch v := value.(type) {
 			case string:
 				if ti.NChar {
-					writeBb = uconv.Encode.FromString(v)
+					writeBb = w.UCS2FromString(v)
 				} else {
 					writeBb = []byte(v)
 				}
 			case []byte:
 				if ti.NChar {
-					writeBb = uconv.Encode.FromBytes(v)
+					writeBb = w.UCS2FromBytes(v)
 				} else {
 					writeBb = v
 				}
@@ -191,19 +191,19 @@ func encodeValue(ctx context.Context, w *PacketWriter, ti paramTypeInfo, param *
 				case reflect.Int32:
 					s := string(rune(rv.Int()))
 					if ti.NChar {
-						writeBb = uconv.Encode.FromString(s)
+						writeBb = w.UCS2FromString(s)
 					} else {
 						writeBb = []byte(s)
 					}
 				case reflect.String:
 					if ti.NChar {
-						writeBb = uconv.Encode.FromString(rv.String())
+						writeBb = w.UCS2FromString(rv.String())
 					} else {
 						writeBb = []byte(rv.String())
 					}
 				case reflect.Slice:
 					if ti.NChar {
-						writeBb = uconv.Encode.FromBytes(rv.Bytes())
+						writeBb = w.UCS2FromBytes(rv.Bytes())
 					} else {
 						writeBb = rv.Bytes()
 					}
@@ -238,13 +238,13 @@ func encodeValue(ctx context.Context, w *PacketWriter, ti paramTypeInfo, param *
 			switch v := value.(type) {
 			case string:
 				if ti.NChar {
-					writeBb = uconv.Encode.FromString(v)
+					writeBb = w.UCS2FromString(v)
 				} else {
 					writeBb = []byte(v)
 				}
 			case []byte:
 				if ti.NChar {
-					writeBb = uconv.Encode.FromBytes(v)
+					writeBb = w.UCS2FromBytes(v)
 				} else {
 					writeBb = v
 				}
@@ -257,19 +257,19 @@ func encodeValue(ctx context.Context, w *PacketWriter, ti paramTypeInfo, param *
 				case reflect.Int32:
 					s := string(rune(rv.Int()))
 					if ti.NChar {
-						writeBb = uconv.Encode.FromString(s)
+						writeBb = w.UCS2FromString(s)
 					} else {
 						writeBb = []byte(s)
 					}
 				case reflect.String:
 					if ti.NChar {
-						writeBb = uconv.Encode.FromString(rv.String())
+						writeBb = w.UCS2FromString(rv.String())
 					} else {
 						writeBb = []byte(rv.String())
 					}
 				case reflect.Array:
 					if ti.NChar {
-						writeBb = uconv.Encode.FromBytes(rv.Bytes())
+						writeBb = w.UCS2FromBytes(rv.Bytes())
 					} else {
 						writeBb = rv.Bytes()
 					}
@@ -1113,7 +1113,7 @@ func encodeParam(ctx context.Context, w *PacketWriter, truncValues bool, tdsVer 
 	if len(param.Name) == 0 {
 		w.WriteByte(0) // No name. Length zero.
 	} else {
-		nameUtf16 := uconv.Encode.FromString("@" + param.Name)
+		nameUtf16 := w.UCS2Prefixed("@", param.Name)
 		w.WriteByte(byte(len(nameUtf16) / 2))
 		w.WriteBuffer(nameUtf16)
 	}
@@ -1272,6 +1272,13 @@ func decodeColumnInfo(read uconv.PanicReader) *SQLColumn {
 
 type writeField func(c *rdb.Column, value *rdb.DriverValue, assign rdb.Assigner) error
 
+// decodeNCharUTF8 decodes UTF-16LE into a connection-local scratch buffer.
+// The returned slice is valid only until the next decodeNCharUTF8 call; set MustCopy when retaining.
+func (tds *Connection) decodeNCharUTF8(raw []byte) []byte {
+	tds.utf8Scratch = uconv.Decode.AppendBytes(tds.utf8Scratch[:0], raw)
+	return tds.utf8Scratch
+}
+
 func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColumn, resultWf writeField, reportRow bool) {
 	sc := &column.Column
 	var err error
@@ -1358,6 +1365,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			var value []byte
 			mustCopy := false
 			if column.info.NChar {
+				mustCopy = true
 				// TODO: This could probably be cleaner.
 				// Data is chunked in a way that ignores UCS-2 runes.
 				// Before decoding to UTF-8, make sure a uint16 rune isn't split between two packets.
@@ -1368,20 +1376,20 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 						bb := read(chunkSize)
 						bb2 := append(tds.ucs2Next, bb[:len(bb)-1]...)
 						tds.ucs2Next = bb[len(bb)-1:]
-						value = uconv.Decode.ToBytes(bb2)
+						value = tds.decodeNCharUTF8(bb2)
 					} else {
 						bb := read(chunkSize)
-						value = uconv.Decode.ToBytes(bb[:len(bb)-1])
+						value = tds.decodeNCharUTF8(bb[:len(bb)-1])
 						tds.ucs2Next = bb[len(bb)-1:]
 					}
 				} else {
 					if len(tds.ucs2Next) != 0 {
 						bb := read(chunkSize)
 						bb2 := append(tds.ucs2Next, bb...)
-						value = uconv.Decode.ToBytes(bb2)
+						value = tds.decodeNCharUTF8(bb2)
 						tds.ucs2Next = nil
 					} else {
-						value = uconv.Decode.ToBytes(read(chunkSize))
+						value = tds.decodeNCharUTF8(read(chunkSize))
 					}
 				}
 			} else {
@@ -1457,7 +1465,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			return
 		}
 		if column.info.NChar {
-			emit(false, uconv.Decode.ToBytes(raw), false, false, false)
+			emit(false, tds.decodeNCharUTF8(raw), true, false, false)
 			return
 		}
 		// View into message buffer; valuer copies if it retains the value.

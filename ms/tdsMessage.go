@@ -17,6 +17,7 @@ import (
 
 	"github.com/kardianos/rdb/internal/pools/sync2"
 	"github.com/kardianos/rdb/internal/sbuffer"
+	"github.com/kardianos/rdb/internal/uconv"
 )
 
 const (
@@ -78,6 +79,8 @@ type PacketWriter struct {
 	frame []byte
 	// Scratch for little-endian integer encodes into buffer.
 	intScratch [8]byte
+	// Reused UTF-16LE encode scratch for SQL text and string params.
+	ucs2Scratch []byte
 
 	packetNumber uint8
 	resetPacket  bool
@@ -135,6 +138,26 @@ func (tds *PacketWriter) WriteUint64(v uint64) (n int) {
 	binary.LittleEndian.PutUint64(tds.intScratch[:8], v)
 	tds.buffer.Write(tds.intScratch[:8])
 	return 8
+}
+
+// UCS2FromString encodes s as UTF-16LE into a writer-local scratch buffer.
+// The returned slice is valid only until the next UCS2* call on this writer.
+func (tds *PacketWriter) UCS2FromString(s string) []byte {
+	tds.ucs2Scratch = uconv.Encode.AppendString(tds.ucs2Scratch[:0], s)
+	return tds.ucs2Scratch
+}
+
+// UCS2FromBytes encodes s (UTF-8 bytes) as UTF-16LE into writer-local scratch.
+func (tds *PacketWriter) UCS2FromBytes(s []byte) []byte {
+	tds.ucs2Scratch = uconv.Encode.AppendBytes(tds.ucs2Scratch[:0], s)
+	return tds.ucs2Scratch
+}
+
+// UCS2Prefixed encodes prefix+s as UTF-16LE without allocating the concatenated string.
+func (tds *PacketWriter) UCS2Prefixed(prefix, s string) []byte {
+	tds.ucs2Scratch = uconv.Encode.AppendString(tds.ucs2Scratch[:0], prefix)
+	tds.ucs2Scratch = uconv.Encode.AppendString(tds.ucs2Scratch, s)
+	return tds.ucs2Scratch
 }
 
 func (tds *PacketWriter) EndMessage(ctx context.Context) error {

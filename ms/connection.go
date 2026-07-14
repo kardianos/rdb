@@ -73,6 +73,8 @@ type Connection struct {
 
 	// Reused per-field value to avoid heap-allocating DriverValue on every cell.
 	dv rdb.DriverValue
+	// Reused UTF-8 decode output for NChar fields (paired with MustCopy).
+	utf8Scratch []byte
 }
 
 func NewConnection(c net.Conn, defaultResetTimeout, RollbackTimeout time.Duration) *Connection {
@@ -995,7 +997,7 @@ func (tds *Connection) sendSimpleQuery(ctx context.Context, sql string, reset bo
 	}
 	w.WriteBuffer(tds.getAllHeaders())
 
-	w.WriteBuffer(uconv.Encode.FromString(sql))
+	w.WriteBuffer(w.UCS2FromString(sql))
 	return w.EndMessage(ctx)
 }
 
@@ -1056,7 +1058,7 @@ func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool,
 		}
 	} else {
 		w.WriteUint16(uint16(len(sql))) // ProcIDSwitch
-		w.WriteBuffer(uconv.Encode.FromString(sql))
+		w.WriteBuffer(w.UCS2FromString(sql))
 		w.WriteUint16(options)
 	}
 
@@ -1120,7 +1122,7 @@ func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue b
 		if err != nil {
 			return false, err
 		}
-		nameU16 := uconv.Encode.FromString(p.Name)
+		nameU16 := w.UCS2FromString(p.Name)
 		l := len(nameU16) / 2
 		if l > 0xff {
 			return false, fmt.Errorf("parameter name too long %q", p.Name)
