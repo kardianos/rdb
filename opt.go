@@ -7,14 +7,23 @@ package rdb
 // Opt is an optional (nullable) value that does not use interface{} boxing.
 // Valid is false for SQL NULL; V then holds the zero value of T.
 //
-// Use as a struct field with a db tag:
+// Use as a struct field by value with a db tag (not *Opt[T]):
 //
 //	type Row struct {
 //	    Name Opt[string] `db:"name"`
 //	}
 //
 // table.Query / Stream detect optionals structurally (exported fields V and
-// Valid bool), so any Opt[T]-shaped type works without package-path checks.
+// Valid bool). Prefer Opt when nullability should be self-contained on one
+// field. Note that embedding Valid bool next to T can add padding (looser
+// packing than a plain T plus a separate null:"…" bool placed carefully).
+//
+// For denser layouts when you do not need a self-contained optional:
+//
+//	type Row struct {
+//	    Name     string `db:"name"`
+//	    NameNull bool   `null:"name"`
+//	}
 type Opt[T any] struct {
 	V     T
 	Valid bool

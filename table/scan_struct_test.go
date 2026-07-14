@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -163,6 +164,19 @@ func TestNullTagErrors(t *testing.T) {
 	_, err = newStructPlan[badType]([]*rdb.Column{{Name: "name", Index: 0}}, "db")
 	if err == nil {
 		t.Fatal("expected error for non-bool null flag")
+	}
+}
+
+func TestRejectPointerOpt(t *testing.T) {
+	type Row struct {
+		Name *rdb.Opt[string] `db:"name"`
+	}
+	_, err := newStructPlan[Row]([]*rdb.Column{{Name: "name", Index: 0, Nullable: true}}, "db")
+	if err == nil {
+		t.Fatal("expected error for *Opt[T] field")
+	}
+	if !strings.Contains(err.Error(), "*Opt") {
+		t.Fatalf("err=%v", err)
 	}
 }
 

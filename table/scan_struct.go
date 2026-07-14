@@ -27,8 +27,10 @@ import (
 // can DirectAssign without interface{} boxing.
 //
 // Nullable columns without boxing:
-//   - rdb.Opt[T] fields (Valid=false for NULL)
-//   - plain field + bool with null:"colname" (flag true for NULL)
+//   - rdb.Opt[T] value fields (Valid=false for NULL). *Opt[T] is rejected.
+//     Opt is self-contained but may pad the struct (bool + T alignment).
+//   - plain field + bool with null:"colname" (flag true for NULL). Tighter
+//     packing if you place bools carefully; not self-contained on one field.
 //   - pointer fields (*T): nil for NULL (still uses a Nullable scratch today)
 //   - plain field only on a nullable column: zero value for NULL (Nullable scratch)
 //
@@ -144,15 +146,12 @@ type structPlan struct {
 // a struct with fields V (any type) and Valid bool. Matching is structural so
 // detection does not depend on package path or generic type names.
 //
+// Pointer types (*Opt[T]) are not optional value types; use checkOptFieldType
+// when planning fields so *Opt is rejected explicitly.
+//
 // Called only when building a plan (once per Query/Stream), not per row.
 func isOptType(ft reflect.Type) bool {
-	if ft == nil {
-		return false
-	}
-	if ft.Kind() == reflect.Ptr {
-		ft = ft.Elem()
-	}
-	if ft.Kind() != reflect.Struct || ft.NumField() != 2 {
+	if ft == nil || ft.Kind() != reflect.Struct || ft.NumField() != 2 {
 		return false
 	}
 	// Accept either declaration order: (V, Valid) or (Valid, V).
@@ -175,6 +174,15 @@ func isOptType(ft reflect.Type) bool {
 		}
 	}
 	return hasV && hasValid
+}
+
+// checkOptFieldType returns an error if ft is *Opt-shaped (unsupported).
+// Value Opt[T] is allowed (isOptType).
+func checkOptFieldType(fieldName string, ft reflect.Type) error {
+	if ft.Kind() == reflect.Ptr && isOptType(ft.Elem()) {
+		return fmt.Errorf("table: field %s is *Opt[T]; use Opt[T] by value (nil *Opt is not supported)", fieldName)
+	}
+	return nil
 }
 
 func newStructPlan[T any](schema []*rdb.Column, tagName string) (*structPlan, error) {
@@ -256,6 +264,9 @@ func newStructPlan[T any](schema []*rdb.Column, tagName string) (*structPlan, er
 			return nil, fmt.Errorf("table: null:%q cannot refer to itself", target)
 		}
 		pf := tType.Field(payloadIdx)
+		if err := checkOptFieldType(pf.Name, pf.Type); err != nil {
+			return nil, err
+		}
 		if isOptType(pf.Type) {
 			return nil, fmt.Errorf("table: null:%q target field %s is Opt[T]; use one null mechanism", target, pf.Name)
 		}
@@ -311,6 +322,10 @@ func newStructPlan[T any](schema []*rdb.Column, tagName string) (*structPlan, er
 			return nil, fmt.Errorf("table: field %s (column %q) not found in result schema", f.Name, columnName)
 		}
 
+		if err := checkOptFieldType(f.Name, f.Type); err != nil {
+			return nil, err
+		}
+
 		b := fieldBind{colIdx: colIdx, offset: f.Offset}
 		switch {
 		case isJSON:
@@ -324,7 +339,7 @@ func newStructPlan[T any](schema []*rdb.Column, tagName string) (*structPlan, er
 			}
 			b.applyJSON = fn
 		case isOptType(f.Type):
-			// Opt[T]: Prep *Opt[T] directly (DirectAssign sets Valid).
+			// Opt[T] by value only: Prep address of field (*Opt[T]) for DirectAssign.
 			b.mode = modeDirect
 			fn, err := makeDirectPrep(f.Type, f.Offset)
 			if err != nil {
@@ -429,7 +444,7 @@ func (p *structPlan) scan(res *rdb.Result, dest unsafe.Pointer) error {
 var ioWriterType = reflect.TypeOf((*io.Writer)(nil)).Elem()
 
 func makeDirectPrep(ft reflect.Type, off uintptr) (func(unsafe.Pointer) any, error) {
-	// Opt[T]: return *Opt[T] for DirectAssign.
+	// Opt[T] value field: return *Opt[T] pointing at the inlined struct.
 	if isOptType(ft) {
 		return func(base unsafe.Pointer) any {
 			return reflect.NewAt(ft, unsafe.Add(base, off)).Interface()
