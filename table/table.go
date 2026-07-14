@@ -2,10 +2,14 @@
 // Use of this source code is governed by a zlib-style
 // license that can be found in the LICENSE file.
 
-// Package table give a logical in-memory buffer row a database table.
-/*
-
- */
+// Package table gives a logical in-memory buffer of a database table.
+//
+// Prefer Query/Stream to scan rows into typed structs with Result.Prep:
+//
+//	rows, err := table.Query[User](ctx, db, cmd)
+//	for user, err := range table.Stream[User](ctx, db, cmd) { ... }
+//
+// Fill/UnmarshalStruct remain for Buffer-based workflows.
 package table
 
 import (
