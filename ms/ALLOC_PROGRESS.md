@@ -46,3 +46,16 @@ CPU: AMD Ryzen 7 5700G
 | PacketWriterSmallMessage | 140.6 | 0 | **0** | −1 |
 | PacketWriterMultiPacket | 680.3 | 0 | **0** | −4 |
 | EncodeParamString | 361.1 | 64 | **4** | −1 |
+
+| 2 | uconv: direct UTF-8↔UTF-16 encode/decode (no []rune/utf16.Encode) | **progress** | Encode 4→1 alloc; Decode bytes 2→1, string 3→2; EncodeParam 4→2; TokenStream B back to baseline |
+
+### After #2 uconv rewrite
+
+| Benchmark | ns/op | B/op | allocs/op | Δ allocs vs baseline |
+|---|---:|---:|---:|---:|
+| UconvEncodeString | 209.9 | 144 | **1** | −3 |
+| UconvEncodeBytes | 193.1 | 128 | **1** | −3 |
+| UconvDecodeToBytes | 247.1 | 64 | **1** | −1 |
+| UconvDecodeToString | 270.8 | 128 | **2** | −1 |
+| EncodeParamString | 318.5 | 32 | **2** | −3 |
+| TokenStreamDecodeRows | 14833 | 12124 | 216 | 0 (B restored after exact-size decode) |
