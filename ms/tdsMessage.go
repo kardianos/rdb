@@ -243,6 +243,8 @@ func (tds *PacketWriter) writeClose(ctx context.Context, bb []byte, closeMessage
 
 type PacketReader struct {
 	buffer sbuffer.Buffer
+	// Reusable assembly buffer for MessageReader.fill (connection-scoped).
+	msgBuf []byte
 }
 
 func NewPacketReader(r sbuffer.ConnReadDeadline) *PacketReader {
@@ -263,7 +265,7 @@ type MessageReader struct {
 	msgType PacketType
 	length  int
 
-	// For fetch.
+	// For fetch. current is a window into packet.msgBuf (or empty).
 	current   []byte
 	packetEOM bool
 }
@@ -375,15 +377,27 @@ func (r *MessageReader) fill(ctx context.Context) error {
 		}
 		r.packetEOM = true
 	}
-	// TODO(kardianos): find a way to make the bytes immutable, and normally avoid the copy.
-	x := next
-	next = make([]byte, len(x))
-	copy(next, x)
-	if len(r.current) == 0 {
-		r.current = next
-	} else {
-		r.current = append(r.current, next...)
+	// Copy packet body out of the shared sbuffer into a connection-scoped
+	// reusable buffer so later sbuffer reads cannot overwrite unread data.
+	remain := r.current
+	need := len(remain) + len(next)
+	buf := r.packet.msgBuf
+	if cap(buf) < need {
+		nb := make([]byte, need)
+		copy(nb, remain)
+		copy(nb[len(remain):], next)
+		r.packet.msgBuf = nb
+		r.current = nb
+		return nil
 	}
+	// Compact any remaining unread bytes to the front, then append the packet.
+	buf = buf[:need]
+	if len(remain) > 0 {
+		copy(buf, remain)
+	}
+	copy(buf[len(remain):], next)
+	r.packet.msgBuf = buf
+	r.current = buf
 	return nil
 }
 func (r *MessageReader) Fetch(ctx context.Context, n int) (ret []byte, err error) {

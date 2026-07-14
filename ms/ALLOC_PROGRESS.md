@@ -59,3 +59,14 @@ CPU: AMD Ryzen 7 5700G
 | UconvDecodeToString | 270.8 | 128 | **2** | −1 |
 | EncodeParamString | 318.5 | 32 | **2** | −3 |
 | TokenStreamDecodeRows | 14833 | 12124 | 216 | 0 (B restored after exact-size decode) |
+
+| 3 | sbuffer 4× packet capacity | **reverted** | Same allocs; B/op rose with larger ring (17568 vs 5280 on MessageReaderFetch). No measured win; left at 1× packet. |
+| 4–7 | MustCopy + MessageReader msgBuf reuse + decode emit(tds.dv) + non-NChar view | **progress** | TokenStream **216→117** allocs; MessageReader multi **9→6**; Fetch **6→5** |
+
+### After #4–7 reader/decode/MustCopy
+
+| Benchmark | ns/op | B/op | allocs/op | Δ allocs vs baseline |
+|---|---:|---:|---:|---:|
+| MessageReaderFetch | 921.1 | 5264 | **5** | −1 |
+| MessageReaderMultiPacket | 2434 | 13200 | **6** | −3 |
+| TokenStreamDecodeRows | 13810 | 10076 | **117** | **−99** |

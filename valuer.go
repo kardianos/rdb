@@ -148,10 +148,20 @@ If there is no prepped value, put it in a buffer.
 If using a buffer, append any value
 */
 func (v *valuer) WriteField(c *Column, value *DriverValue, assign Assigner) error {
-	// TODO: Respect value.MustCopy.
 	var convert ColumnConverter
 	if v.convert != nil {
 		convert = v.convert[c.Index]
+	}
+
+	// If the driver passed a view into a shared buffer, take ownership before
+	// storing or assigning so later packet reads cannot mutate the value.
+	if value.MustCopy {
+		if bb, ok := value.Value.([]byte); ok && bb != nil {
+			cp := make([]byte, len(bb))
+			copy(cp, bb)
+			value.Value = cp
+		}
+		value.MustCopy = false
 	}
 
 	prep := v.prep[c.Index]

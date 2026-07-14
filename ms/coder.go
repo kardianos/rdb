@@ -30,7 +30,7 @@ func zeroDateN(loc *time.Location) time.Time {
 	return time.Date(1, time.January, 1, 0, 0, 0, 0, loc)
 }
 
-func encodeType(w *PacketWriter, ti paramTypeInfo, param *rdb.Param) error {
+func encodeType(w *PacketWriter, ti paramTypeInfo, param *rdb.Param, collation [5]byte) error {
 	// Start TYPE_INFO.
 	// Write the type of field this is.
 	w.WriteByte(byte(ti.T))
@@ -59,9 +59,7 @@ func encodeType(w *PacketWriter, ti paramTypeInfo, param *rdb.Param) error {
 			w.WriteUint32(typeLength)
 		}
 		if ti.IsText {
-			// TODO: Handle collation.
-			collation := []byte{0x09, 0x04, 0xD0, 0x00, 0x34}
-			w.WriteBuffer(collation)
+			w.WriteBuffer(collation[:])
 		}
 	case ti.T == typeIntN:
 		w.WriteByte(ti.W) // TYPE_INFO width.
@@ -1110,7 +1108,7 @@ func getParamTypeInfo(tdsVer *semver.Version, paramType rdb.Type) (paramTypeInfo
 	return ti, nil
 }
 
-func encodeParam(ctx context.Context, w *PacketWriter, truncValues bool, tdsVer *semver.Version, param *rdb.Param, value interface{}) error {
+func encodeParam(ctx context.Context, w *PacketWriter, truncValues bool, tdsVer *semver.Version, param *rdb.Param, value interface{}, collation [5]byte) error {
 	// Write field name.
 	if len(param.Name) == 0 {
 		w.WriteByte(0) // No name. Length zero.
@@ -1131,7 +1129,7 @@ func encodeParam(ctx context.Context, w *PacketWriter, truncValues bool, tdsVer 
 		return err
 	}
 
-	err = encodeType(w, ti, param)
+	err = encodeType(w, ti, param, collation)
 	if err != nil {
 		return err
 	}
@@ -1283,20 +1281,26 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 		}
 	}()
 
-	var wf = func(val *rdb.DriverValue) {
+	// emit writes into tds.dv to avoid a heap DriverValue per cell.
+	emit := func(null bool, value interface{}, mustCopy, more, chunked bool) {
 		if !reportRow {
 			return
 		}
-		err = resultWf(sc, val, nil)
+		tds.dv = rdb.DriverValue{
+			Value:    value,
+			Null:     null,
+			MustCopy: mustCopy,
+			More:     more,
+			Chunked:  chunked,
+		}
+		err = resultWf(sc, &tds.dv, nil)
 	}
 
 	if column.Unlimit {
 		totalSize := binary.LittleEndian.Uint64(read(8))
 
 		if totalSize == textNULL {
-			wf(&rdb.DriverValue{
-				Null: true,
-			})
+			emit(true, nil, false, false, false)
 			return
 		}
 		sizeUnknown := totalSize == textUnknown
@@ -1315,9 +1319,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			}
 
 			if len(allData) == 0 {
-				wf(&rdb.DriverValue{
-					Value: []byte{},
-				})
+				emit(false, []byte{}, false, false, false)
 				return
 			}
 
@@ -1335,9 +1337,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 				// UTF-16LE text XML - convert to UTF-8.
 				xmlText = uconv.Decode.ToBytes(allData)
 			}
-			wf(&rdb.DriverValue{
-				Value: xmlText,
-			})
+			emit(false, xmlText, false, false, false)
 			return
 		}
 
@@ -1347,11 +1347,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			chunkSize := int(binary.LittleEndian.Uint32(read(4)))
 			if chunkSize == 0 {
 				if useChunks || totalSize == 0 {
-					wf(&rdb.DriverValue{
-						More:    false,
-						Chunked: useChunks,
-						Value:   []byte{},
-					})
+					emit(false, []byte{}, false, false, useChunks)
 				}
 				break
 			}
@@ -1360,6 +1356,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			}
 
 			var value []byte
+			mustCopy := false
 			if column.info.NChar {
 				// TODO: This could probably be cleaner.
 				// Data is chunked in a way that ignores UCS-2 runes.
@@ -1388,14 +1385,11 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 					}
 				}
 			} else {
-				value = make([]byte, chunkSize)
-				copy(value, read(chunkSize))
+				// View into message buffer; valuer copies if it retains the value.
+				value = read(chunkSize)
+				mustCopy = true
 			}
-			wf(&rdb.DriverValue{
-				More:    useChunks,
-				Chunked: useChunks,
-				Value:   value,
-			})
+			emit(false, value, mustCopy, useChunks, useChunks)
 			first = false
 		}
 		return
@@ -1440,19 +1434,14 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 
 	if column.info.Bytes || column.code == typeGuid {
 		if isNull {
-			wf(&rdb.DriverValue{
-				Null: true,
-			})
+			emit(true, nil, false, false, false)
 			return
 		}
-		var value []byte
-		if column.info.NChar {
-			value = uconv.Decode.ToBytes(read(dataLen))
-		} else {
-			value = make([]byte, dataLen)
-			copy(value, read(dataLen))
-		}
+		raw := read(dataLen)
 		if column.code == typeGuid {
+			// GUID needs a mutable copy for byte-order swaps.
+			value := make([]byte, dataLen)
+			copy(value, raw)
 			reverse := func(b []byte) {
 				for i, j := 0, len(b)-1; i < j; i, j = i+1, j-1 {
 					b[i], b[j] = b[j], b[i]
@@ -1464,21 +1453,20 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 				reverse(u[6:8])
 				return fmt.Sprintf("%X-%X-%X-%X-%X", u[0:4], u[4:6], u[6:8], u[8:10], u[10:])
 			}
-			wf(&rdb.DriverValue{
-				Value: bytesToGuidString(value),
-			})
+			emit(false, bytesToGuidString(value), false, false, false)
 			return
 		}
-		wf(&rdb.DriverValue{
-			Value: value,
-		})
+		if column.info.NChar {
+			emit(false, uconv.Decode.ToBytes(raw), false, false, false)
+			return
+		}
+		// View into message buffer; valuer copies if it retains the value.
+		emit(false, raw, true, false, false)
 		return
 	}
 
 	if dataLen == 0 || column.code == typeNull {
-		wf(&rdb.DriverValue{
-			Null: true,
-		})
+		emit(true, nil, false, false, false)
 		return
 	}
 
@@ -1519,30 +1507,20 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 		default:
 			panic(recoverError{fmt.Errorf("unhandled fixed type: %v", column.code)})
 		}
-		wf(&rdb.DriverValue{
-			Value: v,
-		})
+		emit(false, v, false, false, false)
 		return
 	}
 
 	if column.code == typeIntN {
 		switch dataLen {
 		case 1:
-			wf(&rdb.DriverValue{
-				Value: int8(read(1)[0]),
-			})
+			emit(false, int8(read(1)[0]), false, false, false)
 		case 2:
-			wf(&rdb.DriverValue{
-				Value: int16(binary.LittleEndian.Uint16(read(2))),
-			})
+			emit(false, int16(binary.LittleEndian.Uint16(read(2))), false, false, false)
 		case 4:
-			wf(&rdb.DriverValue{
-				Value: int32(binary.LittleEndian.Uint32(read(4))),
-			})
+			emit(false, int32(binary.LittleEndian.Uint32(read(4))), false, false, false)
 		case 8:
-			wf(&rdb.DriverValue{
-				Value: int64(binary.LittleEndian.Uint64(read(8))),
-			})
+			emit(false, int64(binary.LittleEndian.Uint64(read(8))), false, false, false)
 		default:
 			panic(fmt.Errorf("proto error IntN, unknown data len %d", dataLen))
 		}
@@ -1557,9 +1535,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			if v != 0 {
 				writeValue = true
 			}
-			wf(&rdb.DriverValue{
-				Value: writeValue,
-			})
+			emit(false, writeValue, false, false, false)
 		default:
 			panic(fmt.Errorf("proto error BitN, unknown data len %d", dataLen))
 		}
@@ -1584,23 +1560,17 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 		}
 		v.Quo(v, (&big.Rat{}).SetInt64(mult))
 
-		wf(&rdb.DriverValue{
-			Value: v,
-		})
+		emit(false, v, false, false, false)
 		return
 	}
 
 	if column.code == typeFloatN {
 		switch dataLen {
 		case 4:
-			wf(&rdb.DriverValue{
-				Value: math.Float32frombits(binary.LittleEndian.Uint32(read(4))),
-			})
+			emit(false, math.Float32frombits(binary.LittleEndian.Uint32(read(4))), false, false, false)
 			return
 		case 8:
-			wf(&rdb.DriverValue{
-				Value: math.Float64frombits(binary.LittleEndian.Uint64(read(8))),
-			})
+			emit(false, math.Float64frombits(binary.LittleEndian.Uint64(read(8))), false, false, false)
 			return
 		default:
 			panic(fmt.Errorf("proto error FloatN, unknown data len %d", dataLen))
@@ -1612,9 +1582,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 		case 4:
 			// SmallMoney: 4 bytes int32, value × 10000.
 			rawVal := int64(int32(binary.LittleEndian.Uint32(read(4))))
-			wf(&rdb.DriverValue{
-				Value: big.NewRat(rawVal, 10000),
-			})
+			emit(false, big.NewRat(rawVal, 10000), false, false, false)
 			return
 		case 8:
 			// Money: 8 bytes stored as high 4 bytes + low 4 bytes, value × 10000.
@@ -1622,9 +1590,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			high := int64(binary.LittleEndian.Uint32(bb[0:4]))
 			low := int64(binary.LittleEndian.Uint32(bb[4:8]))
 			rawVal := (high << 32) | low
-			wf(&rdb.DriverValue{
-				Value: big.NewRat(rawVal, 10000),
-			})
+			emit(false, big.NewRat(rawVal, 10000), false, false, false)
 			return
 		default:
 			panic(fmt.Errorf("proto error MoneyN, unknown data len %d", dataLen))
@@ -1640,9 +1606,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			tm := time.Duration(int64(tmf / 300 * 1000000000))
 
 			v := zeroDateTime.Add(dt).Add(tm)
-			wf(&rdb.DriverValue{
-				Value: v,
-			})
+			emit(false, v, false, false, false)
 			return
 		default:
 			panic(fmt.Errorf("proto error DateTimeN, unknown data len %d", dataLen))
@@ -1674,9 +1638,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 
 			tm = time.Duration(1000000000 / scale * value)
 			if column.info.Dt == dtTime {
-				wf(&rdb.DriverValue{
-					Value: tm,
-				})
+				emit(false, tm, false, false, false)
 				return
 			}
 		}
@@ -1709,9 +1671,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			loc := time.FixedZone(fmt.Sprintf("UTC %d:%02d", hrs, mins), int(offset)*60)
 			dt = dt.In(loc)
 		}
-		wf(&rdb.DriverValue{
-			Value: dt,
-		})
+		emit(false, dt, false, false, false)
 		return
 	}
 

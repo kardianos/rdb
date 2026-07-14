@@ -65,6 +65,14 @@ type Connection struct {
 
 	// The next byte of ucs2 if split between packets.
 	ucs2Next []byte
+
+	// UTF-8 support state.
+	utf8Negotiated    bool    // Server acknowledged UTF8_SUPPORT in FEATUREEXTACK.
+	paramCollation    [5]byte // Collation bytes to send with text parameters.
+	preferUTF8Varchar bool    // Config opt-in: use varchar (UTF-8) instead of nvarchar (UTF-16).
+
+	// Reused per-field value to avoid heap-allocating DriverValue on every cell.
+	dv rdb.DriverValue
 }
 
 func NewConnection(c net.Conn, defaultResetTimeout, RollbackTimeout time.Duration) *Connection {
@@ -82,6 +90,36 @@ func NewConnection(c net.Conn, defaultResetTimeout, RollbackTimeout time.Duratio
 		defaultResetTimeout: defaultResetTimeout,
 		rollbackTimeout:     RollbackTimeout,
 	}
+}
+
+// setupUTF8 configures UTF-8 state based on the server's login response.
+func (tds *Connection) setupUTF8(si *ServerInfo) {
+	tds.utf8Negotiated = si.UTF8Supported
+	if tds.preferUTF8Varchar && tds.utf8Negotiated {
+		// When sending varchar parameters with raw UTF-8 bytes (because
+		// adjustParamType remaps nvarchar to varchar), the parameter collation
+		// must indicate UTF-8. Otherwise the server interprets the bytes
+		// using the default non-UTF-8 codepage (e.g. Windows-1252).
+		tds.paramCollation = DefaultUTF8Collation().Encode()
+	} else {
+		tds.paramCollation = DefaultCollation().Encode()
+	}
+}
+
+// adjustParamType remaps nvarchar/nchar parameter types to varchar/char
+// when UTF-8 varchar mode is active. This avoids the UTF-8 → UTF-16LE
+// conversion for string parameters, since Go strings are natively UTF-8.
+func (tds *Connection) adjustParamType(paramType rdb.Type) rdb.Type {
+	if !tds.preferUTF8Varchar || !tds.utf8Negotiated {
+		return paramType
+	}
+	switch paramType {
+	case rdb.TypeVarChar, rdb.Text:
+		return rdb.TypeAnsiVarChar
+	case rdb.TypeChar:
+		return rdb.TypeAnsiChar
+	}
+	return paramType
 }
 
 func (tds *Connection) SetAvailable(available bool) {
@@ -180,6 +218,8 @@ func (tds *Connection) Open(ctx context.Context, config *rdb.Config) (*ServerInf
 		InHex:   true,
 	}
 
+	tds.setupUTF8(si)
+
 	tds.syncClose.Lock()
 	tds.status = rdb.StatusReady
 	tds.syncClose.Unlock()
@@ -260,6 +300,8 @@ func (tds *Connection) OpenTDS8(ctx context.Context, config *rdb.Config) (*Serve
 		Product: "TDS",
 		InHex:   true,
 	}
+
+	tds.setupUTF8(si)
 
 	tds.syncClose.Lock()
 	tds.status = rdb.StatusReady
@@ -998,17 +1040,17 @@ func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool,
 				return fmt.Errorf("missing parameter name at index: %d", i)
 			}
 
-			st, found := sqlTypeLookup[param.Type]
+			st, found := sqlTypeLookup[tds.adjustParamType(param.Type)]
 			if !found {
 				return fmt.Errorf("param %q type not found: %d", param.Name, param.Type)
 			}
 			fmt.Fprintf(paramNames, "@%s %s", param.Name, st.TypeString(param))
 		}
-		err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, rpcHeaderParam, []byte(sql))
+		err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, rpcHeaderParam, []byte(sql), tds.paramCollation)
 		if err != nil {
 			return err
 		}
-		err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, rpcHeaderParam, paramNames.Bytes())
+		err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, rpcHeaderParam, paramNames.Bytes(), tds.paramCollation)
 		if err != nil {
 			return err
 		}
@@ -1021,7 +1063,9 @@ func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool,
 	// Other parameters.
 	for i := range params {
 		param := &params[i]
-		err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, param, param.Value)
+		adjusted := *param
+		adjusted.Type = tds.adjustParamType(param.Type)
+		err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, &adjusted, param.Value, tds.paramCollation)
 		if err != nil {
 			return err
 		}
@@ -1072,7 +1116,7 @@ func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue b
 			return false, err
 		}
 		meta[i] = ti
-		err = encodeType(w, ti, &p)
+		err = encodeType(w, ti, &p, tds.paramCollation)
 		if err != nil {
 			return false, err
 		}
