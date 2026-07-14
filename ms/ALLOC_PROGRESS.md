@@ -37,5 +37,12 @@ CPU: AMD Ryzen 7 5700G
 | # | Change | Result | Notes |
 |---|---|---|---|
 | 0 | Baseline benches + this file | — | Starting point |
+| 1 | PacketWriter: reuse frame + intScratch; pre-size message buffer | **progress** | Small/Multi: **0 allocs** (was 1/4). EncodeParamString: 5→4 allocs, 112→64 B |
 
-<!-- Subsequent rows appended as work proceeds. -->
+### After #1 PacketWriter frame
+
+| Benchmark | ns/op | B/op | allocs/op | Δ allocs |
+|---|---:|---:|---:|---:|
+| PacketWriterSmallMessage | 140.6 | 0 | **0** | −1 |
+| PacketWriterMultiPacket | 680.3 | 0 | **0** | −4 |
+| EncodeParamString | 361.1 | 64 | **4** | −1 |

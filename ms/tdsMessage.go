@@ -74,6 +74,11 @@ type PacketWriter struct {
 
 	buffer *bytes.Buffer
 
+	// Reused packet frame (header + body) to avoid per-packet make.
+	frame []byte
+	// Scratch for little-endian integer encodes into buffer.
+	intScratch [8]byte
+
 	packetNumber uint8
 	resetPacket  bool
 	open         bool
@@ -84,7 +89,8 @@ type PacketWriter struct {
 func NewPacketWriter(w connWriteDeadline) *PacketWriter {
 	return &PacketWriter{
 		w:      w,
-		buffer: &bytes.Buffer{},
+		buffer: bytes.NewBuffer(make([]byte, 0, maxPacketSize)),
+		frame:  make([]byte, maxPacketSize),
 		single: sync2.NewSemaphore(1),
 	}
 }
@@ -116,21 +122,18 @@ func (tds *PacketWriter) WriteByte(v byte) (n int) {
 	return 1
 }
 func (tds *PacketWriter) WriteUint16(v uint16) (n int) {
-	bb := make([]byte, 2)
-	binary.LittleEndian.PutUint16(bb, v)
-	tds.buffer.Write(bb)
+	binary.LittleEndian.PutUint16(tds.intScratch[:2], v)
+	tds.buffer.Write(tds.intScratch[:2])
 	return 2
 }
 func (tds *PacketWriter) WriteUint32(v uint32) (n int) {
-	bb := make([]byte, 4)
-	binary.LittleEndian.PutUint32(bb, v)
-	tds.buffer.Write(bb)
+	binary.LittleEndian.PutUint32(tds.intScratch[:4], v)
+	tds.buffer.Write(tds.intScratch[:4])
 	return 4
 }
 func (tds *PacketWriter) WriteUint64(v uint64) (n int) {
-	bb := make([]byte, 8)
-	binary.LittleEndian.PutUint64(bb, v)
-	tds.buffer.Write(bb)
+	binary.LittleEndian.PutUint64(tds.intScratch[:8], v)
+	tds.buffer.Write(tds.intScratch[:8])
 	return 8
 }
 
@@ -172,7 +175,7 @@ func (tds *PacketWriter) writeClose(ctx context.Context, bb []byte, closeMessage
 
 		length := l + 8 // Header is 8 bytes.
 
-		buf := make([]byte, length)
+		buf := tds.frame[:length]
 
 		// Write packet to writer.
 		// MsgType - uint8
@@ -202,6 +205,7 @@ func (tds *PacketWriter) writeClose(ctx context.Context, bb []byte, closeMessage
 			fmt.Println(hex.Dump(buf))
 		}
 
+		remain := buf
 		for range 3 {
 			if err := ctx.Err(); err != nil {
 				return bufN, err
@@ -211,13 +215,13 @@ func (tds *PacketWriter) writeClose(ctx context.Context, bb []byte, closeMessage
 				tds.single.Release()
 				return bufN, err
 			}
-			localN, err = tds.w.Write(buf)
-			buf = buf[localN:]
+			localN, err = tds.w.Write(remain)
+			remain = remain[localN:]
 			n += localN
 			if err != nil {
 				if errors.Is(err, os.ErrDeadlineExceeded) {
 					err = nil
-					if len(buf) == 0 {
+					if len(remain) == 0 {
 						break
 					}
 					continue
@@ -225,7 +229,7 @@ func (tds *PacketWriter) writeClose(ctx context.Context, bb []byte, closeMessage
 				tds.single.Release()
 				return bufN, err
 			}
-			if len(buf) == 0 {
+			if len(remain) == 0 {
 				break
 			}
 		}
