@@ -257,10 +257,19 @@ func AssignValue(c *Column, outValue Nullable, prep interface{}, assign Assigner
 		*nullable = outValue
 		return nil
 	}
+
+	// NULL: Opt[T], NullFlagPrep, and *Nullable accept it without ErrScanNull.
 	if outValue.Null || outValue.Value == nil {
-		// Can only scan a null value into a nullable type.
+		prepPayload, flag := unwrapFlag(prep)
+		if flag != nil {
+			return assignNullWithFlag(prepPayload, flag, nil)
+		}
+		if err := assignNullPrep(prep); err == nil {
+			return nil
+		}
 		return ErrScanNull
 	}
+
 	var err error
 	var handled = false
 	if assign != nil {
@@ -268,6 +277,12 @@ func AssignValue(c *Column, outValue Nullable, prep interface{}, assign Assigner
 		if handled {
 			return err
 		}
+	}
+
+	// Prefer DirectAssign so *Opt[T], *NullFlagPrep, and io.Writer match the
+	// driver fast path (including when WriteField is used instead of DirectAssign).
+	if handled, err = assignViaDirect(prep, outValue.Value); handled {
+		return err
 	}
 
 	switch in := outValue.Value.(type) {

@@ -10,7 +10,7 @@ import (
 	"fmt"
 )
 
-var ErrScanNull = errors.New("can only scan NULL value into a Nullable type")
+var ErrScanNull = errors.New("can only scan NULL into Nullable, Opt[T], or NullFlagPrep")
 var ErrPreparedTokenNotValid = errors.New("the prepared token is not valid")
 
 // Should be returned by a driver that doesn't implement a feature.

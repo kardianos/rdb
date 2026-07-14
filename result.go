@@ -94,8 +94,10 @@ func (r *Result) Info() []*Message {
 	return r.val.infoList
 }
 
-// Prepare pointers to values to be populated by name using Prep. After
-// preparing call Scan(). Will panic if name is not a valid column name.
+// Prep registers a destination for column name before Scan.
+// Common destinations: *T, *Opt[T], *NullFlagPrep, io.Writer, *Nullable.
+// Drivers use DirectAssign when possible (no interface{} box for scalars/Opt).
+// Will panic if name is not a valid column name.
 func (r *Result) Prep(name string, value interface{}) *Result {
 	col, found := r.val.columnLookup[name]
 	if !found {
@@ -105,8 +107,8 @@ func (r *Result) Prep(name string, value interface{}) *Result {
 	return r
 }
 
-// Prepare pointers to values to be populated by index using Prep. After
-// preparing call Scan(). Will panic if index is not a valid column index.
+// Prepx is Prep by column index. See Prep for supported destinations.
+// Will panic if index is not a valid column index.
 func (r *Result) Prepx(index int, value interface{}) *Result {
 	if index < 0 || index >= len(r.val.columns) {
 		panic(ErrorColumnNotFound{At: "Prepx", Index: index})

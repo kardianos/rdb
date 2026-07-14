@@ -31,6 +31,53 @@ func unwrapFlag(prep interface{}) (payload interface{}, flag *bool) {
 	return prep, nil
 }
 
+// assignViaDirect routes a concrete driver value through DirectAssign so
+// AssignValue/WriteField share Opt, NullFlagPrep, and Writer support.
+// Returns handled=false if the value type is not one DirectAssign knows.
+func assignViaDirect(prep interface{}, value interface{}) (handled bool, err error) {
+	switch v := value.(type) {
+	case int8:
+		return DirectAssignInt(prep, int64(v), false, nil)
+	case int16:
+		return DirectAssignInt(prep, int64(v), false, nil)
+	case int32:
+		return DirectAssignInt(prep, int64(v), false, nil)
+	case int64:
+		return DirectAssignInt(prep, v, false, nil)
+	case int:
+		return DirectAssignInt(prep, int64(v), false, nil)
+	case uint8:
+		return DirectAssignInt(prep, int64(v), false, nil)
+	case uint16:
+		return DirectAssignInt(prep, int64(v), false, nil)
+	case uint32:
+		return DirectAssignInt(prep, int64(v), false, nil)
+	case uint64:
+		return DirectAssignInt(prep, int64(v), false, nil)
+	case uint:
+		return DirectAssignInt(prep, int64(v), false, nil)
+	case bool:
+		return DirectAssignBool(prep, v, false, nil)
+	case float32:
+		return DirectAssignFloat(prep, float64(v), false, nil)
+	case float64:
+		return DirectAssignFloat(prep, v, false, nil)
+	case string:
+		return DirectAssignString(prep, v, false, nil)
+	case []byte:
+		// mustCopy: AssignValue often receives buffer-owned slices.
+		return DirectAssignBytes(prep, v, false, true, nil)
+	case time.Time:
+		return DirectAssignTime(prep, v, false, nil)
+	case time.Duration:
+		return DirectAssignDuration(prep, v, false, nil)
+	case *big.Rat:
+		return DirectAssignRat(prep, v, false, nil)
+	default:
+		return false, nil
+	}
+}
+
 func setFlag(flag *bool, null bool) {
 	if flag != nil {
 		*flag = null

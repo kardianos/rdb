@@ -151,3 +151,34 @@ func TestDirectAssignBool(t *testing.T) {
 		t.Fatalf("bool: handled=%v err=%v val=%v", handled, err, b)
 	}
 }
+
+func TestAssignValueOptAndNullFlag(t *testing.T) {
+	// WriteField/AssignValue path (not DirectAssign from the driver).
+	var name Opt[string]
+	err := AssignValue(nil, Nullable{Value: "bob"}, &name, nil)
+	if err != nil || !name.Valid || name.V != "bob" {
+		t.Fatalf("Opt assign: err=%v name=%+v", err, name)
+	}
+	err = AssignValue(nil, Nullable{Null: true}, &name, nil)
+	if err != nil || name.Valid {
+		t.Fatalf("Opt null: err=%v name=%+v", err, name)
+	}
+
+	var region string
+	var regionNull bool
+	sink := &NullFlagPrep{Value: &region, Null: &regionNull}
+	err = AssignValue(nil, Nullable{Value: []byte("US")}, sink, nil)
+	if err != nil || region != "US" || regionNull {
+		t.Fatalf("flag assign: err=%v region=%q null=%v", err, region, regionNull)
+	}
+	err = AssignValue(nil, Nullable{Null: true}, sink, nil)
+	if err != nil || !regionNull || region != "" {
+		t.Fatalf("flag null: err=%v region=%q null=%v", err, region, regionNull)
+	}
+
+	var id int32
+	err = AssignValue(nil, Nullable{Null: true}, &id, nil)
+	if err != ErrScanNull {
+		t.Fatalf("null into *int32: err=%v", err)
+	}
+}
