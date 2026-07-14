@@ -102,5 +102,15 @@ CPU: AMD Ryzen 7 5700G
 |---|---|
 | sbuffer 4× capacity | Reverted — higher B/op, no alloc win |
 | Dual sbuffer / true zero-copy Fetch | Partial via msgBuf; full dual-buffer left for later |
-| Avoid interface{} boxing for ints | Needs typed writeField/Prep path |
+| Avoid interface{} boxing for ints | **Done** via DriverValuerPrep + DirectAssign* |
 | True TDS prepare / fReuseMetaData | Prepare not implemented |
+
+| 10 | Typed Prep: DriverValuerPrep + DirectAssign + decode hot paths | **progress** | 8×int32 Prep: **411→35** allocs vs boxed WriteField path |
+
+### After #10 typed Prep
+
+| Benchmark | ns/op | B/op | allocs/op | Notes |
+|---|---:|---:|---:|---|
+| TokenStreamEightIntsBoxed | 24220 | 9712 | **411** | Prep via WriteField only (no DriverValuerPrep) |
+| TokenStreamEightIntsDirect | 19739 | 8336 | **35** | DirectAssign into `*int32` |
+| TokenStreamDecodeRowsPrep | 13600 | 8980 | **69** | int+string Prep (string copy remains) |

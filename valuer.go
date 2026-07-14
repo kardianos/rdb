@@ -58,6 +58,27 @@ func (v *valuer) clearPrep() {
 	}
 }
 
+// PrepAt implements DriverValuerPrep.
+func (v *valuer) PrepAt(index int) interface{} {
+	if index < 0 || index >= len(v.prep) {
+		return nil
+	}
+	return v.prep[index]
+}
+
+// HasConverter implements DriverValuerPrep.
+func (v *valuer) HasConverter(index int) bool {
+	return v.convert != nil && index >= 0 && index < len(v.convert) && v.convert[index] != nil
+}
+
+// FieldNull implements DriverValuerPrep.
+func (v *valuer) FieldNull(index int) interface{} {
+	if index < 0 || index >= len(v.fields) || v.fields[index] == nil {
+		return nil
+	}
+	return v.fields[index].Null
+}
+
 func (v *valuer) Columns(cc []*Column) error {
 	v.columns = cc
 	v.columnLookup = make(map[string]*Column, len(cc))
@@ -153,6 +174,22 @@ func (v *valuer) WriteField(c *Column, value *DriverValue, assign Assigner) erro
 		convert = v.convert[c.Index]
 	}
 
+	prep := v.prep[c.Index]
+
+	// Fast path: assign buffer views straight into Prep without an intermediate copy.
+	// Skip when a converter or custom assigner needs the boxed DriverValue.
+	if value.MustCopy && prep != nil && convert == nil && assign == nil && !value.Chunked {
+		if bb, ok := value.Value.([]byte); ok {
+			fNull := interface{}(nil)
+			if f := v.fields[c.Index]; f != nil {
+				fNull = f.Null
+			}
+			if handled, err := DirectAssignBytes(prep, bb, value.Null, true, fNull); handled {
+				return err
+			}
+		}
+	}
+
 	// If the driver passed a view into a shared buffer, take ownership before
 	// storing or assigning so later packet reads cannot mutate the value.
 	if value.MustCopy {
@@ -163,8 +200,6 @@ func (v *valuer) WriteField(c *Column, value *DriverValue, assign Assigner) erro
 		}
 		value.MustCopy = false
 	}
-
-	prep := v.prep[c.Index]
 
 	f := v.fields[c.Index]
 	if value.Null && f != nil && f.Null != nil {

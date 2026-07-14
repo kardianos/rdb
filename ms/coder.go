@@ -1279,6 +1279,20 @@ func (tds *Connection) decodeNCharUTF8(raw []byte) []byte {
 	return tds.utf8Scratch
 }
 
+// directPrep returns Prep destination for column when the valuer supports
+// DriverValuerPrep, there is no converter, and a prep pointer is set.
+func (tds *Connection) directPrep(column *SQLColumn) (prep interface{}, defNull interface{}, ok bool) {
+	vp, is := tds.val.(rdb.DriverValuerPrep)
+	if !is || vp.HasConverter(column.Index) {
+		return nil, nil, false
+	}
+	prep = vp.PrepAt(column.Index)
+	if prep == nil {
+		return nil, nil, false
+	}
+	return prep, vp.FieldNull(column.Index), true
+}
+
 func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColumn, resultWf writeField, reportRow bool) {
 	sc := &column.Column
 	var err error
@@ -1287,6 +1301,13 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			panic(recoverError{err: err})
 		}
 	}()
+
+	var prep interface{}
+	var defNull interface{}
+	havePrep := false
+	if reportRow {
+		prep, defNull, havePrep = tds.directPrep(column)
+	}
 
 	// emit writes into tds.dv to avoid a heap DriverValue per cell.
 	emit := func(null bool, value interface{}, mustCopy, more, chunked bool) {
@@ -1301,6 +1322,15 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			Chunked:  chunked,
 		}
 		err = resultWf(sc, &tds.dv, nil)
+	}
+
+	// doneDirect records a DirectAssign result; returns true if caller should return.
+	doneDirect := func(handled bool, e error) bool {
+		if !handled {
+			return false
+		}
+		err = e
+		return true
 	}
 
 	if column.Unlimit {
@@ -1442,6 +1472,11 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 
 	if column.info.Bytes || column.code == typeGuid {
 		if isNull {
+			if havePrep {
+				if doneDirect(rdb.DirectAssignBytes(prep, nil, true, false, defNull)) {
+					return
+				}
+			}
 			emit(true, nil, false, false, false)
 			return
 		}
@@ -1461,19 +1496,42 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 				reverse(u[6:8])
 				return fmt.Sprintf("%X-%X-%X-%X-%X", u[0:4], u[4:6], u[6:8], u[8:10], u[10:])
 			}
-			emit(false, bytesToGuidString(value), false, false, false)
+			guidStr := bytesToGuidString(value)
+			if havePrep {
+				if doneDirect(rdb.DirectAssignString(prep, guidStr, false, defNull)) {
+					return
+				}
+			}
+			emit(false, guidStr, false, false, false)
 			return
 		}
 		if column.info.NChar {
-			emit(false, tds.decodeNCharUTF8(raw), true, false, false)
+			decoded := tds.decodeNCharUTF8(raw)
+			if havePrep {
+				if doneDirect(rdb.DirectAssignBytes(prep, decoded, false, true, defNull)) {
+					return
+				}
+			}
+			emit(false, decoded, true, false, false)
 			return
 		}
 		// View into message buffer; valuer copies if it retains the value.
+		if havePrep {
+			if doneDirect(rdb.DirectAssignBytes(prep, raw, false, true, defNull)) {
+				return
+			}
+		}
 		emit(false, raw, true, false, false)
 		return
 	}
 
 	if dataLen == 0 || column.code == typeNull {
+		if havePrep {
+			// Prefer int-style null for unknown; bytes null also uses assignNullPrep.
+			if doneDirect(rdb.DirectAssignBytes(prep, nil, true, false, defNull)) {
+				return
+			}
+		}
 		emit(true, nil, false, false, false)
 		return
 	}
@@ -1481,54 +1539,145 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 	if column.info.Fixed {
 		bb := read(int(column.info.Len))
 
-		var v interface{}
 		switch column.code {
 		case typeBool:
-			v = (bb[0] != 0)
+			v := bb[0] != 0
+			if havePrep {
+				if doneDirect(rdb.DirectAssignBool(prep, v, false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
+			return
 		case typeByte:
-			v = bb[0]
+			v := bb[0]
+			if havePrep {
+				if doneDirect(rdb.DirectAssignInt(prep, int64(v), false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
+			return
 		case typeInt16:
-			v = int16(binary.LittleEndian.Uint16(bb))
+			v := int16(binary.LittleEndian.Uint16(bb))
+			if havePrep {
+				if doneDirect(rdb.DirectAssignInt(prep, int64(v), false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
+			return
 		case typeInt32:
-			v = int32(binary.LittleEndian.Uint32(bb))
+			v := int32(binary.LittleEndian.Uint32(bb))
+			if havePrep {
+				if doneDirect(rdb.DirectAssignInt(prep, int64(v), false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
+			return
 		case typeInt64:
-			v = int64(binary.LittleEndian.Uint64(bb))
+			v := int64(binary.LittleEndian.Uint64(bb))
+			if havePrep {
+				if doneDirect(rdb.DirectAssignInt(prep, v, false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
+			return
 		case typeFloat32:
-			v = math.Float32frombits(binary.LittleEndian.Uint32(bb))
+			v := math.Float32frombits(binary.LittleEndian.Uint32(bb))
+			if havePrep {
+				if doneDirect(rdb.DirectAssignFloat(prep, float64(v), false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
+			return
 		case typeFloat64:
-			v = math.Float64frombits(binary.LittleEndian.Uint64(bb))
+			v := math.Float64frombits(binary.LittleEndian.Uint64(bb))
+			if havePrep {
+				if doneDirect(rdb.DirectAssignFloat(prep, v, false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
+			return
 		case typeDateTime:
 			dt := time.Duration(binary.LittleEndian.Uint32(bb))
 			tm := time.Duration(binary.LittleEndian.Uint32(bb[4:]))
 			t := time.Date(1900, time.January, 1, 0, 0, 0, 0, time.UTC)
-			v = t.Add(time.Hour*24*dt + time.Millisecond*tm*1000/300)
+			v := t.Add(time.Hour*24*dt + time.Millisecond*tm*1000/300)
+			if havePrep {
+				if doneDirect(rdb.DirectAssignTime(prep, v, false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
+			return
 		case typeMoney:
 			// Money: 8 bytes stored as high 4 bytes + low 4 bytes, value × 10000.
 			high := int64(binary.LittleEndian.Uint32(bb[0:4]))
 			low := int64(binary.LittleEndian.Uint32(bb[4:8]))
 			rawVal := (high << 32) | low
-			v = big.NewRat(rawVal, 10000)
+			v := big.NewRat(rawVal, 10000)
+			if havePrep {
+				if doneDirect(rdb.DirectAssignRat(prep, v, false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
+			return
 		case typeMoneySmall:
 			// SmallMoney: 4 bytes int32, value × 10000.
 			rawVal := int64(int32(binary.LittleEndian.Uint32(bb)))
-			v = big.NewRat(rawVal, 10000)
+			v := big.NewRat(rawVal, 10000)
+			if havePrep {
+				if doneDirect(rdb.DirectAssignRat(prep, v, false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
+			return
 		default:
 			panic(recoverError{fmt.Errorf("unhandled fixed type: %v", column.code)})
 		}
-		emit(false, v, false, false, false)
-		return
 	}
 
 	if column.code == typeIntN {
 		switch dataLen {
 		case 1:
-			emit(false, int8(read(1)[0]), false, false, false)
+			v := int8(read(1)[0])
+			if havePrep {
+				if doneDirect(rdb.DirectAssignInt(prep, int64(v), false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
 		case 2:
-			emit(false, int16(binary.LittleEndian.Uint16(read(2))), false, false, false)
+			v := int16(binary.LittleEndian.Uint16(read(2)))
+			if havePrep {
+				if doneDirect(rdb.DirectAssignInt(prep, int64(v), false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
 		case 4:
-			emit(false, int32(binary.LittleEndian.Uint32(read(4))), false, false, false)
+			v := int32(binary.LittleEndian.Uint32(read(4)))
+			if havePrep {
+				if doneDirect(rdb.DirectAssignInt(prep, int64(v), false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
 		case 8:
-			emit(false, int64(binary.LittleEndian.Uint64(read(8))), false, false, false)
+			v := int64(binary.LittleEndian.Uint64(read(8)))
+			if havePrep {
+				if doneDirect(rdb.DirectAssignInt(prep, v, false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
 		default:
 			panic(fmt.Errorf("proto error IntN, unknown data len %d", dataLen))
 		}
@@ -1538,12 +1687,13 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 	if column.code == typeBitN {
 		switch dataLen {
 		case 1:
-			v := read(1)[0]
-			writeValue := false
-			if v != 0 {
-				writeValue = true
+			v := read(1)[0] != 0
+			if havePrep {
+				if doneDirect(rdb.DirectAssignBool(prep, v, false, defNull)) {
+					return
+				}
 			}
-			emit(false, writeValue, false, false, false)
+			emit(false, v, false, false, false)
 		default:
 			panic(fmt.Errorf("proto error BitN, unknown data len %d", dataLen))
 		}
@@ -1575,10 +1725,22 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 	if column.code == typeFloatN {
 		switch dataLen {
 		case 4:
-			emit(false, math.Float32frombits(binary.LittleEndian.Uint32(read(4))), false, false, false)
+			v := math.Float32frombits(binary.LittleEndian.Uint32(read(4)))
+			if havePrep {
+				if doneDirect(rdb.DirectAssignFloat(prep, float64(v), false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
 			return
 		case 8:
-			emit(false, math.Float64frombits(binary.LittleEndian.Uint64(read(8))), false, false, false)
+			v := math.Float64frombits(binary.LittleEndian.Uint64(read(8)))
+			if havePrep {
+				if doneDirect(rdb.DirectAssignFloat(prep, v, false, defNull)) {
+					return
+				}
+			}
+			emit(false, v, false, false, false)
 			return
 		default:
 			panic(fmt.Errorf("proto error FloatN, unknown data len %d", dataLen))
