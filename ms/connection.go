@@ -1311,8 +1311,12 @@ func (tds *Connection) getSingleResponse(ctx context.Context, m *MessageReader, 
 
 		return MsgRow{}, nil
 	case tokenNBCRow:
+		// Copy the null bitmap out of msgBuf immediately. decodeFieldValue may
+		// call fill() when a later column spans packets (e.g. nvarchar(max) PLP),
+		// which reuses msgBuf and would corrupt a view into the bitmap — that
+		// desyncs the row (tdsToken(0), IntN unknown dataLen, mid-row EOF).
 		bitlen := (len(tds.col) + 7) / 8
-		nulls := read(bitlen)
+		nulls := append([]byte(nil), read(bitlen)...)
 		for i, column := range tds.col {
 			if nulls[i/8]&(1<<(uint(i)%8)) != 0 {
 				err = tds.val.WriteField(&column.Column, &rdb.DriverValue{

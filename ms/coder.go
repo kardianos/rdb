@@ -1663,7 +1663,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			}
 			emit(false, v, false, false, false)
 		default:
-			panic(fmt.Errorf("proto error IntN, unknown data len %d (stream likely desynced by a prior column)", dataLen))
+			panic(recoverError{err: fmt.Errorf("proto error IntN, unknown data len %d (stream likely desynced by a prior column)", dataLen)})
 		}
 		return
 	}
@@ -1679,7 +1679,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			}
 			emit(false, v, false, false, false)
 		default:
-			panic(fmt.Errorf("proto error BitN, unknown data len %d", dataLen))
+			panic(recoverError{err: fmt.Errorf("proto error BitN, unknown data len %d", dataLen)})
 		}
 		return
 	}
@@ -1714,7 +1714,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			emit(false, v, false, false, false)
 			return
 		default:
-			panic(fmt.Errorf("proto error FloatN, unknown data len %d", dataLen))
+			panic(recoverError{err: fmt.Errorf("proto error FloatN, unknown data len %d", dataLen)})
 		}
 	}
 
@@ -1734,7 +1734,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			emit(false, big.NewRat(rawVal, 10000), false, false, false)
 			return
 		default:
-			panic(fmt.Errorf("proto error MoneyN, unknown data len %d", dataLen))
+			panic(recoverError{err: fmt.Errorf("proto error MoneyN, unknown data len %d", dataLen)})
 		}
 	}
 
@@ -1750,7 +1750,7 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			emit(false, v, false, false, false)
 			return
 		default:
-			panic(fmt.Errorf("proto error DateTimeN, unknown data len %d", dataLen))
+			panic(recoverError{err: fmt.Errorf("proto error DateTimeN, unknown data len %d", dataLen)})
 		}
 	}
 
@@ -1786,5 +1786,5 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 		return
 	}
 
-	panic(fmt.Errorf("unsupported data type: %s", column.info.Name))
+	panic(recoverError{err: fmt.Errorf("unsupported data type: %s", column.info.Name)})
 }
