@@ -181,6 +181,8 @@ var typeInfoLookup = map[driverType]typeInfo{
 	}, Generic: rdb.Float},
 	typeMoneyN:          {Name: "MoneyN", Len: 1, Specific: rdb.TypeDecimal, Generic: rdb.Decimal},
 	typeDateTimeN:       {Name: "DateTimeN", Len: 1, Specific: rdb.TypeTimestamp, MinVer: protoVer72, Generic: rdb.Time},
+	// TDS 7.3 TYPE_INFO: DATE = VARLENTYPE only (Len 0); TIME/DATETIME2/DTO = VARLENTYPE SCALE (Len 1).
+	// Row values still use TYPE_VARBYTE BYTELEN (GEN_NULL or length + payload).
 	typeDateN:           {Name: "DateN", Len: 0, Specific: rdb.TypeDate, Dt: dtDate, MinVer: protoVer73A, Generic: rdb.Time},
 	typeTimeN:           {Name: "TimeN", Len: 1, Specific: rdb.TypeTime, Dt: dtTime, MinVer: protoVer73A, Generic: rdb.Time},
 	typeDateTime2N:      {Name: "DateTime2N", Len: 1, Specific: rdb.TypeTimestamp, Dt: dtDate | dtTime, MinVer: protoVer73A, Generic: rdb.Time},
@@ -281,6 +283,48 @@ func getMult(scale int) int64 {
 	return mult
 }
 
+// timeBytesForScale returns the wire size of the time(n) component.
+// MS-TDS 2.2.5.5.1.8: 3 bytes if 0<=n<=2, 4 if 3<=n<=4, 5 if 5<=n<=7.
+func timeBytesForScale(scale int) int {
+	switch {
+	case scale < 0:
+		return 3
+	case scale <= 2:
+		return 3
+	case scale <= 4:
+		return 4
+	case scale <= 7:
+		return 5
+	default:
+		return 5
+	}
+}
+
+// timeBytesFromDataLen derives the time-component size from the row TYPE_VARBYTE
+// BYTELEN (MS-TDS BYTELEN_TYPE length tables for TIMENTYPE / DATETIME2NTYPE /
+// DATETIMEOFFSETNTYPE). Payload sizes:
+//
+//	time(n):           dataLen ∈ {3,4,5}
+//	datetime2(n):      dataLen ∈ {6,7,8}  = time + date(3)
+//	datetimeoffset(n): dataLen ∈ {8,9,10} = time + date(3) + offset(2)
+func timeBytesFromDataLen(dt byte, dataLen int) (int, error) {
+	var bbLen int
+	switch {
+	case dt == dtTime:
+		bbLen = dataLen
+	case dt&dtZone != 0:
+		bbLen = dataLen - 5
+	case dt&dtDate != 0:
+		bbLen = dataLen - 3
+	default:
+		bbLen = dataLen
+	}
+	if bbLen < 3 || bbLen > 5 {
+		return 0, fmt.Errorf("invalid time component size %d (dt=%d dataLen=%d)", bbLen, dt, dataLen)
+	}
+	return bbLen, nil
+}
+
 // powersOf10 holds 10^0 .. 10^38. Precomputed so encode/decode share one *big.Int
 // per scale with no per-row Exp allocation. Table values must be treated as immutable.
 var powersOf10 = func() [39]*big.Int {
@@ -310,17 +354,28 @@ func pow10(scale int) *big.Int {
 // Allocations: one *big.Int (magnitude) and one *big.Rat (result). The scale
 // denominator is shared from powersOf10.
 func decodeDecimalWire(payload []byte, scale int) *big.Rat {
+	if len(payload) == 0 {
+		return new(big.Rat)
+	}
 	signByte := payload[0]
 	le := payload[1:]
 	n := len(le)
 
-	// Reverse little-endian → big-endian into a stack buffer (TDS max 16 bytes).
-	var be [16]byte
+	// Reverse little-endian → big-endian. TDS max integer is 16 bytes; allow
+	// larger defensively so a corrupt length cannot panic mid-row (which leaves
+	// the connection desynced and surfaces as "unknown token peek: tdsToken(0)").
+	var beStack [16]byte
+	var be []byte
+	if n <= 16 {
+		be = beStack[:n]
+	} else {
+		be = make([]byte, n)
+	}
 	for i := 0; i < n; i++ {
 		be[i] = le[n-1-i]
 	}
 
-	mag := new(big.Int).SetBytes(be[:n])
+	mag := new(big.Int).SetBytes(be)
 	if signByte == 0 {
 		mag.Neg(mag)
 	}

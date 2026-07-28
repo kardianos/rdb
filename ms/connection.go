@@ -813,6 +813,10 @@ func (tds *Connection) scan(ctx context.Context) error {
 			res, err = tds.getSingleResponse(ctx, tds.mr, true)
 		})
 		if err != nil {
+			// Protocol/parse errors often leave the stream mid-row. Force a
+			// RESETCONNECTION on the next use so the pool does not hand out a
+			// desynced connection (which peeks as tdsToken(0)).
+			tds.resetNext = true
 			tds.done()
 			return err
 		}
@@ -892,6 +896,8 @@ func (tds *Connection) scan(ctx context.Context) error {
 		}
 		switch peek {
 		default:
+			// Desynced stream: force reset before this connection is reused.
+			tds.resetNext = true
 			return fmt.Errorf("unknown token peek: %v", peek)
 		case tokenDone, tokenDoneInProc, tokenDoneProc, tokenEnvChange, tokenError, tokenInfo, tokenLoginAck, tokenOrder, tokenReturnStatus, tokenReturnValue:
 			// Nothing.
