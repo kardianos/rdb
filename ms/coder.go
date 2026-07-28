@@ -625,18 +625,12 @@ func encodeValue(ctx context.Context, w *PacketWriter, ti paramTypeInfo, param *
 			_, err := w.Write(ctx, []byte{0})
 			return err
 		}
+		// Local copy so encodeDecimalWire never mutates the caller's *big.Rat.
 		var pv big.Rat
-		var rv *big.Rat
 		type rater interface {
 			Rat(r *big.Rat) *big.Rat
 		}
 		switch v := value.(type) {
-		default:
-			// Support github.com/woodsbury/decimal128
-			if r, ok := v.(rater); ok {
-				r.Rat(&pv)
-			}
-			return fmt.Errorf("need *big.Rat for param @%s", param.Name)
 		case **big.Rat:
 			if v == nil || *v == nil {
 				_, err := w.Write(ctx, []byte{0})
@@ -649,48 +643,22 @@ func encodeValue(ctx context.Context, w *PacketWriter, ti paramTypeInfo, param *
 				return err
 			}
 			pv = *v
+		default:
+			// Support types like github.com/woodsbury/decimal128 via Rat().
+			if r, ok := v.(rater); ok {
+				r.Rat(&pv)
+			} else {
+				return fmt.Errorf("need *big.Rat for param @%s", param.Name)
+			}
 		}
-		rv = &pv
 
-		sign := byte(0)
-		if rv.Sign() >= 0 {
-			sign = 1
+		// pow10 uses precomputed *big.Int (scale 0–38); no int64 overflow at scale 19+.
+		payload, err := encodeDecimalWire(&pv, param.Scale)
+		if err != nil {
+			return fmt.Errorf("decimal value of (%s) too large for param %s %s", pv.String(), param.Name, ti.TypeString(param))
 		}
-
-		// Num / Denom == Integer * 10^(-S)
-		// Mult = 10^(-S)
-		// Num / Denom == Integer * Mult
-		// Num * Mult / Denom == Integer
-		mult := getMult(param.Scale)
-		num := rv.Num()
-		denom := rv.Denom()
-		num.Mul(num, big.NewInt(mult))
-		num.Div(num, denom)
-		bb := num.Bytes()
-		if len(bb) > 16 {
-			return fmt.Errorf("decimal value of (%s) too large for param %s %s", rv.String(), param.Name, ti.TypeString(param))
-		}
-		// Big.Bytes writes out in big-endian.
-		// Want little endian so reverse bytes.
-		reverseBytes(bb)
-		dataLen := 0
-		switch {
-		case len(bb) <= 4:
-			dataLen = 4
-		case len(bb) <= 8:
-			dataLen = 8
-		case len(bb) <= 12:
-			dataLen = 12
-		case len(bb) <= 16:
-			dataLen = 16
-		}
-		filler := make([]byte, dataLen-len(bb))
-		w.WriteByte(byte(dataLen + 1))
-		w.WriteByte(sign)
-		w.WriteBuffer(bb)
-		if len(filler) > 0 {
-			w.WriteBuffer(filler)
-		}
+		w.WriteByte(byte(len(payload)))
+		w.WriteBuffer(payload)
 		return nil
 	case ti.T == typeFloatN:
 		if nullValue {
@@ -1701,23 +1669,10 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 	}
 
 	if column.info.IsPrSc {
+		// Use pow10 (big.Int): getMult's int64 overflows for scale >= 19,
+		// which garbled values like decimal(38,20) 1234.567891 → ~15896.516.
 		all := read(dataLen)
-		signByte := all[0]
-		intBytes := all[1:]
-		reverseBytes(intBytes)
-
-		integer := &big.Int{}
-		integer.SetBytes(intBytes)
-
-		mult := getMult(int(column.Scale))
-
-		v := &big.Rat{}
-		v.SetInt(integer)
-		if signByte == 0 {
-			v.Neg(v)
-		}
-		v.Quo(v, (&big.Rat{}).SetInt64(mult))
-
+		v := decodeDecimalWire(all, column.Scale)
 		emit(false, v, false, false, false)
 		return
 	}

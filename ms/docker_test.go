@@ -353,6 +353,12 @@ func TestDockerDecimalPrecision(t *testing.T) {
 		{name: "p35_s5", precision: 35, scale: 5, value: "123456789012345678901234567890.12345", wantStr: "123456789012345678901234567890.12345"},
 		{name: "p38_s6", precision: 38, scale: 6, value: "12345678901234567890123456789012.345678", wantStr: "12345678901234567890123456789012.345678"},
 
+		// High scale: int64 10^scale overflows at scale >= 19; uses precomputed big.Int pow10.
+		{name: "p38_s20_repro", precision: 38, scale: 20, value: "1234.567891", wantStr: "1234.56789100000000000000"},
+		{name: "p38_s28", precision: 38, scale: 28, value: "1234.567891", wantStr: "1234.5678910000000000000000000000"},
+		// decimal(38,38): |value| must be < 1 (no integer digits).
+		{name: "p38_s38", precision: 38, scale: 38, value: "0.23456789012345678901234567890123456789", wantStr: "0.23456789012345678901234567890123456789"},
+
 		// Edge cases
 		{name: "negative", precision: 10, scale: 2, value: "-12345678.90", wantStr: "-12345678.90"},
 		{name: "zero", precision: 10, scale: 2, value: "0.00", wantStr: "0.00"},

@@ -6,6 +6,7 @@ package ms
 
 import (
 	"fmt"
+	"math/big"
 
 	"github.com/kardianos/rdb"
 	"github.com/kardianos/rdb/semver"
@@ -269,12 +270,119 @@ func reverseBytes(bb []byte) {
 	}
 }
 
+// getMult returns 10^scale as int64.
+// Only valid for scale <= 18. Used for time/datetime2 scales (0–7).
+// For decimal/numeric scale (up to 38), use pow10 — int64 overflows at scale 19+.
 func getMult(scale int) int64 {
 	mult := int64(1)
-	for _ = range make([]struct{}, scale) {
+	for range scale {
 		mult *= 10
 	}
 	return mult
+}
+
+// powersOf10 holds 10^0 .. 10^38. Precomputed so encode/decode share one *big.Int
+// per scale with no per-row Exp allocation. Table values must be treated as immutable.
+var powersOf10 = func() [39]*big.Int {
+	var t [39]*big.Int
+	t[0] = big.NewInt(1)
+	ten := big.NewInt(10)
+	for i := 1; i <= 38; i++ {
+		t[i] = new(big.Int).Mul(t[i-1], ten)
+	}
+	return t
+}()
+
+// pow10 returns 10^scale as a shared *big.Int for legal TDS scales (0–38).
+// Callers must not mutate the result.
+func pow10(scale int) *big.Int {
+	if scale < 0 || scale > 38 {
+		// Fallback for defensive use; TDS never needs this path.
+		return new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(scale)), nil)
+	}
+	return powersOf10[scale]
+}
+
+// decodeDecimalWire decodes a TDS decimal/numeric value payload:
+// byte 0 = sign (1 positive, 0 negative), remaining bytes = little-endian integer
+// representing the value × 10^scale.
+//
+// Allocations: one *big.Int (magnitude) and one *big.Rat (result). The scale
+// denominator is shared from powersOf10.
+func decodeDecimalWire(payload []byte, scale int) *big.Rat {
+	signByte := payload[0]
+	le := payload[1:]
+	n := len(le)
+
+	// Reverse little-endian → big-endian into a stack buffer (TDS max 16 bytes).
+	var be [16]byte
+	for i := 0; i < n; i++ {
+		be[i] = le[n-1-i]
+	}
+
+	mag := new(big.Int).SetBytes(be[:n])
+	if signByte == 0 {
+		mag.Neg(mag)
+	}
+	if scale <= 0 {
+		return new(big.Rat).SetInt(mag)
+	}
+	// value = mag / 10^scale. SetFrac copies mag; shared pow10 is not mutated.
+	return new(big.Rat).SetFrac(mag, pow10(scale))
+}
+
+// encodeDecimalWire encodes r as a TDS decimal/numeric value payload for the given scale.
+// Returns the payload (sign byte + little-endian integer, no length prefix).
+// Does not mutate r. Returns an error if the scaled integer exceeds 16 bytes.
+//
+// Allocations: one scratch *big.Int (or stack via var) for the scaled magnitude,
+// plus the returned payload slice. Multiplier is shared from powersOf10.
+func encodeDecimalWire(r *big.Rat, scale int) ([]byte, error) {
+	// value_on_wire = trunc_toward_zero(r * 10^scale)
+	var mag big.Int
+	mag.Set(r.Num())
+	if scale > 0 {
+		mag.Mul(&mag, pow10(scale))
+	}
+	mag.Quo(&mag, r.Denom())
+
+	sign := byte(1)
+	if mag.Sign() < 0 {
+		sign = 0
+		mag.Neg(&mag)
+	}
+
+	byteLen := (mag.BitLen() + 7) / 8
+	if mag.Sign() == 0 {
+		byteLen = 0
+	}
+	if byteLen > 16 {
+		return nil, fmt.Errorf("scaled integer exceeds 16 bytes")
+	}
+
+	// Pad to TDS storage size (4, 8, 12, or 16 bytes of integer data).
+	dataLen := 4
+	switch {
+	case byteLen <= 4:
+		dataLen = 4
+	case byteLen <= 8:
+		dataLen = 8
+	case byteLen <= 12:
+		dataLen = 12
+	default:
+		dataLen = 16
+	}
+
+	payload := make([]byte, 1+dataLen)
+	payload[0] = sign
+
+	// Fill big-endian into a stack buffer, then store little-endian on the wire.
+	var be [16]byte
+	mag.FillBytes(be[:dataLen])
+	for i := 0; i < dataLen; i++ {
+		payload[1+i] = be[dataLen-1-i]
+	}
+	return payload, nil
 }
 
 const (

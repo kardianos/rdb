@@ -827,22 +827,13 @@ func (d *binxmlDecoder) readDecimal() (string, error) {
 		return "", err
 	}
 
-	// Value is little-endian, need to reverse for big.Int.
-	for i, j := 0, len(bb)-1; i < j; i, j = i+1, j-1 {
-		bb[i], bb[j] = bb[j], bb[i]
-	}
-
-	integer := new(big.Int).SetBytes(bb)
-	if sign == 0 {
-		integer.Neg(integer)
-	}
-
-	r := new(big.Rat).SetInt(integer)
-	divisor := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(scale)), nil)
-	r.Quo(r, new(big.Rat).SetInt(divisor))
+	// Same layout as TDS decimal payload: sign + little-endian integer × 10^scale.
+	payload := make([]byte, 1+len(bb))
+	payload[0] = sign
+	copy(payload[1:], bb)
 
 	_ = prec // precision not used for formatting
-	return r.FloatString(int(scale)), nil
+	return decodeDecimalWire(payload, int(scale)).FloatString(int(scale)), nil
 }
 
 func (d *binxmlDecoder) readXSDDate() (string, error) {
