@@ -5,8 +5,10 @@
 package ms
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/kardianos/rdb"
 	"github.com/kardianos/rdb/semver"
@@ -293,16 +295,13 @@ func timeBytesForScale(scale int) int {
 		return 3
 	case scale <= 4:
 		return 4
-	case scale <= 7:
-		return 5
 	default:
 		return 5
 	}
 }
 
 // timeBytesFromDataLen derives the time-component size from the row TYPE_VARBYTE
-// BYTELEN (MS-TDS BYTELEN_TYPE length tables for TIMENTYPE / DATETIME2NTYPE /
-// DATETIMEOFFSETNTYPE). Payload sizes:
+// BYTELEN when the length matches the MS-TDS tables:
 //
 //	time(n):           dataLen ∈ {3,4,5}
 //	datetime2(n):      dataLen ∈ {6,7,8}  = time + date(3)
@@ -323,6 +322,78 @@ func timeBytesFromDataLen(dt byte, dataLen int) (int, error) {
 		return 0, fmt.Errorf("invalid time component size %d (dt=%d dataLen=%d)", bbLen, dt, dataLen)
 	}
 	return bbLen, nil
+}
+
+// decodeDateTimePayload parses a DATE/TIME/DATETIME2/DATETIMEOFFSET payload
+// that has already been fully read from the stream (length prefix excluded).
+// Returns time.Duration for pure time, time.Time otherwise.
+// Never panics: trailing/unknown bytes are ignored so the caller can finish the row.
+func decodeDateTimePayload(dt byte, scale, lengthHint int, buf []byte) interface{} {
+	scaleN := scale
+	if scaleN == 0 && lengthHint > 0 && lengthHint <= 7 {
+		scaleN = lengthHint
+	}
+
+	// Pure date.
+	if dt == dtDate {
+		if len(buf) < 3 {
+			return zeroDateN(time.UTC)
+		}
+		days := int(buf[0]) | int(buf[1])<<8 | int(buf[2])<<16
+		return time.Date(1, 1, 1+days, 0, 0, 0, 0, time.UTC)
+	}
+
+	// Time component size: prefer wire length when it matches the tables;
+	// otherwise use SCALE. Clamp to available bytes.
+	bbLen := timeBytesForScale(scaleN)
+	if size, err := timeBytesFromDataLen(dt, len(buf)); err == nil {
+		bbLen = size
+	}
+	if bbLen > len(buf) {
+		bbLen = len(buf)
+	}
+	if bbLen < 0 {
+		bbLen = 0
+	}
+
+	var tm time.Duration
+	if dt&dtTime != 0 && bbLen > 0 {
+		var full [8]byte
+		copy(full[:], buf[:bbLen])
+		value := int64(binary.LittleEndian.Uint64(full[:]))
+		mult := getMult(scaleN)
+		if mult <= 0 {
+			mult = 1
+		}
+		tm = time.Duration(1000000000 / mult * value)
+	}
+	if dt == dtTime {
+		return tm
+	}
+
+	at := bbLen
+	days := 0
+	if dt&dtDate != 0 {
+		if at+3 <= len(buf) {
+			days = int(buf[at]) | int(buf[at+1])<<8 | int(buf[at+2])<<16
+			at += 3
+		}
+	}
+	zoneMins := 0
+	if dt&dtZone != 0 && at+2 <= len(buf) {
+		zoneMins = int(int16(binary.LittleEndian.Uint16(buf[at : at+2])))
+		// at += 2 — trailing bytes (if any) intentionally ignored
+	}
+
+	// days since 0001-01-01 → calendar date + time-of-day.
+	t := time.Date(1, 1, 1+days, 0, 0, 0, 0, time.UTC).Add(tm)
+	if zoneMins != 0 {
+		hrs := zoneMins / 60
+		mins := zoneMins % 60
+		loc := time.FixedZone(fmt.Sprintf("UTC %d:%02d", hrs, mins), zoneMins*60)
+		t = t.In(loc)
+	}
+	return t
 }
 
 // powersOf10 holds 10^0 .. 10^38. Precomputed so encode/decode share one *big.Int

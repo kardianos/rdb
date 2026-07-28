@@ -1757,93 +1757,32 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 	if column.info.Dt != 0 {
 		// MS-TDS TYPE_VARBYTE for BYTELEN_TYPE (date/time/datetime2/dto):
 		//   GEN_NULL (%x00) already handled via dataLen==0, or
-		//   TYPE_VARLEN (BYTELEN) + payload — we have already read BYTELEN as dataLen.
-		// Consume exactly dataLen bytes so we never steal the next column's prefix
-		// (symptoms: IntN dataLen=3, tdsToken(0), unexpected EOF).
+		//   BYTELEN + payload. Always read the full payload first so the stream
+		//   stays aligned even if the value layout is unexpected.
 		//
-		// Value layout (MS-TDS 2.2.5.5.1.8 Dates and Times):
+		// Layout (MS-TDS 2.2.5.5.1.8):
 		//   date:               3-byte days since 0001-01-01
-		//   time(n):            unsigned LE integer, 10^-n second ticks since midnight
-		//                       size 3 (0<=n<=2), 4 (3<=n<=4), 5 (5<=n<=7)
+		//   time(n):            LE ticks of 10^-n s; 3/4/5 bytes by scale
 		//   datetime2(n):       time(n) || date
 		//   datetimeoffset(n):  datetime2(n) || int16 minutes from UTC
-		// Valid row lengths: DATENTYPE 0x03; TIMENTYPE 0x03/04/05 by scale;
-		// DATETIME2 0x06/07/08; DATETIMEOFFSET 0x08/09/0A (MS-TDS BYTELEN_TYPE tables).
+		//
+		// Do not panic after reading dataLen: aborting mid-row leaves remaining
+		// columns unread (desync). Best-effort decode; ignore trailing bytes.
 		buf := read(dataLen)
-		scaleN := column.Scale
-		if scaleN == 0 && column.Length > 0 && column.Length <= 7 {
-			// Older metadata paths stored SCALE only in Length.
-			scaleN = column.Length
-		}
-
-		var tm time.Duration
-		var dt time.Time
-		var zoneMins int16
-		at := 0
-
-		if (column.info.Dt & dtTime) != 0 {
-			// Prefer payload length (authoritative on the wire); fall back to SCALE.
-			bbLen := timeBytesForScale(scaleN)
-			if size, err := timeBytesFromDataLen(column.info.Dt, dataLen); err == nil {
-				bbLen = size
-			}
-			if at+bbLen > len(buf) {
-				panic(fmt.Errorf("proto error time: need %d bytes, have %d (dataLen=%d scale=%d)", bbLen, len(buf)-at, dataLen, scaleN))
-			}
-			var full [8]byte
-			copy(full[:], buf[at:at+bbLen])
-			at += bbLen
-			// time(n): little-endian ticks of 10^-n seconds.
-			value := int64(binary.LittleEndian.Uint64(full[:]))
-			mult := getMult(scaleN)
-			if mult <= 0 {
-				mult = 1
-			}
-			tm = time.Duration(1000000000 / mult * value)
-			if column.info.Dt == dtTime {
+		v := decodeDateTimePayload(column.info.Dt, column.Scale, column.Length, buf)
+		if column.info.Dt == dtTime {
+			if tm, ok := v.(time.Duration); ok {
 				emit(false, tm, false, false, false)
-				return
+			} else {
+				emit(false, time.Duration(0), false, false, false)
 			}
+			return
 		}
-		if (column.info.Dt & dtDate) != 0 {
-			if at+3 > len(buf) {
-				panic(fmt.Errorf("proto error date: need 3 bytes, have %d", len(buf)-at))
-			}
-			var full [4]byte
-			copy(full[:], buf[at:at+3])
-			at += 3
-			// date: 3-byte unsigned little-endian days since 0001-01-01.
-			days := int32(binary.LittleEndian.Uint32(full[:]))
-			dt = zeroDateN(time.UTC)
-			dayChunkCount := int32(250 * 365)
-			dayChunk := time.Duration(dayChunkCount*24) * time.Hour
-			for days > dayChunkCount {
-				dt = dt.Add(dayChunk)
-				days -= dayChunkCount
-			}
-			dt = dt.Add(time.Duration(days*24) * time.Hour)
+		if t, ok := v.(time.Time); ok {
+			emit(false, t, false, false, false)
+		} else {
+			emit(false, zeroDateN(time.UTC), false, false, false)
 		}
-		if (column.info.Dt & dtZone) != 0 {
-			if at+2 > len(buf) {
-				panic(fmt.Errorf("proto error datetimeoffset: need 2 offset bytes, have %d", len(buf)-at))
-			}
-			zoneMins = int16(binary.LittleEndian.Uint16(buf[at : at+2]))
-			at += 2
-		}
-		if at != len(buf) {
-			// Payload size must match time+date[+offset]; leftover means scale/len mismatch.
-			panic(fmt.Errorf("proto error date/time: consumed %d of %d payload bytes (dt=%d scale=%d)", at, len(buf), column.info.Dt, scaleN))
-		}
-
-		dt = dt.Add(tm)
-		dt = time.Date(dt.Year(), dt.Month(), dt.Day(), dt.Hour(), dt.Minute(), dt.Second(), dt.Nanosecond(), time.UTC)
-		if zoneMins != 0 {
-			hrs := zoneMins / 60
-			mins := zoneMins % 60
-			loc := time.FixedZone(fmt.Sprintf("UTC %d:%02d", hrs, mins), int(zoneMins)*60)
-			dt = dt.In(loc)
-		}
-		emit(false, dt, false, false, false)
 		return
 	}
 

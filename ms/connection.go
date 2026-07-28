@@ -1408,7 +1408,8 @@ func (tds *Connection) getSingleResponse(ctx context.Context, m *MessageReader, 
 
 		return MsgParamValue{}, nil
 	default:
-		return nil, fmt.Errorf("unknown response code: 0x%X", token)
+		// Use byte(token): %X on a Stringer hex-encodes String(), not the numeric value.
+		return nil, fmt.Errorf("unknown response code: 0x%02X (%s)", byte(token), token)
 	}
 }
 

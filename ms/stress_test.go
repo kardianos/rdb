@@ -17,6 +17,42 @@ import (
 	"github.com/kardianos/rdb/must"
 )
 
+// TestDecodeDateTimePayloadOversized ensures unexpected BYTELEN (e.g. 11 with
+// datetime2 scale 7) does not panic after the payload is already consumed.
+// Production: "proto error date/time: consumed 8 of 11 payload bytes (dt=3 scale=7)".
+func TestDecodeDateTimePayloadOversized(t *testing.T) {
+	// datetime2 = dtTime|dtDate = 1|2 = 3; scale 7 → normal payload 8 bytes.
+	// Build a valid 8-byte value and pad to 11.
+	scale := 7
+	timeSz := timeBytesForScale(scale)
+	payload := make([]byte, timeSz+3+3) // 5+3+3 = 11
+	// time ticks: 1 second at scale 7 = 10^7 ticks
+	ticks := int64(10_000_000)
+	for i := 0; i < timeSz; i++ {
+		payload[i] = byte(ticks >> (8 * i))
+	}
+	// date: day 0 = 0001-01-01
+	// trailing 3 bytes left zero
+
+	v := decodeDateTimePayload(dtTime|dtDate, scale, scale, payload)
+	tm, ok := v.(time.Time)
+	if !ok {
+		t.Fatalf("got %T, want time.Time", v)
+	}
+	if tm.Year() != 1 || tm.Month() != 1 || tm.Day() != 1 {
+		t.Errorf("date: got %v", tm)
+	}
+	// Must not panic; value should still decode the leading valid portion.
+	if tm.Hour() != 0 || tm.Minute() != 0 || tm.Second() != 1 {
+		t.Errorf("time-of-day: got %v", tm)
+	}
+
+	// Undersized: still no panic.
+	_ = decodeDateTimePayload(dtTime|dtDate, scale, scale, []byte{1, 2})
+	_ = decodeDateTimePayload(dtDate, 0, 0, []byte{1})
+	_ = decodeDateTimePayload(dtTime, 0, 0, []byte{1, 2})
+}
+
 // TestTimeThenIntNoDesync is the production regression for:
 //   proto error IntN, unknown data len 3
 // Old time/datetime2 decode used dataLen as the time size, so for scale 0–2

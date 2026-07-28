@@ -320,10 +320,8 @@ func (mr *MessageReader) Next(ctx context.Context) ([]byte, error) {
 			Received: PacketType(bb[0]),
 		}
 	}
-	packetEOM := false
-	if MsgStatus(bb[1]) == statusEOM {
-		packetEOM = true
-	}
+	// MsgStatus is a bit field (MS-TDS packet header); EOM is 0x01.
+	packetEOM := MsgStatus(bb[1])&statusEOM != 0
 	if debugProto {
 		debugMessage = make([]byte, 8)
 		copy(debugMessage, bb)
