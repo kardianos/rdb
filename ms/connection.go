@@ -63,8 +63,10 @@ type Connection struct {
 	defaultResetTimeout time.Duration
 	rollbackTimeout     time.Duration
 
-	// The next byte of ucs2 if split between packets.
-	ucs2Next []byte
+	// Leftover low/high byte when a UTF-16 code unit is split across PLP chunks.
+	// Stored by value (not a msgBuf view) so the next fill() cannot clobber it.
+	ucs2NextByte byte
+	ucs2HasNext  bool
 
 	// UTF-8 support state.
 	utf8Negotiated    bool    // Server acknowledged UTF8_SUPPORT in FEATUREEXTACK.
