@@ -1260,24 +1260,24 @@ func (tds *Connection) decodeNCharUTF8(raw []byte) []byte {
 	return tds.utf8Scratch
 }
 
-// decodePLPNCharChunk reads one PLP chunk of nvarchar data, handling a UTF-16
-// code unit split across chunk boundaries. The carried byte is stored by value
-// on the connection so it is not invalidated when msgBuf is reused by fill().
-func (tds *Connection) decodePLPNCharChunk(read uconv.PanicReader, chunkSize int) []byte {
+// appendPLPNCharUTF8 reads one PLP nvarchar chunk and appends its UTF-8 form to dst.
+//
+// PLP chunks may split a UTF-16 code unit. The leftover half is kept by value on
+// the connection (ucs2NextByte) so msgBuf reuse in fill() cannot clobber it.
+// Wire views from read() are only used within this call.
+func (tds *Connection) appendPLPNCharUTF8(dst []byte, read uconv.PanicReader, chunkSize int) []byte {
 	carry := 0
 	if tds.ucs2HasNext {
 		carry = 1
 	}
-	// Odd total length ⇒ this chunk ends mid code-unit; save the last byte.
+	// Odd total length (carry + this chunk) ⇒ ends mid code-unit.
 	split := (chunkSize+carry)%2 == 1
 	bb := read(chunkSize)
 
 	if !tds.ucs2HasNext && !split {
-		return tds.decodeNCharUTF8(bb)
+		return uconv.Decode.AppendBytes(dst, bb)
 	}
 
-	// Build a contiguous even-length UTF-16LE buffer for this piece.
-	// lead is a by-value copy of any carried byte from the previous chunk.
 	var lead byte
 	hasLead := tds.ucs2HasNext
 	if hasLead {
@@ -1285,31 +1285,39 @@ func (tds *Connection) decodePLPNCharChunk(read uconv.PanicReader, chunkSize int
 		tds.ucs2HasNext = false
 	}
 
-	var trailer byte
 	body := bb
 	if split {
 		if len(bb) == 0 {
-			// Empty chunk with carry only — should not happen; keep carry.
+			// Empty chunk with a pending carry only.
 			if hasLead {
 				tds.ucs2NextByte = lead
 				tds.ucs2HasNext = true
 			}
-			return tds.decodeNCharUTF8(nil)
+			return dst
 		}
-		trailer = bb[len(bb)-1]
-		body = bb[:len(bb)-1]
-		tds.ucs2NextByte = trailer
+		tds.ucs2NextByte = bb[len(bb)-1]
 		tds.ucs2HasNext = true
+		body = bb[:len(bb)-1]
 	}
 
 	if !hasLead {
-		return tds.decodeNCharUTF8(body)
+		return uconv.Decode.AppendBytes(dst, body)
 	}
-	// Prepend the owned lead byte without aliasing msgBuf.
-	buf := make([]byte, 0, 1+len(body))
-	buf = append(buf, lead)
-	buf = append(buf, body...)
-	return tds.decodeNCharUTF8(buf)
+	// Complete the code unit from the owned lead byte + first body byte,
+	// then decode the rest. Avoids allocating a combined UTF-16 buffer.
+	if len(body) == 0 {
+		tds.ucs2NextByte = lead
+		tds.ucs2HasNext = true
+		return dst
+	}
+	var unit [2]byte
+	unit[0] = lead
+	unit[1] = body[0]
+	dst = uconv.Decode.AppendBytes(dst, unit[:])
+	if len(body) > 1 {
+		dst = uconv.Decode.AppendBytes(dst, body[1:])
+	}
+	return dst
 }
 
 // directPrep returns Prep destination for column when the valuer supports
@@ -1413,6 +1421,37 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 			return
 		}
 
+		// nvarchar(max) / NChar PLP: stream-decode into one owned UTF-8 buffer and
+		// emit once. Avoids multi-emit chunked valuer assembly and keeps the
+		// UTF-16 half-unit carry by value across msgBuf reuse (Option B).
+		if column.info.NChar {
+			var out []byte
+			if !sizeUnknown && totalSize > 0 && totalSize < uint64(^uint(0)>>1) {
+				// totalSize is UTF-16 wire bytes; ASCII UTF-8 is half that.
+				out = make([]byte, 0, int(totalSize/2))
+			}
+			for {
+				chunkSize := int(binary.LittleEndian.Uint32(read(4)))
+				if chunkSize == 0 {
+					break
+				}
+				out = tds.appendPLPNCharUTF8(out, read, chunkSize)
+			}
+			tds.ucs2HasNext = false
+			if out == nil {
+				out = []byte{}
+			}
+			if havePrep {
+				if doneDirect(rdb.DirectAssignBytes(prep, out, false, false, defNull)) {
+					return
+				}
+			}
+			// out is a fresh owned allocation (or empty); valuer need not copy.
+			emit(false, out, false, false, false)
+			return
+		}
+
+		// Non-NChar PLP (varchar(max), varbinary(max), …): chunked emit.
 		useChunks := false
 		first := true
 		for {
@@ -1427,19 +1466,9 @@ func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColum
 				useChunks = sizeUnknown || totalSize != uint64(chunkSize)
 			}
 
-			var value []byte
-			mustCopy := false
-			if column.info.NChar {
-				mustCopy = true
-				// PLP chunks can split a UTF-16 code unit across chunk boundaries.
-				// Carry the odd trailing byte by value (see decodePLPNCharChunk).
-				value = tds.decodePLPNCharChunk(read, chunkSize)
-			} else {
-				// View into message buffer; valuer copies if it retains the value.
-				value = read(chunkSize)
-				mustCopy = true
-			}
-			emit(false, value, mustCopy, useChunks, useChunks)
+			// View into message buffer; valuer copies if it retains the value.
+			value := read(chunkSize)
+			emit(false, value, true, useChunks, useChunks)
 			first = false
 		}
 		return

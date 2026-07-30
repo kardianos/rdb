@@ -107,6 +107,30 @@ create table #rdb_plp_nv (id int primary key, name nvarchar(100), body nvarchar(
 		t.Fatalf("got %d rows want 5", n)
 	}
 	t.Logf("all %d rows OK, payload %d bytes", n, len(payload))
+
+	// Padding ahead of the LOB shifts where the server splits PLP chunks.
+	// Corruption historically only appeared for some alignments (odd offsets).
+	for pad := 0; pad < 16; pad++ {
+		pad := pad
+		name := fmt.Sprintf("pad_%d", pad)
+		sql := fmt.Sprintf(`
+select
+  cast(replicate(N'x', %d) as nvarchar(max)) as prefix,
+  body
+from #rdb_plp_nv where id = 1;`, pad)
+		res = q(sql)
+		if !res.Next() {
+			res.Close()
+			t.Fatalf("%s: no row", name)
+		}
+		if err := res.Scan(); err != nil {
+			res.Close()
+			t.Fatalf("%s: %v", name, err)
+		}
+		gotB = asBytes(t, res.Get("body"))
+		res.Close()
+		assertBytes(t, name, payload, gotB)
+	}
 }
 
 func asBytes(t *testing.T, v interface{}) []byte {
