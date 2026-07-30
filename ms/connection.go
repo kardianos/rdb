@@ -1321,13 +1321,14 @@ func (tds *Connection) getSingleResponse(ctx context.Context, m *MessageReader, 
 		// which reuses msgBuf and would corrupt a view into the bitmap — that
 		// desyncs the row (tdsToken(0), IntN unknown dataLen, mid-row EOF).
 		// Prefer the connection-local scratch (0 alloc for ≤128 columns).
-		bitlen := (len(tds.col) + 7) / 8
+		// byteLen is NullBitmapByteCount (⌈columns/8⌉), not a bit count.
+		byteLen := (len(tds.col) + 7) / 8
 		var nulls []byte
-		if bitlen <= len(tds.nbcNullScratch) {
-			nulls = tds.nbcNullScratch[:bitlen]
-			copy(nulls, read(bitlen))
+		if byteLen <= len(tds.nbcNullScratch) {
+			nulls = tds.nbcNullScratch[:byteLen]
+			copy(nulls, read(byteLen))
 		} else {
-			nulls = append([]byte(nil), read(bitlen)...)
+			nulls = append([]byte(nil), read(byteLen)...)
 		}
 		for i, column := range tds.col {
 			if nulls[i/8]&(1<<(uint(i)%8)) != 0 {
