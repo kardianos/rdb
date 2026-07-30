@@ -39,6 +39,8 @@ import (
 // Field offsets and typed prep/apply funcs are built once per result set; the
 // row loop does not walk the struct with reflect.Value.
 //
+// Query is sugar for Do + Slice on the first result set. For multiple result
+// sets with different shapes, use Do with Slice/Seq and Handle.Next.
 // Use Stream if you do not need to retain every row.
 func Query[T any](ctx context.Context, q rdb.Queryer, cmd *rdb.Command, params ...rdb.Param) ([]T, error) {
 	return QueryTag[T](ctx, q, cmd, "db", params...)
@@ -46,25 +48,13 @@ func Query[T any](ctx context.Context, q rdb.Queryer, cmd *rdb.Command, params .
 
 // QueryTag is Query with an explicit struct tag name (empty means "db").
 func QueryTag[T any](ctx context.Context, q rdb.Queryer, cmd *rdb.Command, tagName string, params ...rdb.Param) ([]T, error) {
-	res, err := q.Query(ctx, cmd, params...)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Close()
-
-	plan, err := newStructPlan[T](res.Schema(), tagName)
-	if err != nil {
-		return nil, err
-	}
-
 	var out []T
-	for res.Next() {
-		out = append(out, *new(T))
-		if err := plan.scan(res, unsafe.Pointer(&out[len(out)-1])); err != nil {
-			return out, err
-		}
-	}
-	return out, nil
+	err := Do(ctx, q, cmd, func(h Handle) error {
+		var err error
+		out, err = SliceTag[T](h, tagName)
+		return err
+	}, params...)
+	return out, err
 }
 
 // Stream runs cmd on q and yields each row of the first result set as T.
@@ -78,6 +68,9 @@ func QueryTag[T any](ctx context.Context, q rdb.Queryer, cmd *rdb.Command, tagNa
 //	    }
 //	    // use row
 //	}
+//
+// Stream is the single-set convenience over Query + Seq. For multiple result
+// sets, use Do with Seq and Handle.Next so one result stays open across sets.
 func Stream[T any](ctx context.Context, q rdb.Queryer, cmd *rdb.Command, params ...rdb.Param) iter.Seq2[T, error] {
 	return StreamTag[T](ctx, q, cmd, "db", params...)
 }
@@ -93,19 +86,11 @@ func StreamTag[T any](ctx context.Context, q rdb.Queryer, cmd *rdb.Command, tagN
 		}
 		defer res.Close()
 
-		plan, err := newStructPlan[T](res.Schema(), tagName)
-		if err != nil {
-			yield(zero, err)
-			return
-		}
-
-		for res.Next() {
-			var row T
-			if err := plan.scan(res, unsafe.Pointer(&row)); err != nil {
-				yield(zero, err)
+		for row, err := range SeqTag[T](NewHandle(res), tagName) {
+			if !yield(row, err) {
 				return
 			}
-			if !yield(row, nil) {
+			if err != nil {
 				return
 			}
 		}

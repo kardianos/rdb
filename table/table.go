@@ -9,6 +9,25 @@
 //	rows, err := table.Query[User](ctx, db, cmd)
 //	for user, err := range table.Stream[User](ctx, db, cmd) { ... }
 //
+// For multiple result sets with different shapes, use Do with a Handle:
+//
+//	err := table.Do(ctx, db, cmd, func(h table.Handle) error {
+//	    users, err := table.Slice[User](h)
+//	    if err != nil {
+//	        return err
+//	    }
+//	    if err := h.Next(); err != nil {
+//	        return err
+//	    }
+//	    for o, err := range table.Seq[Order](h) {
+//	        if err != nil {
+//	            return err
+//	        }
+//	        // ...
+//	    }
+//	    return nil
+//	}, params...)
+//
 // Fill/UnmarshalStruct remain for Buffer-based workflows.
 package table
 
