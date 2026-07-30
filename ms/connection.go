@@ -77,6 +77,9 @@ type Connection struct {
 	dv rdb.DriverValue
 	// Reused UTF-8 decode output for NChar fields (paired with MustCopy).
 	utf8Scratch []byte
+	// NBCROW null bitmap scratch: 16 bytes covers 128 columns (almost all
+	// result sets). Wider metadata falls back to a heap copy.
+	nbcNullScratch [16]byte
 }
 
 func NewConnection(c net.Conn, defaultResetTimeout, RollbackTimeout time.Duration) *Connection {
@@ -1317,8 +1320,15 @@ func (tds *Connection) getSingleResponse(ctx context.Context, m *MessageReader, 
 		// call fill() when a later column spans packets (e.g. nvarchar(max) PLP),
 		// which reuses msgBuf and would corrupt a view into the bitmap — that
 		// desyncs the row (tdsToken(0), IntN unknown dataLen, mid-row EOF).
+		// Prefer the connection-local scratch (0 alloc for ≤128 columns).
 		bitlen := (len(tds.col) + 7) / 8
-		nulls := append([]byte(nil), read(bitlen)...)
+		var nulls []byte
+		if bitlen <= len(tds.nbcNullScratch) {
+			nulls = tds.nbcNullScratch[:bitlen]
+			copy(nulls, read(bitlen))
+		} else {
+			nulls = append([]byte(nil), read(bitlen)...)
+		}
 		for i, column := range tds.col {
 			if nulls[i/8]&(1<<(uint(i)%8)) != 0 {
 				err = tds.val.WriteField(&column.Column, &rdb.DriverValue{
