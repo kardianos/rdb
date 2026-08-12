@@ -7,6 +7,7 @@ package rdb
 import (
 	"io"
 	"math/big"
+	"reflect"
 	"time"
 )
 
@@ -76,6 +77,30 @@ func assignViaDirect(prep interface{}, value interface{}) (handled bool, err err
 	default:
 		return false, nil
 	}
+}
+
+// assignExact copies in into prep when prep is *T and in is assignable to T.
+// Used for converter-produced values (e.g. civil.Date) that DirectAssign does not know.
+func assignExact(prep, in interface{}) bool {
+	if in == nil {
+		return false
+	}
+	payload, flag := unwrapFlag(prep)
+	if payload == nil {
+		return false
+	}
+	pv := reflect.ValueOf(payload)
+	if pv.Kind() != reflect.Ptr || pv.IsNil() {
+		return false
+	}
+	ev := pv.Elem()
+	iv := reflect.ValueOf(in)
+	if !iv.IsValid() || !iv.Type().AssignableTo(ev.Type()) {
+		return false
+	}
+	ev.Set(iv)
+	setFlag(flag, false)
+	return true
 }
 
 func setFlag(flag *bool, null bool) {

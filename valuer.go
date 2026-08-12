@@ -284,6 +284,9 @@ func AssignValue(c *Column, outValue Nullable, prep interface{}, assign Assigner
 	if handled, err = assignViaDirect(prep, outValue.Value); handled {
 		return err
 	}
+	if assignExact(prep, outValue.Value) {
+		return nil
+	}
 
 	switch in := outValue.Value.(type) {
 	case string:
@@ -523,7 +526,7 @@ func AssignValue(c *Column, outValue Nullable, prep interface{}, assign Assigner
 			return errorTypeNotSupported(in, out, c)
 		}
 	default:
-		return errorTypeNotSupported(nil, nil, c)
+		return errorTypeNotSupported(outValue.Value, prep, c)
 	}
 	return err
 }

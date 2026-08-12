@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"io"
 	"testing"
+	"time"
 )
 
 func TestDirectAssignInt(t *testing.T) {
@@ -180,5 +181,43 @@ func TestAssignValueOptAndNullFlag(t *testing.T) {
 	err = AssignValue(nil, Nullable{Null: true}, &id, nil)
 	if err != ErrScanNull {
 		t.Fatalf("null into *int32: err=%v", err)
+	}
+}
+
+func TestAssignValueSameType(t *testing.T) {
+	type dayOff struct {
+		Y, M, D int
+	}
+	col := &Column{Name: "DateDayOff"}
+	in := dayOff{Y: 2026, M: 8, D: 12}
+
+	var out dayOff
+	if err := AssignValue(col, Nullable{Value: in}, &out, nil); err != nil {
+		t.Fatal(err)
+	}
+	if out != in {
+		t.Fatalf("got %#v want %#v", out, in)
+	}
+
+	// Converter-style: ColumnConverter func produces dayOff, then AssignValue.
+	convert := func(_ *Column, n *Nullable) error {
+		n.Value = dayOff{Y: 2027, M: 2, D: 8}
+		return nil
+	}
+	nv := Nullable{Value: time.Date(2027, 2, 8, 0, 0, 0, 0, time.UTC)}
+	if err := convert(col, &nv); err != nil {
+		t.Fatal(err)
+	}
+	var out2 dayOff
+	if err := AssignValue(col, nv, &out2, nil); err != nil {
+		t.Fatal(err)
+	}
+	if out2.Y != 2027 || out2.M != 2 || out2.D != 8 {
+		t.Fatalf("converted assign: %#v", out2)
+	}
+
+	var s string
+	if err := AssignValue(col, Nullable{Value: in}, &s, nil); err == nil {
+		t.Fatal("want error assigning dayOff into *string")
 	}
 }
