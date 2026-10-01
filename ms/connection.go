@@ -522,10 +522,18 @@ func (tds *Connection) transaction(ctx context.Context, tran uint16, label strin
 	// that query's errors again.
 	tds.val = noopValuer{}
 
+	// A pending reset must go out with BEGIN. Left for the first query in
+	// the transaction, it would reset the connection and so roll back the
+	// transaction just begun.
+	reset := tran == tranBegin && tds.resetNext
+
 	tds.mr = tds.pr.BeginMessage(ctx, packetTabularResult)
-	err := tds.pw.BeginMessage(ctx, packetTransaction, false)
+	err := tds.pw.BeginMessage(ctx, packetTransaction, reset)
 	if err != nil {
 		return err
+	}
+	if reset {
+		tds.resetNext = false
 	}
 
 	var level byte
