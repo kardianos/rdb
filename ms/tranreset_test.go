@@ -140,3 +140,90 @@ func TestTransactionHoldsFresh(t *testing.T) {
 		t.Fatalf("@@trancount %d in the transaction, want 1", n)
 	}
 }
+
+// TestTransactionLevelNotLeaked checks that the isolation level a Transaction
+// begins with ends with it. A connection reset does not reset the isolation
+// level, so without care the next user of the pooled connection runs at the
+// transaction's level.
+func TestTransactionLevelNotLeaked(t *testing.T) {
+	checkSkip(t)
+	list := []struct {
+		Name       string
+		ResetQuery string
+		Want       int64 // sys.dm_exec_sessions.transaction_isolation_level after release.
+	}{
+		{Name: "no reset query", Want: 2},
+		{Name: "reset query", ResetQuery: "set nocount on;", Want: 2},
+		{Name: "reset query sets the level", ResetQuery: "set transaction isolation level read uncommitted;", Want: 1},
+	}
+	for _, tc := range list {
+		t.Run(tc.Name, func(t *testing.T) {
+			config := must.Config(rdb.ParseConfigURL(testConnectionString))
+			config.ResetQuery = tc.ResetQuery
+			config.PoolInitCapacity = 1
+			config.PoolMaxCapacity = 1
+			pool, err := rdb.Open(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer pool.Close()
+			ctx := context.Background()
+
+			level := func(t *testing.T, q rdb.Queryer) int64 {
+				t.Helper()
+				const sql = `select convert(bigint, transaction_isolation_level) from sys.dm_exec_sessions where session_id = @@spid;`
+				res, err := q.Query(ctx, &rdb.Command{SQL: sql})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer res.Close()
+				var v int64
+				if !res.Next() {
+					t.Fatal("no row")
+				}
+				if err := res.Scan(&v); err != nil {
+					t.Fatal(err)
+				}
+				return v
+			}
+
+			if got := level(t, pool); got != tc.Want {
+				t.Fatalf("level %d before any transaction, want %d", got, tc.Want)
+			}
+			ends := []struct {
+				Name  string
+				Level rdb.IsolationLevel
+				End   func(*rdb.Transaction) error
+			}{
+				{Name: "commit", Level: rdb.LevelSerializable, End: (*rdb.Transaction).Commit},
+				{Name: "rollback", Level: rdb.LevelRepeatableRead, End: (*rdb.Transaction).Rollback},
+			}
+			for _, e := range ends {
+				tran, err := pool.BeginLevel(ctx, e.Level)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := level(t, tran); got == tc.Want {
+					tran.Rollback()
+					t.Fatalf("%s: level %d in the transaction, want the transaction's level", e.Name, got)
+				}
+				if err := e.End(tran); err != nil {
+					t.Fatalf("%s: %v", e.Name, err)
+				}
+				if got := level(t, pool); got != tc.Want {
+					t.Fatalf("after %s: level %d on the pooled connection, want %d", e.Name, got, tc.Want)
+				}
+				// A default-level transaction runs at the session's level.
+				tran, err = pool.Begin(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := level(t, tran)
+				tran.Rollback()
+				if got != tc.Want {
+					t.Fatalf("after %s: level %d in a default transaction, want %d", e.Name, got, tc.Want)
+				}
+			}
+		})
+	}
+}

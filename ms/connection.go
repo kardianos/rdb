@@ -44,6 +44,7 @@ type Connection struct {
 
 	available bool
 	resetNext bool
+	levelSet  bool // A transaction began with an isolation level; reset does not undo it.
 
 	ProductVersion  *semver.Version
 	ProtocolVersion *semver.Version
@@ -423,7 +424,14 @@ func (c passthroughConn) SetWriteDeadline(t time.Time) error {
 
 func (tds *Connection) Reset(c *rdb.Config) error {
 	tds.resetNext = true
-	if len(c.ResetQuery) == 0 {
+	sql := c.ResetQuery
+	// RESETCONNECTION keeps the isolation level, so a level a transaction
+	// began with would carry over to the next user. Restore the server
+	// default ahead of ResetQuery, which may set its own.
+	if tds.levelSet {
+		sql = "set transaction isolation level read committed;" + sql
+	}
+	if len(sql) == 0 {
 		return nil
 	}
 	ctx := context.Background()
@@ -432,7 +440,11 @@ func (tds *Connection) Reset(c *rdb.Config) error {
 		ctx, cancel = context.WithTimeout(ctx, c.ResetConnectionTimeout)
 		defer cancel()
 	}
-	return tds.Query(ctx, &rdb.Command{SQL: c.ResetQuery}, nil, nil, nil)
+	err := tds.Query(ctx, &rdb.Command{SQL: sql}, nil, nil, nil)
+	if err == nil {
+		tds.levelSet = false
+	}
+	return err
 }
 
 func (tds *Connection) ConnectionInfo() *rdb.ConnectionInfo {
@@ -550,6 +562,9 @@ func (tds *Connection) transaction(ctx context.Context, tran uint16, label strin
 		level = levelSerializable
 	case rdb.LevelSnapshot:
 		level = levelSnapshot
+	}
+	if tran == tranBegin && level != levelDefault {
+		tds.levelSet = true
 	}
 
 	if len(label) > 254 {
