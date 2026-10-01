@@ -1,6 +1,7 @@
 package rdb
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"time"
@@ -262,11 +263,45 @@ func (cp *ConnPool) query(ctx context.Context, keepOnClose bool, conn DriverConn
 		}
 	}
 	if err != nil {
-		cp.releaseConn(ctx, conn, true)
 		res.closed = true
+		// An error the server reported leaves the connection sound once the
+		// rest of its response is read. Keep it: a Connection or Transaction
+		// owns its session (temp tables, locks, the transaction), and a pooled
+		// connection is reused. Any other error (network, protocol, cancel, a
+		// fatal server error) may leave the stream mid-message, so the
+		// connection is closed.
+		if serverError(err) && drained(conn.NextQuery(ctx)) && conn.Status() == StatusReady {
+			if !keepOnClose {
+				cp.releaseConn(ctx, conn, false)
+			}
+			return res, err
+		}
+		cp.releaseConn(ctx, conn, true)
 	}
 
 	return res, err
+}
+
+// drained reports whether reading the rest of a response left the connection
+// usable: it read to the end, at most reporting the server's errors again.
+func drained(err error) bool {
+	return err == nil || serverError(err)
+}
+
+// serverError reports whether err is only errors the server reported that do
+// not end the connection. Severity 20 and above closes the connection on the
+// server.
+func serverError(err error) bool {
+	var list Errors
+	if !errors.As(err, &list) || len(list) == 0 {
+		return false
+	}
+	for _, m := range list {
+		if m.Class >= 20 {
+			return false
+		}
+	}
+	return true
 }
 
 // Begin starts a Transaction with the default isolation level.

@@ -518,6 +518,9 @@ func (tds *Connection) transaction(ctx context.Context, tran uint16, label strin
 	if tds.mr != nil && !tds.mr.packetEOM {
 		panic("Connection not ready to be re-used yet for transaction.")
 	}
+	// The valuer is still the last query's; ending this request would report
+	// that query's errors again.
+	tds.val = noopValuer{}
 
 	tds.mr = tds.pr.BeginMessage(ctx, packetTabularResult)
 	err := tds.pw.BeginMessage(ctx, packetTransaction, false)
