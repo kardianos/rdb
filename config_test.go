@@ -67,6 +67,14 @@ var configTestPass = map[string]*Config{
 			"2": "valB",
 		},
 	},
+	"driver://localUrl/EVOLUTION?db=MatchX&column_key=8xMmOS3TniY.D_nkUzXfPex74GSfdB5uqHDp1J0W_kvnQ3ziJIn0jq0&column_key=AAAAAAAAAAA.BBBB": {
+		DriverName: "driver",
+		Hostname:   "localUrl",
+		Instance:   "EVOLUTION",
+		Database:   "MatchX",
+		ColumnKeys: []string{"8xMmOS3TniY.D_nkUzXfPex74GSfdB5uqHDp1J0W_kvnQ3ziJIn0jq0", "AAAAAAAAAAA.BBBB"},
+		KV:         make(map[string]interface{}),
+	},
 	"sqlite:///srv/folder/file.sqlite3": {
 		DriverName: "sqlite",
 		Username:   "",

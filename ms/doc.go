@@ -73,5 +73,29 @@ To prevent truncation, set TEXTSIZE in your connection's ResetQuery configuratio
 	}
 
 Reference: https://learn.microsoft.com/en-us/sql/t-sql/statements/set-textsize-transact-sql
+
+# Always Encrypted
+
+Give the column encryption keys in the DSN, one column_key per key, in the
+text form of package ms/aecrypt; there is no key store. extract_cek.ps1 in that
+package prints them on the machine holding the column master key certificate.
+
+	ms://user:pass@host/EVOLUTION?db=MatchX&column_key=<fingerprint>.<key>
+
+The connection then decrypts encrypted result columns, reporting their
+plaintext type. Before each parameterized query it asks the server
+(sp_describe_parameter_encryption) which parameters meet encrypted columns, and
+sends those encrypted. A parameter stored into an encrypted column must be
+declared with the column's exact type, Length included: an nvarchar(60) column
+needs Length 60, or the server reports an operand type clash. A parameter only
+compared with the column may be declared longer. Comparisons on a deterministic
+column are exact (binary collation).
+
+Decrypted columns may be char, varchar, nchar, nvarchar (each including max),
+binary, varbinary, or an integer type; encrypted parameters may be nchar,
+nvarchar, binary, varbinary, or an integer type. Other types, encrypted output
+parameters, and encrypted parameters of a stored procedure call (rather than a
+batch) are not supported. With keys set, nvarchar parameters are never sent as
+varchar (the utf8 option).
 */
 package ms

@@ -1109,6 +1109,7 @@ type colFlags struct {
 	Serial          bool
 	Key             bool
 	SparseColumnSet bool
+	Encrypted       bool // Always Encrypted; crypto metadata follows when negotiated.
 	NullableUnknown bool
 }
 
@@ -1117,6 +1118,7 @@ func colFlagsFromSlice(flags []byte) colFlags {
 		Nullable:        flags[0]&(1<<0) != 0,
 		Serial:          flags[0]&(1<<4) != 0,
 		SparseColumnSet: flags[1]&(1<<2) != 0,
+		Encrypted:       flags[1]&(1<<3) != 0,
 		Key:             flags[1]&(1<<6) != 0,
 		NullableUnknown: flags[1]&(1<<7) != 0,
 	}
@@ -1144,6 +1146,15 @@ func colFlagsToSlice(cf colFlags) []byte {
 func decodeColumnInfo(read uconv.PanicReader) *SQLColumn {
 	userType := binary.LittleEndian.Uint32(read(4)) // userType
 	flags := colFlagsFromSlice(read(2))
+	column := decodeTypeInfo(read, userType, flags)
+	column.wireEncrypted = flags.Encrypted
+	return column
+}
+
+// decodeTypeInfo reads a TYPE_INFO: the type byte and what follows it.
+// Column metadata has it after the user type and flags; the crypto metadata
+// of an encrypted column has it after the user type only.
+func decodeTypeInfo(read uconv.PanicReader, userType uint32, flags colFlags) *SQLColumn {
 	driverType := driverType(read(1)[0])
 
 	info, ok := typeInfoLookup[driverType]
@@ -1335,6 +1346,15 @@ func (tds *Connection) directPrep(column *SQLColumn) (prep interface{}, defNull 
 }
 
 func (tds *Connection) decodeFieldValue(read uconv.PanicReader, column *SQLColumn, resultWf writeField, reportRow bool) {
+	if column.enc != nil {
+		tds.decodeEncryptedValue(read, column, resultWf, reportRow)
+		return
+	}
+	tds.decodePlainValue(read, column, resultWf, reportRow)
+}
+
+// decodePlainValue decodes one value of column as the wire carries it.
+func (tds *Connection) decodePlainValue(read uconv.PanicReader, column *SQLColumn, resultWf writeField, reportRow bool) {
 	sc := &column.Column
 	var err error
 	defer func() {

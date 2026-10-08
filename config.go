@@ -78,6 +78,12 @@ type Config struct {
 	// ResetQuery is executed after the connection is reset.
 	ResetQuery string
 
+	// ColumnKeys are SQL Server Always Encrypted column encryption keys, each
+	// in the text form of package ms/aecrypt ("<fingerprint>.<key>"). With any
+	// set, the connection decrypts encrypted result columns and encrypts the
+	// parameters that encrypted columns are compared with or stored in.
+	ColumnKeys []string
+
 	KV map[string]interface{}
 }
 
@@ -110,6 +116,8 @@ const optPrefix = "opt_"
 //	                                     SQL Server doens't send intermediate certificates.
 //	                                     May be required even if root CA is known and trusted.
 //	   insecure_skip_verify=<bool>:      INSECURE. Skip  encryption certificate verification.
+//	   column_key=<string>:              SQL Server Always Encrypted column encryption key,
+//	                                     "<fingerprint>.<key>" (see ms/aecrypt), repeatable.
 //	   opt_<any>=<any>:                  include values, unchecked here, into KV. "opt_" prefix is stripped.
 func ParseConfigURL(connectionString string) (*Config, error) {
 	if len(connectionString) == 0 {
@@ -242,6 +250,9 @@ func ParseConfigURL(connectionString string) (*Config, error) {
 				}
 			}
 			conf.RootCAs = certs
+		case "column_key":
+			allowMultiple = true
+			conf.ColumnKeys = append(conf.ColumnKeys, vv...)
 		}
 		if !allowMultiple && len(vv) > 1 {
 			return nil, fmt.Errorf("DSN property %q must not be repeated", key)

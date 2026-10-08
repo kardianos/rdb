@@ -76,6 +76,12 @@ type SQLColumn struct {
 
 	code driverType
 	info typeInfo
+
+	// wireEncrypted is the column metadata's encrypted flag.
+	wireEncrypted bool
+	// enc is set on a column decrypted with a column encryption key. The
+	// column then describes the plaintext type; enc.wire the ciphertext sent.
+	enc *encColumn
 }
 
 type MsgEnvChange struct{}

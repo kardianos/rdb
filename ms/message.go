@@ -146,7 +146,8 @@ type ServerInfo struct {
 	MinorVersion byte
 	BuildNumber  uint16
 
-	UTF8Supported bool // Server acknowledged UTF8_SUPPORT feature extension.
+	UTF8Supported    bool // Server acknowledged UTF8_SUPPORT feature extension.
+	ColumnEncryption bool // Server acknowledged COLUMNENCRYPTION (Always Encrypted).
 }
 
 func (si *ServerInfo) String() string {
@@ -332,11 +333,18 @@ func (tds *PacketWriter) Login(ctx context.Context, config *rdb.Config) error {
 	featureExtOffset := at
 	binary.LittleEndian.PutUint32(extensionBlock, uint32(featureExtOffset))
 	featureExtData := []byte{
-		featureIDUTF8Support,       // FeatureId = 0x0A (UTF8_SUPPORT)
-		0x01, 0x00, 0x00, 0x00,    // FeatureDataLen = 1
-		0x01,                       // FeatureData: request UTF-8
-		featureIDTerminator,        // 0xFF terminator
+		featureIDUTF8Support,   // FeatureId = 0x0A (UTF8_SUPPORT)
+		0x01, 0x00, 0x00, 0x00, // FeatureDataLen = 1
+		0x01, // FeatureData: request UTF-8
 	}
+	if len(config.ColumnKeys) > 0 {
+		featureExtData = append(featureExtData,
+			featureIDColumnEncryption, // FeatureId = 0x04 (COLUMNENCRYPTION)
+			0x01, 0x00, 0x00, 0x00,    // FeatureDataLen = 1
+			aeVersion, // FeatureData: column encryption, no enclaves
+		)
+	}
+	featureExtData = append(featureExtData, featureIDTerminator) // 0xFF terminator
 	at += len(featureExtData)
 
 	buf := make([]byte, at)
@@ -505,6 +513,9 @@ func (tds *PacketReader) LoginAck(ctx context.Context) (*ServerInfo, error) {
 				at += dataLen
 				if featureID == featureIDUTF8Support && dataLen >= 1 && data[0] == 0x01 {
 					si.UTF8Supported = true
+				}
+				if featureID == featureIDColumnEncryption && dataLen >= 1 && data[0] >= aeVersion {
+					si.ColumnEncryption = true
 				}
 			}
 			if at < len(bb) && bb[at] == featureIDTerminator {

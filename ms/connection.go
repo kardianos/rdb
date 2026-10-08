@@ -20,6 +20,7 @@ import (
 
 	"github.com/kardianos/rdb"
 	"github.com/kardianos/rdb/internal/uconv"
+	"github.com/kardianos/rdb/ms/aecrypt"
 	"github.com/kardianos/rdb/semver"
 
 	"errors"
@@ -73,6 +74,10 @@ type Connection struct {
 	utf8Negotiated    bool    // Server acknowledged UTF8_SUPPORT in FEATUREEXTACK.
 	paramCollation    [5]byte // Collation bytes to send with text parameters.
 	preferUTF8Varchar bool    // Config opt-in: use varchar (UTF-8) instead of nvarchar (UTF-16).
+
+	// Always Encrypted state.
+	columnKeys []*aecrypt.Key // Configured column encryption keys.
+	ae         bool           // Server took column encryption at login.
 
 	// Reused per-field value to avoid heap-allocating DriverValue on every cell.
 	dv rdb.DriverValue
@@ -226,6 +231,10 @@ func (tds *Connection) Open(ctx context.Context, config *rdb.Config) (*ServerInf
 		InHex:   true,
 	}
 
+	err = tds.setupColumnEncryption(si)
+	if err != nil {
+		return nil, err
+	}
 	tds.setupUTF8(si)
 
 	tds.syncClose.Lock()
@@ -309,6 +318,10 @@ func (tds *Connection) OpenTDS8(ctx context.Context, config *rdb.Config) (*Serve
 		InHex:   true,
 	}
 
+	err = tds.setupColumnEncryption(si)
+	if err != nil {
+		return nil, err
+	}
 	tds.setupUTF8(si)
 
 	tds.syncClose.Lock()
@@ -1006,7 +1019,23 @@ func (tds *Connection) execute(ctx context.Context, cmd *rdb.Command, params []r
 		}
 		more, err = tds.sendBulk(ctx, cmd.Bulk, cmd.TruncLongText, params, false)
 	case len(params) > 0:
-		err = tds.sendRPC(ctx, cmd.SQL, cmd.TruncLongText, params, tds.resetNext)
+		var enc map[string]*paramEnc
+		if tds.ae && !isProcName(cmd.SQL) {
+			// Ask which parameters meet encrypted columns, then send the query
+			// as its own request.
+			var decl []byte
+			decl, err = tds.paramDecl(params)
+			if err != nil {
+				return more, err
+			}
+			enc, err = tds.describeParamEncryption(ctx, cmd.SQL, string(decl), tds.resetNext)
+			tds.resetNext = false
+			if err != nil {
+				return more, err
+			}
+			tds.mr = tds.pr.BeginMessage(ctx, packetTabularResult)
+		}
+		err = tds.sendRPC(ctx, cmd.SQL, cmd.TruncLongText, params, tds.resetNext, enc)
 	}
 	tds.resetNext = false
 	if err != nil {
@@ -1038,7 +1067,8 @@ func (tds *Connection) sendSimpleQuery(ctx context.Context, sql string, reset bo
 	return w.EndMessage(ctx)
 }
 
-func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool, params []rdb.Param, reset bool) error {
+// sendRPC sends sql with params. Parameters named in enc are sent encrypted.
+func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool, params []rdb.Param, reset bool, enc map[string]*paramEnc) error {
 	// To make a SQL Query with params:
 	// * RPC Param 1 = {Name: "", Type: NText, Field: SqlQuery}
 	// * RPC Param 2 = {Name: "", Type: NText, Field: "@MySqlParam1 int,@Foo varchar(400)"}
@@ -1047,7 +1077,7 @@ func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool,
 	// Simple! Once figured out.
 
 	tds.params = params
-	isProc := !strings.ContainsAny(sql, " \t\r\n")
+	isProc := isProcName(sql)
 	withRecomp := false
 
 	var procID uint16 = sp_ExecuteSql
@@ -1069,27 +1099,15 @@ func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool,
 		w.WriteUint16(procID)
 		w.WriteUint16(options) // 16 bits (2 bytes) - Options: fWithRecomp, fNoMetaData, fReuseMetaData, 13FRESERVEDBIT
 
-		paramNames := &bytes.Buffer{}
-		for i := range params {
-			param := &params[i]
-			if i != 0 {
-				paramNames.WriteRune(',')
-			}
-			if len(param.Name) == 0 {
-				return fmt.Errorf("missing parameter name at index: %d", i)
-			}
-
-			st, found := sqlTypeLookup[tds.adjustParamType(param.Type)]
-			if !found {
-				return fmt.Errorf("param %q type not found: %d", param.Name, param.Type)
-			}
-			fmt.Fprintf(paramNames, "@%s %s", param.Name, st.TypeString(param))
+		paramNames, err := tds.paramDecl(params)
+		if err != nil {
+			return err
 		}
 		err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, rpcHeaderParam, []byte(sql), tds.paramCollation)
 		if err != nil {
 			return err
 		}
-		err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, rpcHeaderParam, paramNames.Bytes(), tds.paramCollation)
+		err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, rpcHeaderParam, paramNames, tds.paramCollation)
 		if err != nil {
 			return err
 		}
@@ -1104,7 +1122,11 @@ func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool,
 		param := &params[i]
 		adjusted := *param
 		adjusted.Type = tds.adjustParamType(param.Type)
-		err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, &adjusted, param.Value, tds.paramCollation)
+		if pe := encryptedParam(enc, param); pe != nil {
+			err = tds.encodeEncryptedParam(w, &adjusted, param.Value, pe)
+		} else {
+			err = encodeParam(ctx, w, truncValue, tds.ProtocolVersion, &adjusted, param.Value, tds.paramCollation)
+		}
 		if err != nil {
 			return err
 		}
@@ -1112,6 +1134,33 @@ func (tds *Connection) sendRPC(ctx context.Context, sql string, truncValue bool,
 	w.WriteByte(byte(tokenDoneInProc))
 
 	return w.EndMessage(ctx)
+}
+
+// isProcName reports whether sql names a procedure to call rather than
+// being a batch for sp_executesql.
+func isProcName(sql string) bool {
+	return !strings.ContainsAny(sql, " \t\r\n")
+}
+
+// paramDecl declares params for sp_executesql: "@a int,@b nvarchar(20)".
+func (tds *Connection) paramDecl(params []rdb.Param) ([]byte, error) {
+	paramNames := &bytes.Buffer{}
+	for i := range params {
+		param := &params[i]
+		if i != 0 {
+			paramNames.WriteRune(',')
+		}
+		if len(param.Name) == 0 {
+			return nil, fmt.Errorf("missing parameter name at index: %d", i)
+		}
+
+		st, found := sqlTypeLookup[tds.adjustParamType(param.Type)]
+		if !found {
+			return nil, fmt.Errorf("param %q type not found: %d", param.Name, param.Type)
+		}
+		fmt.Fprintf(paramNames, "@%s %s", param.Name, st.TypeString(param))
+	}
+	return paramNames.Bytes(), nil
 }
 
 func (tds *Connection) sendBulk(ctx context.Context, bulk rdb.Bulk, truncValue bool, params []rdb.Param, reset bool) (more bool, err error) {
@@ -1279,8 +1328,14 @@ func (tds *Connection) getSingleResponse(ctx context.Context, m *MessageReader, 
 	case tokenColumnMetaData:
 		var columns []*SQLColumn
 		count := int(binary.LittleEndian.Uint16(read(2)))
-		if count == 0xffff {
+		noMetaData := count == 0xffff
+		if noMetaData {
 			count = 0
+		}
+		// With column encryption taken, a key table precedes the columns.
+		var ceks []*cekEntry
+		if tds.ae && !noMetaData {
+			ceks = tds.readCekTable(read)
 		}
 		for i := 0; i < count; i++ {
 			column := decodeColumnInfo(read)
@@ -1290,8 +1345,16 @@ func (tds *Connection) getSingleResponse(ctx context.Context, m *MessageReader, 
 					uconv.Decode.Prefix2(read)
 				}
 			}
+			if tds.ae && column.wireEncrypted {
+				column = decodeCryptoMetadata(read, column, ceks)
+			}
 			_, column.Name = uconv.Decode.Prefix1(read)
 			column.Index = i
+			if column.enc != nil {
+				if err := column.enc.check(column); err != nil {
+					panic(recoverError{err})
+				}
+			}
 			columns = append(columns, column)
 		}
 
@@ -1430,6 +1493,9 @@ func (tds *Connection) getSingleResponse(ctx context.Context, m *MessageReader, 
 		col := decodeColumnInfo(read)
 		col.Name = paramName
 		col.Index = int(paramIndex)
+		if tds.ae && col.wireEncrypted {
+			panic(recoverError{fmt.Errorf("output parameter %s is encrypted: encrypted output parameters are not supported", paramName)})
+		}
 
 		outValue := rdb.Nullable{}
 

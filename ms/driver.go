@@ -88,6 +88,11 @@ func (dr *Driver) Open(ctx context.Context, c *rdb.Config) (rdb.DriverConn, erro
 		}
 	}
 
+	columnKeys, err := parseColumnKeys(c.ColumnKeys)
+	if err != nil {
+		return nil, err
+	}
+
 	// Check if we already know this server doesn't support TDS 8.0.
 	// This cache is only used for auto-detection, not for explicit tds8=only mode.
 	tds8UnsupportedMu.RLock()
@@ -110,6 +115,7 @@ func (dr *Driver) Open(ctx context.Context, c *rdb.Config) (rdb.DriverConn, erro
 
 		tds := NewConnection(conn, c.ResetConnectionTimeout, c.RollbackTimeout)
 		tds.preferUTF8Varchar = preferUTF8
+		tds.columnKeys = columnKeys
 		_, err = tds.OpenTDS8(ctx, c)
 		if err == nil {
 			return tds, nil
@@ -142,6 +148,7 @@ func (dr *Driver) Open(ctx context.Context, c *rdb.Config) (rdb.DriverConn, erro
 
 	tds := NewConnection(conn, c.ResetConnectionTimeout, c.RollbackTimeout)
 	tds.preferUTF8Varchar = preferUTF8
+	tds.columnKeys = columnKeys
 
 	_, err = tds.Open(ctx, c)
 	if err != nil {
