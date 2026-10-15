@@ -263,3 +263,94 @@ func TestThrowError(t *testing.T) {
 
 	assertFreeConns(t)
 }
+
+// TestCancelAfterDone cancels each query's context right after the query
+// ends, then runs another query on the same connection. A cancel that comes
+// after its query has ended must not reach whatever runs next. The race
+// needs the cancel watcher to be scheduled late, so this fails reliably
+// only under CPU load; TestCancelWatchQueryEnded and
+// TestAttentionAckAfterQuery cover the same paths deterministically.
+func TestCancelAfterDone(t *testing.T) {
+	checkSkip(t)
+	defer recoverTest(t)
+
+	const n = 2000
+	for i := 0; i < n; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		_, err := db.Normal().Query(ctx, &rdb.Command{SQL: `select 1;`, Arity: rdb.Zero})
+		cancel()
+		if err != nil {
+			t.Fatalf("query %d: %v", i, err)
+		}
+		_, err = db.Normal().Query(context.Background(), &rdb.Command{SQL: `select 1;`, Arity: rdb.Zero})
+		if err != nil {
+			t.Fatalf("follow-up %d: %v", i, err)
+		}
+	}
+	assertFreeConns(t)
+}
+
+// openRaw opens a connection outside the pool.
+func openRaw(t *testing.T) *Connection {
+	t.Helper()
+	dc, err := (&Driver{}).Open(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tds := dc.(*Connection)
+	t.Cleanup(tds.Close)
+	return tds
+}
+
+// TestCancelWatchQueryEnded runs a cancel watcher whose query has ended and
+// whose context is cancelled, as when the watcher is scheduled only after
+// both. It must not send an attention.
+func TestCancelWatchQueryEnded(t *testing.T) {
+	checkSkip(t)
+	tds := openRaw(t)
+
+	cmd := &rdb.Command{SQL: `declare @a int = 1;`}
+	for i := 0; i < 100; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		qdone := make(chan struct{})
+		close(qdone)
+		cancel()
+		tds.asyncWaitCancel(ctx, qdone, time.Second)
+		if tds.attnOwed.Load() {
+			t.Fatalf("round %d: sent an attention for a query that had ended", i)
+		}
+		if err := tds.Query(context.Background(), cmd, nil, nil, nil); err != nil {
+			t.Fatalf("round %d: query: %v", i, err)
+		}
+	}
+}
+
+// TestAttentionAckAfterQuery sends an attention after its query has ended,
+// as when a cancel crosses the end of the query. The server acknowledges it
+// in a message of its own, which must not be read as the next query's reply.
+func TestAttentionAckAfterQuery(t *testing.T) {
+	checkSkip(t)
+	tds := openRaw(t)
+
+	ctx := context.Background()
+	cmd := &rdb.Command{SQL: `declare @a int = 1;`}
+	if err := tds.Query(ctx, cmd, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	tds.attnOwed.Store(true)
+	if err := tds.pw.BeginMessage(ctx, packetAttention, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := tds.pw.EndMessage(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := tds.Query(ctx, cmd, nil, nil, nil); err != nil {
+		t.Fatalf("query after the attention: %v", err)
+	}
+	if tds.attnOwed.Load() {
+		t.Fatal("acknowledgment still owed")
+	}
+	if err := tds.Query(ctx, cmd, nil, nil, nil); err != nil {
+		t.Fatalf("second query after the attention: %v", err)
+	}
+}

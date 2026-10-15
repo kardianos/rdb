@@ -16,6 +16,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kardianos/rdb"
@@ -37,8 +38,18 @@ type Connection struct {
 	pr *PacketReader
 
 	wc      net.Conn
-	onDone  chan struct{} // Write to when message is done.
 	onClose chan struct{} // Close to when connection closes
+
+	// cancelMu orders the end of a query against its cancel. done closes
+	// qdone under it, and the cancel watcher sends an attention only while
+	// holding it with qdone still open, so no attention goes out for a query
+	// that has ended.
+	cancelMu sync.Mutex
+	qdone    chan struct{} // Closed when the current query ends.
+	// attnOwed is set while the server owes an acknowledgment of an attention
+	// (a DONE with DONE_ATTN). An attention that crosses the end of its query
+	// is acknowledged in a message of its own, read before the next request.
+	attnOwed atomic.Bool
 
 	syncClose sync.Mutex
 	status    rdb.DriverConnStatus
@@ -97,7 +108,6 @@ func NewConnection(c net.Conn, defaultResetTimeout, RollbackTimeout time.Duratio
 		pr:      NewPacketReader(c),
 		wc:      c,
 		opened:  time.Now(),
-		onDone:  make(chan struct{}),
 		onClose: make(chan struct{}),
 
 		defaultResetTimeout: defaultResetTimeout,
@@ -547,6 +557,10 @@ func (tds *Connection) transaction(ctx context.Context, tran uint16, label strin
 	// that query's errors again.
 	tds.val = noopValuer{}
 
+	if err := tds.readAttentionAck(ctx); err != nil {
+		return err
+	}
+
 	// A pending reset must go out with BEGIN. Left for the first query in
 	// the transaction, it would reset the connection and so roll back the
 	// transaction just begun.
@@ -670,8 +684,11 @@ func (tds *Connection) Query(ctx context.Context, cmd *rdb.Command, params []rdb
 	if tds.mr != nil && !tds.mr.packetEOM {
 		return fmt.Errorf("connection not ready to be re-used yet for query")
 	}
+	if err := tds.readAttentionAck(ctx); err != nil {
+		return err
+	}
 
-	go tds.asyncWaitCancel(ctx, tds.rollbackTimeout, cmd.Name)
+	tds.startCancelWatch(ctx)
 top:
 	select {
 	default:
@@ -699,37 +716,108 @@ top:
 	return err
 }
 
-func (tds *Connection) asyncWaitCancel(ctx context.Context, cancelTimeout time.Duration, sqlName string) {
+// startCancelWatch starts the cancel watch for the query about to be sent,
+// ending any watch a query left open by returning without done.
+func (tds *Connection) startCancelWatch(ctx context.Context) {
+	qdone := make(chan struct{})
+	tds.cancelMu.Lock()
+	if tds.qdone != nil {
+		close(tds.qdone)
+	}
+	tds.qdone = qdone
+	tds.cancelMu.Unlock()
+
+	go tds.asyncWaitCancel(ctx, qdone, tds.rollbackTimeout)
+}
+
+// endCancelWatch ends the cancel watch of the current query.
+func (tds *Connection) endCancelWatch() {
+	tds.cancelMu.Lock()
+	if tds.qdone != nil {
+		close(tds.qdone)
+		tds.qdone = nil
+	}
+	tds.cancelMu.Unlock()
+}
+
+// asyncWaitCancel sends an attention if ctx ends before the query does.
+//
+// qdone is closed, not sent to, so a watcher that is scheduled late still
+// sees its query has ended. Left waiting, it would send its attention when
+// ctx ended later, on a connection by then running another query, which the
+// server would cancel.
+func (tds *Connection) asyncWaitCancel(ctx context.Context, qdone <-chan struct{}, cancelTimeout time.Duration) {
 	select {
 	case <-ctx.Done():
-		// Wait until message is done.
-		cancelContext, stopCancelContext := context.WithTimeout(context.Background(), cancelTimeout)
-		defer stopCancelContext()
-
-		err := tds.pw.BeginMessage(cancelContext, packetAttention, false)
-		if err != nil {
-			// TODO: Determine a better error path.
-			log.Printf("Cancel begin message: %v", err)
-			select {
-			case <-tds.onDone:
-			case <-tds.onClose:
-			}
-			return
-		}
-		err = tds.pw.EndMessage(cancelContext)
-		if err != nil {
-			// TODO: Determine a better error path.
-			log.Printf("Cancel end message: %v\n", err)
-		}
-		select {
-		case <-tds.onDone:
-		case <-tds.onClose:
-		}
-	case <-tds.onDone:
-		// Nothing.
+	case <-qdone:
+		return
 	case <-tds.onClose:
-		// Nothing.
+		return
 	}
+
+	// ctx may have ended just as the query did, and select picks either.
+	// done closes qdone under cancelMu, so the query cannot end between this
+	// check and the attention.
+	tds.cancelMu.Lock()
+	defer tds.cancelMu.Unlock()
+	select {
+	case <-qdone:
+		return
+	default:
+	}
+
+	cancelContext, stopCancelContext := context.WithTimeout(context.Background(), cancelTimeout)
+	defer stopCancelContext()
+
+	// Owed before it is sent: the acknowledgment can be read before
+	// EndMessage returns.
+	tds.attnOwed.Store(true)
+	err := tds.pw.BeginMessage(cancelContext, packetAttention, false)
+	if err != nil {
+		tds.attnOwed.Store(false)
+		// TODO: Determine a better error path.
+		log.Printf("Cancel begin message: %v", err)
+		return
+	}
+	err = tds.pw.EndMessage(cancelContext)
+	if err != nil {
+		// TODO: Determine a better error path.
+		log.Printf("Cancel end message: %v\n", err)
+	}
+}
+
+// readAttentionAck reads the acknowledgment of an attention that crossed
+// the end of its query. The server sends it after that query's response, as
+// a message of its own; unread, the next request would take it for its own
+// reply and fail as cancelled.
+func (tds *Connection) readAttentionAck(ctx context.Context) error {
+	if !tds.attnOwed.Load() {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, tds.rollbackTimeout)
+	defer cancel()
+
+	for tds.attnOwed.Load() {
+		tds.mr = tds.pr.BeginMessage(ctx, packetTabularResult)
+		for {
+			var res interface{}
+			var err error
+			withLock(&tds.syncClose, func() {
+				res, err = tds.getSingleResponse(ctx, tds.mr, false)
+			})
+			if err != nil {
+				return fmt.Errorf("ms: reading attention acknowledgment: %w", err)
+			}
+			if _, eom := res.(MsgEom); eom {
+				break
+			}
+		}
+		// Mark the message's last packet read, as done does.
+		if err := tds.mr.Close(); err != nil {
+			return fmt.Errorf("ms: reading attention acknowledgment: %w", err)
+		}
+	}
+	return nil
 }
 
 func (tds *Connection) NextResult(ctx context.Context) (more bool, err error) {
@@ -800,10 +888,7 @@ func (tds *Connection) done() error {
 	if tds == nil {
 		return nil
 	}
-	select {
-	case tds.onDone <- struct{}{}:
-	default:
-	}
+	tds.endCancelWatch()
 
 	mrCloseErr := tds.mr.Close()
 	tds.params = nil
@@ -1388,6 +1473,9 @@ func (tds *Connection) getSingleResponse(ctx context.Context, m *MessageReader, 
 			doneServerError = 0x100
 		)
 		if attn, serr, err := msg.StatusCode&doneAttn != 0, msg.StatusCode&doneServerError != 0, msg.StatusCode&doneError != 0; attn || serr || err {
+			if attn {
+				tds.attnOwed.Store(false)
+			}
 			return MsgCancel{
 				IsAttention:   attn,
 				IsServerError: serr,
