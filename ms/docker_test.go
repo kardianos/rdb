@@ -225,8 +225,7 @@ func initDockerEnv(t *testing.T) error {
 	env.db = must.Open(config)
 
 	// Test the connection
-	ctx := context.Background()
-	if err := env.db.Normal().Ping(ctx); err != nil {
+	if err := pingUntil(env.db, 60*time.Second); err != nil {
 		cleanupDockerEnv()
 		return fmt.Errorf("ping: %w", err)
 	}
@@ -304,8 +303,6 @@ func waitForMSSQLReady(containerID string, timeout time.Duration) error {
 
 		// Check if ready message is in the output
 		if bytes.Contains(output, []byte(readyMsg)) {
-			// Give SQL Server time to finish SA account setup after the ready message.
-			time.Sleep(2 * time.Second)
 			return nil
 		}
 
@@ -313,6 +310,22 @@ func waitForMSSQLReady(containerID string, timeout time.Duration) error {
 	}
 
 	return fmt.Errorf("timeout waiting for SQL Server ready message")
+}
+
+// pingUntil pings db until it answers or timeout passes. SQL Server prints
+// its ready message while still starting up its system databases, and a
+// login until then can fail (error 18456, "Login failed for user 'sa'"),
+// for longer when the image is new and its databases are being upgraded.
+func pingUntil(db must.ConnPool, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		err := db.Normal().Ping(context.Background())
+		if err == nil || time.Now().After(deadline) {
+			return err
+		}
+		fmt.Printf("Docker: ping: %v, retrying\n", err)
+		time.Sleep(time.Second)
+	}
 }
 
 // TestDockerDecimalPrecision tests various decimal precisions.
